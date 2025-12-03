@@ -3,159 +3,142 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema Turso + GitHub Pages</title>
+    <title>Sistema de Reposição</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>🚀 Sistema Turso + GitHub Pages</h1>
-            <p class="subtitle">Seu ecossistema de dados na web</p>
-        </header>
-
-        <!-- Status da Conexão -->
-        <div class="status-card" id="statusCard">
-            <div class="status-indicator">
-                <span class="status-dot" id="statusDot"></span>
-                <span id="statusText">Verificando conexão...</span>
-            </div>
-        </div>
-
-        <!-- Seção de Configuração -->
-        <section class="config-section" id="configSection">
-            <h2>⚙️ Configuração do Banco de Dados</h2>
-            <div class="info-box">
-                <p><strong>Primeira vez aqui?</strong> Você precisa configurar suas credenciais do Turso.</p>
-                <a href="#tutorial" class="link">Ver tutorial completo abaixo ↓</a>
+    <div class="app-container">
+        <!-- Sidebar de Navegação -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1>Sistema</h1>
+                <p>Gestão Comercial</p>
             </div>
 
-            <form id="configForm">
-                <div class="form-group">
-                    <label for="dbUrl">URL do Banco Turso:</label>
-                    <input
-                        type="text"
-                        id="dbUrl"
-                        placeholder="libsql://germanirepositor-genaroforratig365-pixel.aws-us-east-1.turso.io"
-                        required
-                    >
-                    <small>Exemplo: libsql://meu-banco-123.turso.io</small>
+            <nav class="sidebar-nav">
+                <!-- Cadastros -->
+                <div class="nav-section">
+                    <div class="nav-section-title">
+                        <span class="nav-icon">📋</span>
+                        <span>Cadastros</span>
+                    </div>
+                    <ul class="nav-list">
+                        <li><a href="#" data-page="cadastro-supervisor">Supervisor</a></li>
+                        <li><a href="#" data-page="cadastro-repositor">Repositor</a></li>
+                    </ul>
                 </div>
 
-                <div class="form-group">
-                    <label for="authToken">Token de Autenticação:</label>
-                    <input
-                        type="password"
-                        id="authToken"
-                        placeholder="eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJHc3ZDWmRCb0VmQ3ZRaTctU01UclRBIn0.RnkL3g7o1qcmFUVACYh8M_12S-qooXdruqdmjDd1dRCnBLWZoLP3oTjRcN7L_qJQ-xrEMmhWidgSSjJg9kryDw"
-                        required
-                    >
-                    <small>Será armazenado localmente no seu navegador</small>
+                <!-- Reposição -->
+                <div class="nav-section">
+                    <div class="nav-section-title">
+                        <span class="nav-icon">📊</span>
+                        <span>Reposição</span>
+                    </div>
+                    <ul class="nav-list">
+                        <li><a href="#" data-page="resumo-periodo" class="active">Resumo do Período</a></li>
+                        <li><a href="#" data-page="resumo-mensal">Resumo Mensal</a></li>
+                        <li><a href="#" data-page="relatorio-detalhado-repo">Relatório Detalhado</a></li>
+                        <li><a href="#" data-page="analise-grafica-repo">Análise Gráfica</a></li>
+                        <li><a href="#" data-page="alteracoes-rota">Alterações de Rota</a></li>
+                    </ul>
                 </div>
 
-                <button type="submit" class="btn btn-primary">💾 Salvar Configuração</button>
-            </form>
-        </section>
+                <!-- Vendas -->
+                <div class="nav-section">
+                    <div class="nav-section-title">
+                        <span class="nav-icon">💰</span>
+                        <span>Vendas</span>
+                    </div>
+                    <ul class="nav-list">
+                        <li><a href="#" data-page="ranking-performance">Ranking Performance</a></li>
+                        <li><a href="#" data-page="resumo-supervisor">Resumo Supervisor</a></li>
+                        <li><a href="#" data-page="relatorio-detalhado-vendas">Relatório Detalhado</a></li>
+                        <li><a href="#" data-page="categoria-produtos">Categoria de Produtos</a></li>
+                        <li><a href="#" data-page="analise-grafica-vendas">Análise Gráfica</a></li>
+                        <li><a href="#" data-page="estrutura-comercial">Estrutura Comercial</a></li>
+                    </ul>
+                </div>
 
-        <!-- Seção Principal da Aplicação -->
-        <section class="main-section" id="mainSection" style="display: none;">
-            <h2>📊 Gerenciamento de Dados</h2>
+                <!-- Cidades -->
+                <div class="nav-section">
+                    <div class="nav-section-title">
+                        <span class="nav-icon">🏙️</span>
+                        <span>Cidades</span>
+                    </div>
+                    <ul class="nav-list">
+                        <li><a href="#" data-page="ranking-cidades">Ranking</a></li>
+                        <li><a href="#" data-page="indicadores-cidade">Indicadores por Cidade</a></li>
+                        <li><a href="#" data-page="indicadores-capita">Indicadores per Capita</a></li>
+                        <li><a href="#" data-page="desempenho-faixa">Desempenho por Faixa Populacional</a></li>
+                        <li><a href="#" data-page="penetracao-mercado">Penetração de Mercado</a></li>
+                        <li><a href="#" data-page="analise-grafica-cidades">Análise Gráfica</a></li>
+                        <li><a href="#" data-page="mapa-vendas">Mapa de Vendas</a></li>
+                    </ul>
+                </div>
+            </nav>
 
-            <!-- Formulário para Adicionar Dados -->
-            <div class="card">
-                <h3>➕ Adicionar Novo Item</h3>
-                <form id="addItemForm">
+            <div class="sidebar-footer">
+                <button class="btn-config" id="btnConfig">⚙️ Configurar BD</button>
+            </div>
+        </aside>
+
+        <!-- Conteúdo Principal -->
+        <main class="main-content">
+            <div class="content-header">
+                <h2 id="pageTitle">Resumo do Período</h2>
+                <div class="user-info">
+                    <span id="userStatus">Sistema Online</span>
+                </div>
+            </div>
+
+            <div class="content-body" id="contentBody">
+                <!-- O conteúdo será carregado dinamicamente aqui -->
+                <div class="loading-screen">
+                    <div class="spinner"></div>
+                    <p>Carregando...</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal de Configuração -->
+    <div class="modal" id="modalConfig">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Configurar Banco de Dados</h3>
+                <button class="modal-close" id="modalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="configForm">
                     <div class="form-group">
-                        <label for="itemName">Nome:</label>
-                        <input type="text" id="itemName" placeholder="Digite o nome" required>
+                        <label for="dbUrl">URL do Banco Turso:</label>
+                        <input
+                            type="text"
+                            id="dbUrl"
+                            placeholder="libsql://seu-banco.turso.io"
+                            required
+                        >
+                        <small>Exemplo: libsql://meu-banco-123.turso.io</small>
                     </div>
 
                     <div class="form-group">
-                        <label for="itemDescription">Descrição:</label>
-                        <textarea id="itemDescription" placeholder="Digite uma descrição" rows="3"></textarea>
+                        <label for="authToken">Token de Autenticação:</label>
+                        <input
+                            type="password"
+                            id="authToken"
+                            placeholder="Seu token do Turso"
+                            required
+                        >
+                        <small>Será armazenado localmente no navegador</small>
                     </div>
 
-                    <button type="submit" class="btn btn-success">✅ Adicionar</button>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" id="btnCancelConfig">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">Salvar</button>
+                    </div>
                 </form>
             </div>
-
-            <!-- Lista de Dados -->
-            <div class="card">
-                <h3>📋 Seus Dados</h3>
-                <button class="btn btn-secondary" id="refreshBtn">🔄 Atualizar</button>
-
-                <div id="itemsList" class="items-list">
-                    <p class="loading">Carregando dados...</p>
-                </div>
-            </div>
-        </section>
-
-        <!-- Tutorial -->
-        <section class="tutorial-section" id="tutorial">
-            <h2>📖 Tutorial: Como Configurar</h2>
-
-            <div class="tutorial-step">
-                <h3>Passo 1: Criar conta no Turso</h3>
-                <ol>
-                    <li>Acesse: <a href="https://turso.tech" target="_blank">https://turso.tech</a></li>
-                    <li>Clique em "Sign Up" e crie sua conta (gratuita)</li>
-                    <li>Faça login na plataforma</li>
-                </ol>
-            </div>
-
-            <div class="tutorial-step">
-                <h3>Passo 2: Instalar Turso CLI (no seu computador)</h3>
-                <div class="code-block">
-                    <code>curl -sSfL https://get.tur.so/install.sh | bash</code>
-                </div>
-                <p>Ou no Windows (PowerShell):</p>
-                <div class="code-block">
-                    <code>irm get.tur.so/install.ps1 | iex</code>
-                </div>
-            </div>
-
-            <div class="tutorial-step">
-                <h3>Passo 3: Fazer login no Turso CLI</h3>
-                <div class="code-block">
-                    <code>turso auth login</code>
-                </div>
-            </div>
-
-            <div class="tutorial-step">
-                <h3>Passo 4: Criar seu banco de dados</h3>
-                <div class="code-block">
-                    <code>turso db create meu-primeiro-banco</code>
-                </div>
-            </div>
-
-            <div class="tutorial-step">
-                <h3>Passo 5: Obter a URL do banco</h3>
-                <div class="code-block">
-                    <code>turso db show meu-primeiro-banco --url</code>
-                </div>
-                <p>Copie a URL que aparece (exemplo: libsql://meu-primeiro-banco-123.turso.io)</p>
-            </div>
-
-            <div class="tutorial-step">
-                <h3>Passo 6: Criar um token de autenticação</h3>
-                <div class="code-block">
-                    <code>turso db tokens create meu-primeiro-banco</code>
-                </div>
-                <p>Copie o token que aparece</p>
-            </div>
-
-            <div class="tutorial-step">
-                <h3>Passo 7: Configurar nesta página</h3>
-                <p>Cole a URL e o Token nos campos acima e clique em "Salvar Configuração"</p>
-            </div>
-
-            <div class="info-box">
-                <strong>🔒 Segurança:</strong> Suas credenciais são salvas apenas no seu navegador (localStorage) e nunca são enviadas para ninguém além do Turso.
-            </div>
-        </section>
-
-        <footer>
-            <p>Desenvolvido com ❤️ | Turso + GitHub Pages</p>
-        </footer>
+        </div>
     </div>
 
     <!-- Scripts -->

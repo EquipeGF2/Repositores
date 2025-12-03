@@ -1,14 +1,30 @@
 /**
  * Módulo de Conexão com Turso Database
- * Este arquivo gerencia todas as operações com o banco de dados
+ * Suporta dois bancos: um para dados principais e outro para consultas
  */
 
 import { createClient } from 'https://esm.sh/@libsql/client@0.5.2/web';
 
 class TursoDatabase {
     constructor() {
-        this.client = null;
-        this.config = this.loadConfig();
+        this.mainClient = null;  // Cliente principal (dados)
+        this.comercialClient = null;  // Cliente comercial (consultas)
+        this.initComercialDatabase();
+    }
+
+    /**
+     * Inicializa banco de dados comercial (fixo)
+     */
+    initComercialDatabase() {
+        try {
+            this.comercialClient = createClient({
+                url: 'libsql://comercial-angeloxiru.aws-us-east-1.turso.io',
+                authToken: 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NjI4ODQ2ODMsImlkIjoiMmI3NTFkOTQtNGI1ZS00ZjZhLWExMDktNTY0OTg3MzgyOGZhIiwicmlkIjoiOGZiZGQ3ZmMtOThmOC00MmMxLWExNzYtZmJiOTZhYmEwN2I0In0.ZjNIt9GEI01v_Ot9GnzsbS_FJIHjTVjCL9X8TdUJmi0LUfoMXX6xMJlRqNCRZiS6U3iNwkP709K_H8ybU9e3DQ'
+            });
+            console.log('✅ Banco Comercial inicializado');
+        } catch (error) {
+            console.error('❌ Erro ao inicializar banco comercial:', error);
+        }
     }
 
     /**
@@ -30,46 +46,39 @@ class TursoDatabase {
     saveConfig(url, authToken) {
         localStorage.setItem('turso_db_url', url);
         localStorage.setItem('turso_auth_token', authToken);
-        this.config = { url, authToken };
     }
 
     /**
      * Verifica se está configurado
      */
     isConfigured() {
-        return this.config.url && this.config.authToken;
+        const config = this.loadConfig();
+        return config.url && config.authToken;
     }
 
     /**
-     * Limpa configuração
-     */
-    clearConfig() {
-        localStorage.removeItem('turso_db_url');
-        localStorage.removeItem('turso_auth_token');
-        this.config = { url: null, authToken: null };
-        this.client = null;
-    }
-
-    /**
-     * Inicializa conexão com o banco
+     * Inicializa conexão com o banco principal
      */
     async connect() {
-        if (!this.isConfigured()) {
+        const config = this.loadConfig();
+
+        if (!config.url || !config.authToken) {
             throw new Error('Banco de dados não configurado. Configure as credenciais primeiro.');
         }
 
         try {
-            this.client = createClient({
-                url: this.config.url,
-                authToken: this.config.authToken
+            this.mainClient = createClient({
+                url: config.url,
+                authToken: config.authToken
             });
 
             // Testa a conexão
-            await this.client.execute('SELECT 1');
+            await this.mainClient.execute('SELECT 1');
 
+            console.log('✅ Banco Principal conectado');
             return true;
         } catch (error) {
-            console.error('Erro ao conectar:', error);
+            console.error('❌ Erro ao conectar ao banco principal:', error);
             throw new Error('Falha na conexão: ' + error.message);
         }
     }
@@ -78,175 +87,313 @@ class TursoDatabase {
      * Inicializa o schema do banco (cria tabelas se não existirem)
      */
     async initializeSchema() {
-        if (!this.client) {
+        if (!this.mainClient) {
             await this.connect();
         }
 
         try {
-            // Cria tabela de exemplo
-            await this.client.execute(`
-                CREATE TABLE IF NOT EXISTS items (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL,
-                    description TEXT,
+            // Tabela de Supervisores
+            await this.mainClient.execute(`
+                CREATE TABLE IF NOT EXISTS cad_supervisor (
+                    sup_cod INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sup_nome TEXT NOT NULL,
+                    sup_data_inicio DATE NOT NULL,
+                    sup_data_fim DATE,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             `);
 
-            console.log('Schema inicializado com sucesso!');
+            // Tabela de Repositores
+            await this.mainClient.execute(`
+                CREATE TABLE IF NOT EXISTS cad_repositor (
+                    repo_cod INTEGER PRIMARY KEY AUTOINCREMENT,
+                    repo_nome TEXT NOT NULL,
+                    repo_data_inicio DATE NOT NULL,
+                    repo_data_fim DATE,
+                    repo_cidade_ref TEXT,
+                    repo_representante TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            `);
+
+            console.log('✅ Schema inicializado com sucesso!');
             return true;
         } catch (error) {
-            console.error('Erro ao inicializar schema:', error);
+            console.error('❌ Erro ao inicializar schema:', error);
             throw error;
         }
     }
 
+    // ==================== SUPERVISOR ====================
+
     /**
-     * CRUD - Create (Criar novo item)
+     * Cria um novo supervisor
      */
-    async createItem(name, description = '') {
-        if (!this.client) {
-            await this.connect();
-        }
+    async createSupervisor(nome, dataInicio, dataFim = null) {
+        if (!this.mainClient) await this.connect();
 
         try {
-            const result = await this.client.execute({
-                sql: 'INSERT INTO items (name, description) VALUES (?, ?)',
-                args: [name, description]
+            const result = await this.mainClient.execute({
+                sql: 'INSERT INTO cad_supervisor (sup_nome, sup_data_inicio, sup_data_fim) VALUES (?, ?, ?)',
+                args: [nome, dataInicio, dataFim]
             });
 
             return {
                 success: true,
                 id: result.lastInsertRowid,
-                message: 'Item criado com sucesso!'
+                message: 'Supervisor cadastrado com sucesso!'
             };
         } catch (error) {
-            console.error('Erro ao criar item:', error);
+            console.error('Erro ao criar supervisor:', error);
             throw error;
         }
     }
 
     /**
-     * CRUD - Read (Ler todos os itens)
+     * Lista todos os supervisores
      */
-    async getAllItems() {
-        if (!this.client) {
-            await this.connect();
-        }
+    async getAllSupervisors() {
+        if (!this.mainClient) await this.connect();
 
         try {
-            const result = await this.client.execute('SELECT * FROM items ORDER BY created_at DESC');
+            const result = await this.mainClient.execute(
+                'SELECT * FROM cad_supervisor ORDER BY sup_nome'
+            );
             return result.rows;
         } catch (error) {
-            console.error('Erro ao buscar itens:', error);
+            console.error('Erro ao buscar supervisores:', error);
             throw error;
         }
     }
 
     /**
-     * CRUD - Read (Ler um item específico)
+     * Busca supervisor por código
      */
-    async getItem(id) {
-        if (!this.client) {
-            await this.connect();
-        }
+    async getSupervisor(cod) {
+        if (!this.mainClient) await this.connect();
 
         try {
-            const result = await this.client.execute({
-                sql: 'SELECT * FROM items WHERE id = ?',
-                args: [id]
+            const result = await this.mainClient.execute({
+                sql: 'SELECT * FROM cad_supervisor WHERE sup_cod = ?',
+                args: [cod]
             });
-
             return result.rows[0] || null;
         } catch (error) {
-            console.error('Erro ao buscar item:', error);
+            console.error('Erro ao buscar supervisor:', error);
             throw error;
         }
     }
 
     /**
-     * CRUD - Update (Atualizar item)
+     * Atualiza supervisor
      */
-    async updateItem(id, name, description) {
-        if (!this.client) {
-            await this.connect();
-        }
+    async updateSupervisor(cod, nome, dataInicio, dataFim) {
+        if (!this.mainClient) await this.connect();
 
         try {
-            await this.client.execute({
-                sql: 'UPDATE items SET name = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-                args: [name, description, id]
+            await this.mainClient.execute({
+                sql: 'UPDATE cad_supervisor SET sup_nome = ?, sup_data_inicio = ?, sup_data_fim = ?, updated_at = CURRENT_TIMESTAMP WHERE sup_cod = ?',
+                args: [nome, dataInicio, dataFim, cod]
             });
 
             return {
                 success: true,
-                message: 'Item atualizado com sucesso!'
+                message: 'Supervisor atualizado com sucesso!'
             };
         } catch (error) {
-            console.error('Erro ao atualizar item:', error);
+            console.error('Erro ao atualizar supervisor:', error);
             throw error;
         }
     }
 
     /**
-     * CRUD - Delete (Deletar item)
+     * Deleta supervisor
      */
-    async deleteItem(id) {
-        if (!this.client) {
-            await this.connect();
-        }
+    async deleteSupervisor(cod) {
+        if (!this.mainClient) await this.connect();
 
         try {
-            await this.client.execute({
-                sql: 'DELETE FROM items WHERE id = ?',
-                args: [id]
+            await this.mainClient.execute({
+                sql: 'DELETE FROM cad_supervisor WHERE sup_cod = ?',
+                args: [cod]
             });
 
             return {
                 success: true,
-                message: 'Item deletado com sucesso!'
+                message: 'Supervisor deletado com sucesso!'
             };
         } catch (error) {
-            console.error('Erro ao deletar item:', error);
+            console.error('Erro ao deletar supervisor:', error);
+            throw error;
+        }
+    }
+
+    // ==================== REPOSITOR ====================
+
+    /**
+     * Cria um novo repositor
+     */
+    async createRepositor(nome, dataInicio, dataFim, cidadeRef, representante) {
+        if (!this.mainClient) await this.connect();
+
+        try {
+            const result = await this.mainClient.execute({
+                sql: 'INSERT INTO cad_repositor (repo_nome, repo_data_inicio, repo_data_fim, repo_cidade_ref, repo_representante) VALUES (?, ?, ?, ?, ?)',
+                args: [nome, dataInicio, dataFim, cidadeRef, representante]
+            });
+
+            return {
+                success: true,
+                id: result.lastInsertRowid,
+                message: 'Repositor cadastrado com sucesso!'
+            };
+        } catch (error) {
+            console.error('Erro ao criar repositor:', error);
             throw error;
         }
     }
 
     /**
-     * Busca itens por nome
+     * Lista todos os repositores
      */
-    async searchItems(searchTerm) {
-        if (!this.client) {
-            await this.connect();
-        }
+    async getAllRepositors() {
+        if (!this.mainClient) await this.connect();
 
         try {
-            const result = await this.client.execute({
-                sql: 'SELECT * FROM items WHERE name LIKE ? OR description LIKE ? ORDER BY created_at DESC',
-                args: [`%${searchTerm}%`, `%${searchTerm}%`]
-            });
-
+            const result = await this.mainClient.execute(
+                'SELECT * FROM cad_repositor ORDER BY repo_nome'
+            );
             return result.rows;
         } catch (error) {
-            console.error('Erro ao buscar itens:', error);
+            console.error('Erro ao buscar repositores:', error);
             throw error;
         }
     }
 
     /**
-     * Conta total de itens
+     * Busca repositor por código
      */
-    async countItems() {
-        if (!this.client) {
-            await this.connect();
+    async getRepositor(cod) {
+        if (!this.mainClient) await this.connect();
+
+        try {
+            const result = await this.mainClient.execute({
+                sql: 'SELECT * FROM cad_repositor WHERE repo_cod = ?',
+                args: [cod]
+            });
+            return result.rows[0] || null;
+        } catch (error) {
+            console.error('Erro ao buscar repositor:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Atualiza repositor
+     */
+    async updateRepositor(cod, nome, dataInicio, dataFim, cidadeRef, representante) {
+        if (!this.mainClient) await this.connect();
+
+        try {
+            await this.mainClient.execute({
+                sql: 'UPDATE cad_repositor SET repo_nome = ?, repo_data_inicio = ?, repo_data_fim = ?, repo_cidade_ref = ?, repo_representante = ?, updated_at = CURRENT_TIMESTAMP WHERE repo_cod = ?',
+                args: [nome, dataInicio, dataFim, cidadeRef, representante, cod]
+            });
+
+            return {
+                success: true,
+                message: 'Repositor atualizado com sucesso!'
+            };
+        } catch (error) {
+            console.error('Erro ao atualizar repositor:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Deleta repositor
+     */
+    async deleteRepositor(cod) {
+        if (!this.mainClient) await this.connect();
+
+        try {
+            await this.mainClient.execute({
+                sql: 'DELETE FROM cad_repositor WHERE repo_cod = ?',
+                args: [cod]
+            });
+
+            return {
+                success: true,
+                message: 'Repositor deletado com sucesso!'
+            };
+        } catch (error) {
+            console.error('Erro ao deletar repositor:', error);
+            throw error;
+        }
+    }
+
+    // ==================== CONSULTAS BANCO COMERCIAL ====================
+
+    /**
+     * Busca cidades do banco comercial
+     */
+    async getCidadesComercial() {
+        if (!this.comercialClient) {
+            throw new Error('Banco comercial não inicializado');
         }
 
         try {
-            const result = await this.client.execute('SELECT COUNT(*) as total FROM items');
-            return result.rows[0].total;
+            // Ajuste a query conforme a estrutura real do seu banco comercial
+            const result = await this.comercialClient.execute(
+                'SELECT DISTINCT cidade FROM cidades ORDER BY cidade'
+            );
+            return result.rows;
         } catch (error) {
-            console.error('Erro ao contar itens:', error);
+            console.error('Erro ao buscar cidades:', error);
+            // Retorna array vazio se a tabela não existir
+            return [];
+        }
+    }
+
+    /**
+     * Busca representantes do banco comercial
+     */
+    async getRepresentantesComercial() {
+        if (!this.comercialClient) {
+            throw new Error('Banco comercial não inicializado');
+        }
+
+        try {
+            // Ajuste a query conforme a estrutura real do seu banco comercial
+            const result = await this.comercialClient.execute(
+                'SELECT DISTINCT representante FROM representantes ORDER BY representante'
+            );
+            return result.rows;
+        } catch (error) {
+            console.error('Erro ao buscar representantes:', error);
+            // Retorna array vazio se a tabela não existir
+            return [];
+        }
+    }
+
+    /**
+     * Executa query customizada no banco comercial
+     */
+    async queryComercial(sql, args = []) {
+        if (!this.comercialClient) {
+            throw new Error('Banco comercial não inicializado');
+        }
+
+        try {
+            const result = await this.comercialClient.execute({
+                sql: sql,
+                args: args
+            });
+            return result.rows;
+        } catch (error) {
+            console.error('Erro ao executar query:', error);
             throw error;
         }
     }

@@ -1,355 +1,335 @@
 /**
- * Aplicação Principal
- * Gerencia a interface do usuário e interações
+ * Aplicação Principal - Sistema de Reposição
+ * Gerencia navegação, modais e interações
  */
 
 import { db } from './db.js';
+import { pages, pageTitles } from './pages.js';
 
 class App {
     constructor() {
+        this.currentPage = 'resumo-periodo';
         this.init();
     }
 
-    /**
-     * Inicializa a aplicação
-     */
     async init() {
-        console.log('🚀 Iniciando aplicação...');
+        console.log('🚀 Inicializando aplicação...');
 
         // Elementos do DOM
         this.elements = {
-            // Status
-            statusCard: document.getElementById('statusCard'),
-            statusDot: document.getElementById('statusDot'),
-            statusText: document.getElementById('statusText'),
-
-            // Seções
-            configSection: document.getElementById('configSection'),
-            mainSection: document.getElementById('mainSection'),
-
-            // Formulários
+            contentBody: document.getElementById('contentBody'),
+            pageTitle: document.getElementById('pageTitle'),
+            modalConfig: document.getElementById('modalConfig'),
             configForm: document.getElementById('configForm'),
-            addItemForm: document.getElementById('addItemForm'),
-
-            // Inputs
-            dbUrl: document.getElementById('dbUrl'),
-            authToken: document.getElementById('authToken'),
-            itemName: document.getElementById('itemName'),
-            itemDescription: document.getElementById('itemDescription'),
-
-            // Listas e botões
-            itemsList: document.getElementById('itemsList'),
-            refreshBtn: document.getElementById('refreshBtn')
+            btnConfig: document.getElementById('btnConfig'),
+            modalClose: document.getElementById('modalClose'),
+            btnCancelConfig: document.getElementById('btnCancelConfig')
         };
 
         // Event Listeners
         this.setupEventListeners();
 
-        // Verifica se já está configurado
+        // Verifica configuração
         await this.checkConfiguration();
     }
 
-    /**
-     * Configura os event listeners
-     */
     setupEventListeners() {
-        // Formulário de configuração
+        // Links de navegação
+        document.querySelectorAll('[data-page]').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const page = e.target.getAttribute('data-page');
+                this.navigateTo(page);
+            });
+        });
+
+        // Modal de configuração
+        this.elements.btnConfig.addEventListener('click', () => {
+            this.showConfigModal();
+        });
+
+        this.elements.modalClose.addEventListener('click', () => {
+            this.hideConfigModal();
+        });
+
+        this.elements.btnCancelConfig.addEventListener('click', () => {
+            this.hideConfigModal();
+        });
+
         this.elements.configForm.addEventListener('submit', (e) => {
             e.preventDefault();
             this.saveConfiguration();
         });
 
-        // Formulário de adicionar item
-        this.elements.addItemForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.addItem();
-        });
-
-        // Botão de atualizar
-        this.elements.refreshBtn.addEventListener('click', () => {
-            this.loadItems();
+        // Fechar modal ao clicar fora
+        this.elements.modalConfig.addEventListener('click', (e) => {
+            if (e.target === this.elements.modalConfig) {
+                this.hideConfigModal();
+            }
         });
     }
 
-    /**
-     * Verifica se o banco já está configurado
-     */
     async checkConfiguration() {
         if (db.isConfigured()) {
-            this.updateStatus('connecting', 'Conectando ao banco...');
-
             try {
                 await db.connect();
                 await db.initializeSchema();
+                console.log('✅ Banco de dados configurado');
 
-                this.updateStatus('connected', 'Conectado com sucesso!');
-                this.showMainSection();
-                await this.loadItems();
+                // Carrega a página inicial
+                await this.navigateTo(this.currentPage);
             } catch (error) {
-                this.updateStatus('error', 'Erro na conexão: ' + error.message);
-                this.showConfigSection();
+                console.error('❌ Erro ao conectar:', error);
+                this.showNotification('Erro ao conectar ao banco de dados. Configure novamente.', 'error');
+                this.showConfigModal();
             }
         } else {
-            this.updateStatus('not-configured', 'Não configurado');
-            this.showConfigSection();
+            this.showConfigModal();
         }
     }
 
-    /**
-     * Salva a configuração do banco
-     */
     async saveConfiguration() {
-        const url = this.elements.dbUrl.value.trim();
-        const token = this.elements.authToken.value.trim();
+        const url = document.getElementById('dbUrl').value.trim();
+        const token = document.getElementById('authToken').value.trim();
 
         if (!url || !token) {
-            this.showNotification('Por favor, preencha todos os campos!', 'error');
+            this.showNotification('Preencha todos os campos!', 'error');
             return;
         }
 
-        // Valida formato da URL
         if (!url.startsWith('libsql://') && !url.startsWith('https://')) {
             this.showNotification('URL inválida! Deve começar com libsql:// ou https://', 'error');
             return;
         }
 
-        this.updateStatus('connecting', 'Testando conexão...');
-
         try {
-            // Salva configuração
             db.saveConfig(url, token);
-
-            // Tenta conectar
             await db.connect();
             await db.initializeSchema();
 
-            this.updateStatus('connected', 'Conectado com sucesso!');
             this.showNotification('Configuração salva com sucesso!', 'success');
+            this.hideConfigModal();
 
-            // Limpa formulário
-            this.elements.configForm.reset();
-
-            // Mostra seção principal
-            this.showMainSection();
-            await this.loadItems();
+            // Carrega a página inicial
+            await this.navigateTo(this.currentPage);
         } catch (error) {
-            this.updateStatus('error', 'Erro na conexão: ' + error.message);
             this.showNotification('Erro ao conectar: ' + error.message, 'error');
-
-            // Limpa configuração inválida
-            db.clearConfig();
         }
     }
 
-    /**
-     * Adiciona um novo item
-     */
-    async addItem() {
-        const name = this.elements.itemName.value.trim();
-        const description = this.elements.itemDescription.value.trim();
-
-        if (!name) {
-            this.showNotification('Por favor, preencha o nome!', 'error');
-            return;
-        }
-
-        try {
-            const result = await db.createItem(name, description);
-
-            this.showNotification(result.message, 'success');
-
-            // Limpa formulário
-            this.elements.addItemForm.reset();
-
-            // Recarrega lista
-            await this.loadItems();
-        } catch (error) {
-            this.showNotification('Erro ao adicionar item: ' + error.message, 'error');
-        }
-    }
-
-    /**
-     * Carrega todos os itens
-     */
-    async loadItems() {
-        this.elements.itemsList.innerHTML = '<p class="loading">Carregando...</p>';
-
-        try {
-            const items = await db.getAllItems();
-
-            if (items.length === 0) {
-                this.elements.itemsList.innerHTML = `
-                    <div class="empty-state">
-                        <p>📭 Nenhum item ainda</p>
-                        <p>Adicione seu primeiro item acima!</p>
-                    </div>
-                `;
-                return;
+    async navigateTo(pageName) {
+        // Atualiza navegação ativa
+        document.querySelectorAll('[data-page]').forEach(link => {
+            link.classList.remove('active');
+            if (link.getAttribute('data-page') === pageName) {
+                link.classList.add('active');
             }
+        });
 
-            // Renderiza os itens
-            const itemsHtml = items.map(item => this.renderItem(item)).join('');
-            this.elements.itemsList.innerHTML = itemsHtml;
+        // Atualiza título
+        this.elements.pageTitle.textContent = pageTitles[pageName] || 'Página';
 
-            // Adiciona event listeners para os botões de ação
-            this.setupItemActions();
+        // Mostra loading
+        this.elements.contentBody.innerHTML = `
+            <div class="loading-screen">
+                <div class="spinner"></div>
+                <p>Carregando...</p>
+            </div>
+        `;
+
+        // Carrega página
+        try {
+            const pageContent = await pages[pageName]();
+            this.elements.contentBody.innerHTML = pageContent;
+            this.currentPage = pageName;
         } catch (error) {
-            this.elements.itemsList.innerHTML = `
-                <div class="error-state">
-                    <p>❌ Erro ao carregar dados</p>
-                    <p>${error.message}</p>
+            console.error('Erro ao carregar página:', error);
+            this.elements.contentBody.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">❌</div>
+                    <p>Erro ao carregar página</p>
+                    <small>${error.message}</small>
                 </div>
             `;
         }
     }
 
-    /**
-     * Renderiza um item
-     */
-    renderItem(item) {
-        const date = new Date(item.created_at).toLocaleString('pt-BR');
+    // ==================== MODAIS ====================
 
-        return `
-            <div class="item-card" data-id="${item.id}">
-                <div class="item-header">
-                    <h4>${this.escapeHtml(item.name)}</h4>
-                    <div class="item-actions">
-                        <button class="btn-icon btn-edit" data-id="${item.id}" title="Editar">
-                            ✏️
-                        </button>
-                        <button class="btn-icon btn-delete" data-id="${item.id}" title="Deletar">
-                            🗑️
-                        </button>
-                    </div>
-                </div>
-                ${item.description ? `<p class="item-description">${this.escapeHtml(item.description)}</p>` : ''}
-                <div class="item-footer">
-                    <small>📅 ${date}</small>
-                    <small>ID: ${item.id}</small>
-                </div>
-            </div>
-        `;
+    showConfigModal() {
+        this.elements.modalConfig.classList.add('active');
     }
 
-    /**
-     * Configura ações dos itens (editar, deletar)
-     */
-    setupItemActions() {
-        // Botões de deletar
-        document.querySelectorAll('.btn-delete').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                const id = parseInt(e.target.dataset.id);
-                await this.deleteItem(id);
-            });
-        });
-
-        // Botões de editar
-        document.querySelectorAll('.btn-edit').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                const id = parseInt(e.target.dataset.id);
-                await this.editItem(id);
-            });
-        });
+    hideConfigModal() {
+        this.elements.modalConfig.classList.remove('active');
     }
 
-    /**
-     * Deleta um item
-     */
-    async deleteItem(id) {
-        if (!confirm('Tem certeza que deseja deletar este item?')) {
+    // ==================== SUPERVISOR ====================
+
+    showModalSupervisor() {
+        document.getElementById('modalSupervisor').classList.add('active');
+        document.getElementById('formSupervisor').reset();
+        document.getElementById('sup_cod').value = '';
+        document.getElementById('modalSupervisorTitle').textContent = 'Novo Supervisor';
+    }
+
+    closeModalSupervisor() {
+        document.getElementById('modalSupervisor').classList.remove('active');
+    }
+
+    async saveSupervisor(event) {
+        event.preventDefault();
+
+        const cod = document.getElementById('sup_cod').value;
+        const nome = document.getElementById('sup_nome').value;
+        const dataInicio = document.getElementById('sup_data_inicio').value;
+        const dataFim = document.getElementById('sup_data_fim').value || null;
+
+        try {
+            if (cod) {
+                await db.updateSupervisor(cod, nome, dataInicio, dataFim);
+                this.showNotification('Supervisor atualizado com sucesso!', 'success');
+            } else {
+                await db.createSupervisor(nome, dataInicio, dataFim);
+                this.showNotification('Supervisor cadastrado com sucesso!', 'success');
+            }
+
+            this.closeModalSupervisor();
+            await this.navigateTo('cadastro-supervisor');
+        } catch (error) {
+            this.showNotification('Erro ao salvar: ' + error.message, 'error');
+        }
+    }
+
+    async editSupervisor(cod) {
+        try {
+            const supervisor = await db.getSupervisor(cod);
+
+            if (!supervisor) {
+                this.showNotification('Supervisor não encontrado!', 'error');
+                return;
+            }
+
+            document.getElementById('sup_cod').value = supervisor.sup_cod;
+            document.getElementById('sup_nome').value = supervisor.sup_nome;
+            document.getElementById('sup_data_inicio').value = supervisor.sup_data_inicio;
+            document.getElementById('sup_data_fim').value = supervisor.sup_data_fim || '';
+            document.getElementById('modalSupervisorTitle').textContent = 'Editar Supervisor';
+
+            this.showModalSupervisor();
+        } catch (error) {
+            this.showNotification('Erro ao carregar supervisor: ' + error.message, 'error');
+        }
+    }
+
+    async deleteSupervisor(cod) {
+        if (!confirm('Tem certeza que deseja deletar este supervisor?')) {
             return;
         }
 
         try {
-            const result = await db.deleteItem(id);
-            this.showNotification(result.message, 'success');
-            await this.loadItems();
+            await db.deleteSupervisor(cod);
+            this.showNotification('Supervisor deletado com sucesso!', 'success');
+            await this.navigateTo('cadastro-supervisor');
         } catch (error) {
             this.showNotification('Erro ao deletar: ' + error.message, 'error');
         }
     }
 
-    /**
-     * Edita um item
-     */
-    async editItem(id) {
-        try {
-            const item = await db.getItem(id);
+    // ==================== REPOSITOR ====================
 
-            if (!item) {
-                this.showNotification('Item não encontrado!', 'error');
-                return;
+    showModalRepositor() {
+        document.getElementById('modalRepositor').classList.add('active');
+        document.getElementById('formRepositor').reset();
+        document.getElementById('repo_cod').value = '';
+        document.getElementById('modalRepositorTitle').textContent = 'Novo Repositor';
+    }
+
+    closeModalRepositor() {
+        document.getElementById('modalRepositor').classList.remove('active');
+    }
+
+    async saveRepositor(event) {
+        event.preventDefault();
+
+        const cod = document.getElementById('repo_cod').value;
+        const nome = document.getElementById('repo_nome').value;
+        const dataInicio = document.getElementById('repo_data_inicio').value;
+        const dataFim = document.getElementById('repo_data_fim').value || null;
+        const cidadeRef = document.getElementById('repo_cidade_ref').value;
+        const representante = document.getElementById('repo_representante').value;
+
+        try {
+            if (cod) {
+                await db.updateRepositor(cod, nome, dataInicio, dataFim, cidadeRef, representante);
+                this.showNotification('Repositor atualizado com sucesso!', 'success');
+            } else {
+                await db.createRepositor(nome, dataInicio, dataFim, cidadeRef, representante);
+                this.showNotification('Repositor cadastrado com sucesso!', 'success');
             }
 
-            const newName = prompt('Novo nome:', item.name);
-            if (newName === null) return; // Cancelou
-
-            const newDescription = prompt('Nova descrição:', item.description || '');
-            if (newDescription === null) return; // Cancelou
-
-            await db.updateItem(id, newName, newDescription);
-            this.showNotification('Item atualizado com sucesso!', 'success');
-            await this.loadItems();
+            this.closeModalRepositor();
+            await this.navigateTo('cadastro-repositor');
         } catch (error) {
-            this.showNotification('Erro ao editar: ' + error.message, 'error');
+            this.showNotification('Erro ao salvar: ' + error.message, 'error');
         }
     }
 
-    /**
-     * Atualiza o status da conexão
-     */
-    updateStatus(status, message) {
-        this.elements.statusDot.className = 'status-dot status-' + status;
-        this.elements.statusText.textContent = message;
+    async editRepositor(cod) {
+        try {
+            const repositor = await db.getRepositor(cod);
+
+            if (!repositor) {
+                this.showNotification('Repositor não encontrado!', 'error');
+                return;
+            }
+
+            document.getElementById('repo_cod').value = repositor.repo_cod;
+            document.getElementById('repo_nome').value = repositor.repo_nome;
+            document.getElementById('repo_data_inicio').value = repositor.repo_data_inicio;
+            document.getElementById('repo_data_fim').value = repositor.repo_data_fim || '';
+            document.getElementById('repo_cidade_ref').value = repositor.repo_cidade_ref || '';
+            document.getElementById('repo_representante').value = repositor.repo_representante || '';
+            document.getElementById('modalRepositorTitle').textContent = 'Editar Repositor';
+
+            this.showModalRepositor();
+        } catch (error) {
+            this.showNotification('Erro ao carregar repositor: ' + error.message, 'error');
+        }
     }
 
-    /**
-     * Mostra a seção de configuração
-     */
-    showConfigSection() {
-        this.elements.configSection.style.display = 'block';
-        this.elements.mainSection.style.display = 'none';
+    async deleteRepositor(cod) {
+        if (!confirm('Tem certeza que deseja deletar este repositor?')) {
+            return;
+        }
+
+        try {
+            await db.deleteRepositor(cod);
+            this.showNotification('Repositor deletado com sucesso!', 'success');
+            await this.navigateTo('cadastro-repositor');
+        } catch (error) {
+            this.showNotification('Erro ao deletar: ' + error.message, 'error');
+        }
     }
 
-    /**
-     * Mostra a seção principal
-     */
-    showMainSection() {
-        this.elements.configSection.style.display = 'none';
-        this.elements.mainSection.style.display = 'block';
-    }
+    // ==================== NOTIFICAÇÕES ====================
 
-    /**
-     * Mostra uma notificação
-     */
     showNotification(message, type = 'info') {
-        // Cria elemento de notificação
         const notification = document.createElement('div');
         notification.className = `notification notification-${type}`;
         notification.textContent = message;
 
         document.body.appendChild(notification);
 
-        // Remove após 3 segundos
         setTimeout(() => {
             notification.classList.add('fade-out');
             setTimeout(() => notification.remove(), 300);
         }, 3000);
     }
-
-    /**
-     * Escapa HTML para prevenir XSS
-     */
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
 }
 
-// Inicializa a aplicação quando o DOM estiver pronto
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => new App());
-} else {
-    new App();
-}
+// Inicializa a aplicação
+const app = new App();
+
+// Expõe a instância globalmente para os event handlers inline
+window.app = app;
