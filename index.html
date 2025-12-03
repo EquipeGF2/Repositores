@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema Turso + GitHub Pages</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚀 Sistema Turso + GitHub Pages</h1>
+            <p class="subtitle">Seu ecossistema de dados na web</p>
+        </header>
+
+        <!-- Status da Conexão -->
+        <div class="status-card" id="statusCard">
+            <div class="status-indicator">
+                <span class="status-dot" id="statusDot"></span>
+                <span id="statusText">Verificando conexão...</span>
+            </div>
+        </div>
+
+        <!-- Seção de Configuração -->
+        <section class="config-section" id="configSection">
+            <h2>⚙️ Configuração do Banco de Dados</h2>
+            <div class="info-box">
+                <p><strong>Primeira vez aqui?</strong> Você precisa configurar suas credenciais do Turso.</p>
+                <a href="#tutorial" class="link">Ver tutorial completo abaixo ↓</a>
+            </div>
+
+            <form id="configForm">
+                <div class="form-group">
+                    <label for="dbUrl">URL do Banco Turso:</label>
+                    <input
+                        type="text"
+                        id="dbUrl"
+                        placeholder="libsql://seu-banco.turso.io"
+                        required
+                    >
+                    <small>Exemplo: libsql://meu-banco-123.turso.io</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="authToken">Token de Autenticação:</label>
+                    <input
+                        type="password"
+                        id="authToken"
+                        placeholder="Seu token do Turso"
+                        required
+                    >
+                    <small>Será armazenado localmente no seu navegador</small>
+                </div>
+
+                <button type="submit" class="btn btn-primary">💾 Salvar Configuração</button>
+            </form>
+        </section>
+
+        <!-- Seção Principal da Aplicação -->
+        <section class="main-section" id="mainSection" style="display: none;">
+            <h2>📊 Gerenciamento de Dados</h2>
+
+            <!-- Formulário para Adicionar Dados -->
+            <div class="card">
+                <h3>➕ Adicionar Novo Item</h3>
+                <form id="addItemForm">
+                    <div class="form-group">
+                        <label for="itemName">Nome:</label>
+                        <input type="text" id="itemName" placeholder="Digite o nome" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="itemDescription">Descrição:</label>
+                        <textarea id="itemDescription" placeholder="Digite uma descrição" rows="3"></textarea>
+                    </div>
+
+                    <button type="submit" class="btn btn-success">✅ Adicionar</button>
+                </form>
+            </div>
+
+            <!-- Lista de Dados -->
+            <div class="card">
+                <h3>📋 Seus Dados</h3>
+                <button class="btn btn-secondary" id="refreshBtn">🔄 Atualizar</button>
+
+                <div id="itemsList" class="items-list">
+                    <p class="loading">Carregando dados...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tutorial -->
+        <section class="tutorial-section" id="tutorial">
+            <h2>📖 Tutorial: Como Configurar</h2>
+
+            <div class="tutorial-step">
+                <h3>Passo 1: Criar conta no Turso</h3>
+                <ol>
+                    <li>Acesse: <a href="https://turso.tech" target="_blank">https://turso.tech</a></li>
+                    <li>Clique em "Sign Up" e crie sua conta (gratuita)</li>
+                    <li>Faça login na plataforma</li>
+                </ol>
+            </div>
+
+            <div class="tutorial-step">
+                <h3>Passo 2: Instalar Turso CLI (no seu computador)</h3>
+                <div class="code-block">
+                    <code>curl -sSfL https://get.tur.so/install.sh | bash</code>
+                </div>
+                <p>Ou no Windows (PowerShell):</p>
+                <div class="code-block">
+                    <code>irm get.tur.so/install.ps1 | iex</code>
+                </div>
+            </div>
+
+            <div class="tutorial-step">
+                <h3>Passo 3: Fazer login no Turso CLI</h3>
+                <div class="code-block">
+                    <code>turso auth login</code>
+                </div>
+            </div>
+
+            <div class="tutorial-step">
+                <h3>Passo 4: Criar seu banco de dados</h3>
+                <div class="code-block">
+                    <code>turso db create meu-primeiro-banco</code>
+                </div>
+            </div>
+
+            <div class="tutorial-step">
+                <h3>Passo 5: Obter a URL do banco</h3>
+                <div class="code-block">
+                    <code>turso db show meu-primeiro-banco --url</code>
+                </div>
+                <p>Copie a URL que aparece (exemplo: libsql://meu-primeiro-banco-123.turso.io)</p>
+            </div>
+
+            <div class="tutorial-step">
+                <h3>Passo 6: Criar um token de autenticação</h3>
+                <div class="code-block">
+                    <code>turso db tokens create meu-primeiro-banco</code>
+                </div>
+                <p>Copie o token que aparece</p>
+            </div>
+
+            <div class="tutorial-step">
+                <h3>Passo 7: Configurar nesta página</h3>
+                <p>Cole a URL e o Token nos campos acima e clique em "Salvar Configuração"</p>
+            </div>
+
+            <div class="info-box">
+                <strong>🔒 Segurança:</strong> Suas credenciais são salvas apenas no seu navegador (localStorage) e nunca são enviadas para ninguém além do Turso.
+            </div>
+        </section>
+
+        <footer>
+            <p>Desenvolvido com ❤️ | Turso + GitHub Pages</p>
+        </footer>
+    </div>
+
+    <!-- Scripts -->
+    <script type="module" src="js/db.js"></script>
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>

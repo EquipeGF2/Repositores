@@ -1,0 +1,28 @@
+# Variáveis de ambiente
+.env
+.env.local
+
+# Dependências
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# IDEs e Editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Sistema Operacional
+.DS_Store
+Thumbs.db
+
+# Arquivos temporários
+*.tmp
+*.temp
+*.log
+
+# Build e dist
+dist/
+build/
