@@ -207,6 +207,8 @@ export const pages = {
     // ==================== REPOSIÇÃO ====================
 
     'resumo-periodo': async () => {
+        const repositores = await db.getAllRepositors();
+
         return `
             <div class="card">
                 <div class="card-header">
@@ -226,6 +228,9 @@ export const pages = {
                             <label>Repositor:</label>
                             <select id="filtro_repositor">
                                 <option value="">Todos</option>
+                                ${repositores.map(repo => `
+                                    <option value="${repo.repo_cod}">${repo.repo_nome}</option>
+                                `).join('')}
                             </select>
                         </div>
                         <button class="btn btn-primary">Filtrar</button>
@@ -303,218 +308,6 @@ export const pages = {
                 </div>
             </div>
         `;
-    },
-
-    // ==================== VENDAS ====================
-
-    'ranking-performance': async () => {
-        return `
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Ranking de Performance</h3>
-                </div>
-                <div class="card-body">
-                    <div class="empty-state">
-                        <div class="empty-state-icon">🏆</div>
-                        <p>Ranking de Performance em desenvolvimento</p>
-                    </div>
-                </div>
-            </div>
-        `;
-    },
-
-    'resumo-supervisor': async () => {
-        return `
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Resumo por Supervisor</h3>
-                </div>
-                <div class="card-body">
-                    <div class="empty-state">
-                        <div class="empty-state-icon">👔</div>
-                        <p>Resumo por Supervisor em desenvolvimento</p>
-                    </div>
-                </div>
-            </div>
-        `;
-    },
-
-    'relatorio-detalhado-vendas': async () => {
-        return `
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Relatório Detalhado de Vendas</h3>
-                </div>
-                <div class="card-body">
-                    <div class="empty-state">
-                        <div class="empty-state-icon">💰</div>
-                        <p>Relatório Detalhado de Vendas em desenvolvimento</p>
-                    </div>
-                </div>
-            </div>
-        `;
-    },
-
-    'categoria-produtos': async () => {
-        return `
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Categoria de Produtos</h3>
-                </div>
-                <div class="card-body">
-                    <div class="empty-state">
-                        <div class="empty-state-icon">📦</div>
-                        <p>Categoria de Produtos em desenvolvimento</p>
-                    </div>
-                </div>
-            </div>
-        `;
-    },
-
-    'analise-grafica-vendas': async () => {
-        return `
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Análise Gráfica de Vendas</h3>
-                </div>
-                <div class="card-body">
-                    <div class="empty-state">
-                        <div class="empty-state-icon">📊</div>
-                        <p>Análise Gráfica de Vendas em desenvolvimento</p>
-                    </div>
-                </div>
-            </div>
-        `;
-    },
-
-    'estrutura-comercial': async () => {
-        return `
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Estrutura Comercial</h3>
-                </div>
-                <div class="card-body">
-                    <div class="empty-state">
-                        <div class="empty-state-icon">🏢</div>
-                        <p>Estrutura Comercial em desenvolvimento</p>
-                    </div>
-                </div>
-            </div>
-        `;
-    },
-
-    // ==================== CIDADES ====================
-
-    'ranking-cidades': async () => {
-        return `
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Ranking de Cidades</h3>
-                </div>
-                <div class="card-body">
-                    <div class="empty-state">
-                        <div class="empty-state-icon">🏙️</div>
-                        <p>Ranking de Cidades em desenvolvimento</p>
-                    </div>
-                </div>
-            </div>
-        `;
-    },
-
-    'indicadores-cidade': async () => {
-        return `
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Indicadores por Cidade</h3>
-                </div>
-                <div class="card-body">
-                    <div class="empty-state">
-                        <div class="empty-state-icon">📍</div>
-                        <p>Indicadores por Cidade em desenvolvimento</p>
-                    </div>
-                </div>
-            </div>
-        `;
-    },
-
-    'indicadores-capita': async () => {
-        return `
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Indicadores per Capita</h3>
-                </div>
-                <div class="card-body">
-                    <div class="empty-state">
-                        <div class="empty-state-icon">👥</div>
-                        <p>Indicadores per Capita em desenvolvimento</p>
-                    </div>
-                </div>
-            </div>
-        `;
-    },
-
-    'desempenho-faixa': async () => {
-        return `
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Desempenho por Faixa Populacional</h3>
-                </div>
-                <div class="card-body">
-                    <div class="empty-state">
-                        <div class="empty-state-icon">📊</div>
-                        <p>Desempenho por Faixa Populacional em desenvolvimento</p>
-                    </div>
-                </div>
-            </div>
-        `;
-    },
-
-    'penetracao-mercado': async () => {
-        return `
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Penetração de Mercado</h3>
-                </div>
-                <div class="card-body">
-                    <div class="empty-state">
-                        <div class="empty-state-icon">🎯</div>
-                        <p>Penetração de Mercado em desenvolvimento</p>
-                    </div>
-                </div>
-            </div>
-        `;
-    },
-
-    'analise-grafica-cidades': async () => {
-        return `
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Análise Gráfica de Cidades</h3>
-                </div>
-                <div class="card-body">
-                    <div class="empty-state">
-                        <div class="empty-state-icon">📈</div>
-                        <p>Análise Gráfica de Cidades em desenvolvimento</p>
-                    </div>
-                </div>
-            </div>
-        `;
-    },
-
-    'mapa-vendas': async () => {
-        return `
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Mapa de Vendas</h3>
-                </div>
-                <div class="card-body">
-                    <div class="empty-state">
-                        <div class="empty-state-icon">🗺️</div>
-                        <p>Mapa de Vendas em desenvolvimento</p>
-                    </div>
-                </div>
-            </div>
-        `;
     }
 };
 
@@ -526,18 +319,5 @@ export const pageTitles = {
     'resumo-mensal': 'Resumo Mensal',
     'relatorio-detalhado-repo': 'Relatório Detalhado',
     'analise-grafica-repo': 'Análise Gráfica',
-    'alteracoes-rota': 'Alterações de Rota',
-    'ranking-performance': 'Ranking Performance',
-    'resumo-supervisor': 'Resumo Supervisor',
-    'relatorio-detalhado-vendas': 'Relatório Detalhado',
-    'categoria-produtos': 'Categoria de Produtos',
-    'analise-grafica-vendas': 'Análise Gráfica',
-    'estrutura-comercial': 'Estrutura Comercial',
-    'ranking-cidades': 'Ranking de Cidades',
-    'indicadores-cidade': 'Indicadores por Cidade',
-    'indicadores-capita': 'Indicadores per Capita',
-    'desempenho-faixa': 'Desempenho por Faixa Populacional',
-    'penetracao-mercado': 'Penetração de Mercado',
-    'analise-grafica-cidades': 'Análise Gráfica',
-    'mapa-vendas': 'Mapa de Vendas'
+    'alteracoes-rota': 'Alterações de Rota'
 };

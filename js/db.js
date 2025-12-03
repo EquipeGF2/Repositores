@@ -9,67 +9,27 @@ class TursoDatabase {
     constructor() {
         this.mainClient = null;  // Cliente principal (dados)
         this.comercialClient = null;  // Cliente comercial (consultas)
-        this.initComercialDatabase();
-    }
 
-    /**
-     * Inicializa banco de dados comercial (fixo)
-     */
-    initComercialDatabase() {
-        try {
-            this.comercialClient = createClient({
-                url: 'libsql://comercial-angeloxiru.aws-us-east-1.turso.io',
-                authToken: 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NjI4ODQ2ODMsImlkIjoiMmI3NTFkOTQtNGI1ZS00ZjZhLWExMDktNTY0OTg3MzgyOGZhIiwicmlkIjoiOGZiZGQ3ZmMtOThmOC00MmMxLWExNzYtZmJiOTZhYmEwN2I0In0.ZjNIt9GEI01v_Ot9GnzsbS_FJIHjTVjCL9X8TdUJmi0LUfoMXX6xMJlRqNCRZiS6U3iNwkP709K_H8ybU9e3DQ'
-            });
-            console.log('✅ Banco Comercial inicializado');
-        } catch (error) {
-            console.error('❌ Erro ao inicializar banco comercial:', error);
-        }
-    }
-
-    /**
-     * Carrega configuração do localStorage
-     */
-    loadConfig() {
-        const dbUrl = localStorage.getItem('turso_db_url');
-        const authToken = localStorage.getItem('turso_auth_token');
-
-        return {
-            url: dbUrl,
-            authToken: authToken
+        // Configurações fixas dos bancos
+        this.mainConfig = {
+            url: 'libsql://germanirepositor-genaroforratig365-pixel.aws-us-east-1.turso.io',
+            authToken: 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJHc3ZDWmRCb0VmQ3ZRaTctU01UclRBIn0.RnkL3g7o1qcmFUVACYh8M_12S-qooXdruqdmjDd1dRCnBLWZoLP3oTjRcN7L_qJQ-xrEMmhWidgSSjJg9kryDw'
         };
-    }
 
-    /**
-     * Salva configuração no localStorage
-     */
-    saveConfig(url, authToken) {
-        localStorage.setItem('turso_db_url', url);
-        localStorage.setItem('turso_auth_token', authToken);
-    }
-
-    /**
-     * Verifica se está configurado
-     */
-    isConfigured() {
-        const config = this.loadConfig();
-        return config.url && config.authToken;
+        this.comercialConfig = {
+            url: 'libsql://comercial-angeloxiru.aws-us-east-1.turso.io',
+            authToken: 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NjI4ODQ2ODMsImlkIjoiMmI3NTFkOTQtNGI1ZS00ZjZhLWExMDktNTY0OTg3MzgyOGZhIiwicmlkIjoiOGZiZGQ3ZmMtOThmOC00MmMxLWExNzYtZmJiOTZhYmEwN2I0In0.ZjNIt9GEI01v_Ot9GnzsbS_FJIHjTVjCL9X8TdUJmi0LUfoMXX6xMJlRqNCRZiS6U3iNwkP709K_H8ybU9e3DQ'
+        };
     }
 
     /**
      * Inicializa conexão com o banco principal
      */
     async connect() {
-        const config = this.loadConfig();
-
-        if (!config.url || !config.authToken) {
-            throw new Error('Banco de dados não configurado. Configure as credenciais primeiro.');
-        }
-
         try {
             this.mainClient = createClient({
-                url: config.url,
-                authToken: config.authToken
+                url: this.mainConfig.url,
+                authToken: this.mainConfig.authToken
             });
 
             // Testa a conexão
@@ -80,6 +40,28 @@ class TursoDatabase {
         } catch (error) {
             console.error('❌ Erro ao conectar ao banco principal:', error);
             throw new Error('Falha na conexão: ' + error.message);
+        }
+    }
+
+    /**
+     * Inicializa conexão com banco comercial
+     */
+    async connectComercial() {
+        try {
+            this.comercialClient = createClient({
+                url: this.comercialConfig.url,
+                authToken: this.comercialConfig.authToken
+            });
+
+            // Testa a conexão
+            await this.comercialClient.execute('SELECT 1');
+
+            console.log('✅ Banco Comercial conectado');
+            return true;
+        } catch (error) {
+            console.error('❌ Erro ao conectar ao banco comercial:', error);
+            // Não lança erro, apenas avisa
+            return false;
         }
     }
 
@@ -341,18 +323,16 @@ class TursoDatabase {
      */
     async getCidadesComercial() {
         if (!this.comercialClient) {
-            throw new Error('Banco comercial não inicializado');
+            await this.connectComercial();
         }
 
         try {
-            // Ajuste a query conforme a estrutura real do seu banco comercial
             const result = await this.comercialClient.execute(
                 'SELECT DISTINCT cidade FROM cidades ORDER BY cidade'
             );
             return result.rows;
         } catch (error) {
             console.error('Erro ao buscar cidades:', error);
-            // Retorna array vazio se a tabela não existir
             return [];
         }
     }
@@ -362,18 +342,16 @@ class TursoDatabase {
      */
     async getRepresentantesComercial() {
         if (!this.comercialClient) {
-            throw new Error('Banco comercial não inicializado');
+            await this.connectComercial();
         }
 
         try {
-            // Ajuste a query conforme a estrutura real do seu banco comercial
             const result = await this.comercialClient.execute(
                 'SELECT DISTINCT representante FROM representantes ORDER BY representante'
             );
             return result.rows;
         } catch (error) {
             console.error('Erro ao buscar representantes:', error);
-            // Retorna array vazio se a tabela não existir
             return [];
         }
     }
@@ -383,7 +361,7 @@ class TursoDatabase {
      */
     async queryComercial(sql, args = []) {
         if (!this.comercialClient) {
-            throw new Error('Banco comercial não inicializado');
+            await this.connectComercial();
         }
 
         try {

@@ -8,7 +8,7 @@ import { pages, pageTitles } from './pages.js';
 
 class App {
     constructor() {
-        this.currentPage = 'resumo-periodo';
+        this.currentPage = 'cadastro-supervisor';
         this.init();
     }
 
@@ -18,19 +18,14 @@ class App {
         // Elementos do DOM
         this.elements = {
             contentBody: document.getElementById('contentBody'),
-            pageTitle: document.getElementById('pageTitle'),
-            modalConfig: document.getElementById('modalConfig'),
-            configForm: document.getElementById('configForm'),
-            btnConfig: document.getElementById('btnConfig'),
-            modalClose: document.getElementById('modalClose'),
-            btnCancelConfig: document.getElementById('btnCancelConfig')
+            pageTitle: document.getElementById('pageTitle')
         };
 
         // Event Listeners
         this.setupEventListeners();
 
-        // Verifica configuração
-        await this.checkConfiguration();
+        // Inicializa banco de dados
+        await this.initializeDatabase();
     }
 
     setupEventListeners() {
@@ -42,78 +37,32 @@ class App {
                 this.navigateTo(page);
             });
         });
-
-        // Modal de configuração
-        this.elements.btnConfig.addEventListener('click', () => {
-            this.showConfigModal();
-        });
-
-        this.elements.modalClose.addEventListener('click', () => {
-            this.hideConfigModal();
-        });
-
-        this.elements.btnCancelConfig.addEventListener('click', () => {
-            this.hideConfigModal();
-        });
-
-        this.elements.configForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.saveConfiguration();
-        });
-
-        // Fechar modal ao clicar fora
-        this.elements.modalConfig.addEventListener('click', (e) => {
-            if (e.target === this.elements.modalConfig) {
-                this.hideConfigModal();
-            }
-        });
     }
 
-    async checkConfiguration() {
-        if (db.isConfigured()) {
-            try {
-                await db.connect();
-                await db.initializeSchema();
-                console.log('✅ Banco de dados configurado');
-
-                // Carrega a página inicial
-                await this.navigateTo(this.currentPage);
-            } catch (error) {
-                console.error('❌ Erro ao conectar:', error);
-                this.showNotification('Erro ao conectar ao banco de dados. Configure novamente.', 'error');
-                this.showConfigModal();
-            }
-        } else {
-            this.showConfigModal();
-        }
-    }
-
-    async saveConfiguration() {
-        const url = document.getElementById('dbUrl').value.trim();
-        const token = document.getElementById('authToken').value.trim();
-
-        if (!url || !token) {
-            this.showNotification('Preencha todos os campos!', 'error');
-            return;
-        }
-
-        if (!url.startsWith('libsql://') && !url.startsWith('https://')) {
-            this.showNotification('URL inválida! Deve começar com libsql:// ou https://', 'error');
-            return;
-        }
-
+    async initializeDatabase() {
         try {
-            db.saveConfig(url, token);
+            // Conecta ao banco principal
             await db.connect();
             await db.initializeSchema();
 
-            this.showNotification('Configuração salva com sucesso!', 'success');
-            this.hideConfigModal();
+            // Tenta conectar ao banco comercial (opcional)
+            await db.connectComercial();
+
+            console.log('✅ Sistema inicializado com sucesso');
 
             // Carrega a página inicial
             await this.navigateTo(this.currentPage);
         } catch (error) {
-            this.showNotification('Erro ao conectar: ' + error.message, 'error');
+            console.error('❌ Erro ao inicializar:', error);
+            this.showNotification('Erro ao conectar ao banco de dados: ' + error.message, 'error');
+
+            this.elements.contentBody.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">❌</div>
+                    <p>Erro ao conectar ao banco de dados</p>
+                    <small>${error.message}</small>
+                </div>
+            `;
         }
     }
 
@@ -152,16 +101,6 @@ class App {
                 </div>
             `;
         }
-    }
-
-    // ==================== MODAIS ====================
-
-    showConfigModal() {
-        this.elements.modalConfig.classList.add('active');
-    }
-
-    hideConfigModal() {
-        this.elements.modalConfig.classList.remove('active');
     }
 
     // ==================== SUPERVISOR ====================
