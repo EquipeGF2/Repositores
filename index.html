@@ -12,7 +12,7 @@
         <aside class="sidebar">
             <div class="sidebar-header">
                 <h1>Sistema</h1>
-                <p>Gestão Comercial</p>
+                <p>Gestão de Reposição</p>
             </div>
 
             <nav class="sidebar-nav">
@@ -42,44 +42,7 @@
                         <li><a href="#" data-page="alteracoes-rota">Alterações de Rota</a></li>
                     </ul>
                 </div>
-
-                <!-- Vendas -->
-                <div class="nav-section">
-                    <div class="nav-section-title">
-                        <span class="nav-icon">💰</span>
-                        <span>Vendas</span>
-                    </div>
-                    <ul class="nav-list">
-                        <li><a href="#" data-page="ranking-performance">Ranking Performance</a></li>
-                        <li><a href="#" data-page="resumo-supervisor">Resumo Supervisor</a></li>
-                        <li><a href="#" data-page="relatorio-detalhado-vendas">Relatório Detalhado</a></li>
-                        <li><a href="#" data-page="categoria-produtos">Categoria de Produtos</a></li>
-                        <li><a href="#" data-page="analise-grafica-vendas">Análise Gráfica</a></li>
-                        <li><a href="#" data-page="estrutura-comercial">Estrutura Comercial</a></li>
-                    </ul>
-                </div>
-
-                <!-- Cidades -->
-                <div class="nav-section">
-                    <div class="nav-section-title">
-                        <span class="nav-icon">🏙️</span>
-                        <span>Cidades</span>
-                    </div>
-                    <ul class="nav-list">
-                        <li><a href="#" data-page="ranking-cidades">Ranking</a></li>
-                        <li><a href="#" data-page="indicadores-cidade">Indicadores por Cidade</a></li>
-                        <li><a href="#" data-page="indicadores-capita">Indicadores per Capita</a></li>
-                        <li><a href="#" data-page="desempenho-faixa">Desempenho por Faixa Populacional</a></li>
-                        <li><a href="#" data-page="penetracao-mercado">Penetração de Mercado</a></li>
-                        <li><a href="#" data-page="analise-grafica-cidades">Análise Gráfica</a></li>
-                        <li><a href="#" data-page="mapa-vendas">Mapa de Vendas</a></li>
-                    </ul>
-                </div>
             </nav>
-
-            <div class="sidebar-footer">
-                <button class="btn-config" id="btnConfig">⚙️ Configurar BD</button>
-            </div>
         </aside>
 
         <!-- Conteúdo Principal -->
@@ -99,46 +62,6 @@
                 </div>
             </div>
         </main>
-    </div>
-
-    <!-- Modal de Configuração -->
-    <div class="modal" id="modalConfig">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Configurar Banco de Dados</h3>
-                <button class="modal-close" id="modalClose">&times;</button>
-            </div>
-            <div class="modal-body">
-                <form id="configForm">
-                    <div class="form-group">
-                        <label for="dbUrl">URL do Banco Turso:</label>
-                        <input
-                            type="text"
-                            id="dbUrl"
-                            placeholder="libsql://seu-banco.turso.io"
-                            required
-                        >
-                        <small>Exemplo: libsql://meu-banco-123.turso.io</small>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="authToken">Token de Autenticação:</label>
-                        <input
-                            type="password"
-                            id="authToken"
-                            placeholder="Seu token do Turso"
-                            required
-                        >
-                        <small>Será armazenado localmente no navegador</small>
-                    </div>
-
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" id="btnCancelConfig">Cancelar</button>
-                        <button type="submit" class="btn btn-primary">Salvar</button>
-                    </div>
-                </form>
-            </div>
-        </div>
     </div>
 
     <!-- Scripts -->
