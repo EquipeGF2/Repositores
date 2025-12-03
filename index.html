@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Integração GitHub Pages e Turso</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .resultado { margin-top: 20px; padding: 10px; border: 1px solid #ccc; }
+    </style>
+</head>
+<body>
+
+    <h2>Consulta de Dados - Turso DB</h2>
+    <div id="output" class="resultado">Carregando dados...</div>
+
+    <script type="module">
+        // Importação da biblioteca oficial do LibSQL (Turso) via CDN para Web
+        import { createClient } from "https://esm.sh/@libsql/client/web";
+
+        // -----------------------------------------------------------------------
+        // Função: Configurar e armazenar as credenciais de acesso ao banco.
+        // Área: Configuração de Ambiente
+        // Sigla: ENV_CONF
+        // -----------------------------------------------------------------------
+        const config = {
+            url: "libsql://germanirepositor-genaroforratig365-pixel.aws-us-east-1.turso.io", // Substitua pela sua URL (ex: https://banco.turso.io)
+            authToken: "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJHc3ZDWmRCb0VmQ3ZRaTctU01UclRBIn0.RnkL3g7o1qcmFUVACYh8M_12S-qooXdruqdmjDd1dRCnBLWZoLP3oTjRcN7L_qJQ-xrEMmhWidgSSjJg9kryDw"    // Substitua pelo seu Token gerado
+        };
+
+        // -----------------------------------------------------------------------
+        // Função: Inicializar o cliente de conexão com o banco de dados.
+        // Área: Conectividade de Dados
+        // Sigla: DB_CONN
+        // -----------------------------------------------------------------------
+        const client = createClient({
+            url: config.url,
+            authToken: config.authToken
+        });
+
+        // -----------------------------------------------------------------------
+        // Função: Executar consulta SQL e renderizar resultado na tela.
+        // Área: Interface do Usuário e Lógica
+        // Sigla: UI_LOGIC
+        // -----------------------------------------------------------------------
+        async function buscarDados() {
+            try {
+                // Exemplo de query SQL simples
+                const sql = "SELECT * FROM users LIMIT 5;"; 
+                
+                const resultado = await client.execute(sql);
+                
+                const divOutput = document.getElementById('output');
+                
+                // Formata o resultado para exibição (JSON para texto)
+                divOutput.textContent = JSON.stringify(resultado.rows, null, 2);
+                
+            } catch (erro) {
+                console.error("Erro na conexão:", erro);
+                document.getElementById('output').textContent = "Erro ao buscar dados. Verifique o console.";
+            }
+        }
+
+        // Executa a função assim que o módulo carregar
+        buscarDados();
+
+    </script>
+</body>
+</html>
