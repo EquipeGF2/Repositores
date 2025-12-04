@@ -657,6 +657,11 @@ tbody td {
     color: var(--gray-700);
 }
 
+.badge-info {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
 /* ==================== ESTADOS VAZIOS ==================== */
 
 .empty-state {
