@@ -417,6 +417,80 @@ export const pages = {
                 </div>
             </div>
         `;
+    },
+
+    'estrutura-banco-comercial': async () => {
+        const resultado = await db.getEstruturaBancoComercial();
+
+        if (resultado.error) {
+            return `
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Estrutura do Banco Comercial</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">⚠️</div>
+                            <p>${resultado.message}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Estrutura do Banco Comercial</h3>
+                </div>
+                <div class="card-body">
+                    <p style="margin-bottom: 1.5rem; color: var(--gray-600);">
+                        Total de tabelas: <strong>${resultado.estrutura.length}</strong>
+                    </p>
+
+                    ${resultado.estrutura.map(table => `
+                        <div style="margin-bottom: 2rem; border: 1px solid var(--gray-300); border-radius: var(--radius-lg); overflow: hidden;">
+                            <div style="background: var(--gray-100); padding: 1rem; border-bottom: 2px solid var(--primary-red);">
+                                <h4 style="margin: 0; display: flex; justify-content: space-between; align-items: center;">
+                                    <span>📊 ${table.tabela}</span>
+                                    <span class="badge badge-gray">${table.totalRegistros} registros</span>
+                                </h4>
+                            </div>
+                            <div style="padding: 1rem;">
+                                <div class="table-container">
+                                    <table style="font-size: 0.875rem;">
+                                        <thead>
+                                            <tr>
+                                                <th>Coluna</th>
+                                                <th>Tipo</th>
+                                                <th>Obrigatório</th>
+                                                <th>Valor Padrão</th>
+                                                <th>Chave</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${table.colunas.map(col => `
+                                                <tr>
+                                                    <td><strong>${col.nome}</strong></td>
+                                                    <td><span class="badge badge-info">${col.tipo}</span></td>
+                                                    <td>${col.notNull ? '<span class="badge badge-warning">SIM</span>' : '<span class="badge badge-gray">NÃO</span>'}</td>
+                                                    <td>${col.defaultValue || '-'}</td>
+                                                    <td>${col.primaryKey ? '<span class="badge badge-red">🔑 PK</span>' : '-'}</td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <button class="btn btn-secondary btn-sm" style="margin-top: 1rem;" onclick="window.app.verDadosAmostra('${table.tabela}')">
+                                    👁️ Ver dados de amostra
+                                </button>
+                                <div id="amostra-${table.tabela}" style="margin-top: 1rem;"></div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
     }
 };
 
@@ -429,5 +503,6 @@ export const pageTitles = {
     'relatorio-detalhado-repo': 'Relatório Detalhado',
     'analise-grafica-repo': 'Análise Gráfica',
     'alteracoes-rota': 'Alterações de Rota',
-    'consulta-alteracoes': 'Consulta de Alterações'
+    'consulta-alteracoes': 'Consulta de Alterações',
+    'estrutura-banco-comercial': 'Estrutura do Banco Comercial'
 };

@@ -332,6 +332,55 @@ class App {
         }
     }
 
+    // ==================== ESTRUTURA DO BANCO ====================
+
+    async verDadosAmostra(nomeTabela) {
+        const amostraDiv = document.getElementById(`amostra-${nomeTabela}`);
+
+        if (amostraDiv.innerHTML) {
+            // Se já está exibindo, esconder
+            amostraDiv.innerHTML = '';
+            return;
+        }
+
+        try {
+            amostraDiv.innerHTML = '<p style="color: var(--gray-600);">Carregando...</p>';
+
+            const dados = await db.getSampleDataComercial(nomeTabela, 5);
+
+            if (dados.length === 0) {
+                amostraDiv.innerHTML = '<p style="color: var(--gray-600);">Nenhum dado encontrado</p>';
+                return;
+            }
+
+            const colunas = Object.keys(dados[0]);
+
+            amostraDiv.innerHTML = `
+                <div class="table-container" style="margin-top: 1rem;">
+                    <p style="margin-bottom: 0.5rem; color: var(--gray-600); font-size: 0.875rem;">
+                        <strong>Primeiros 5 registros:</strong>
+                    </p>
+                    <table style="font-size: 0.75rem;">
+                        <thead>
+                            <tr>
+                                ${colunas.map(col => `<th>${col}</th>`).join('')}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${dados.map(row => `
+                                <tr>
+                                    ${colunas.map(col => `<td>${row[col] !== null && row[col] !== undefined ? row[col] : '-'}</td>`).join('')}
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        } catch (error) {
+            amostraDiv.innerHTML = `<p style="color: var(--danger);">Erro ao carregar dados: ${error.message}</p>`;
+        }
+    }
+
     // ==================== NOTIFICAÇÕES ====================
 
     showNotification(message, type = 'info') {

@@ -489,6 +489,96 @@ class TursoDatabase {
             throw new Error(error.message || 'Erro ao deletar repositor');
         }
     }
+
+    // ==================== ESTRUTURA DO BANCO COMERCIAL ====================
+
+    async getEstruturaBancoComercial() {
+        try {
+            // Conectar ao banco comercial se ainda não estiver conectado
+            await this.connectComercial();
+
+            if (!this.comercialClient) {
+                return {
+                    error: true,
+                    message: 'Banco Comercial não configurado'
+                };
+            }
+
+            // Buscar todas as tabelas
+            const resultTabelas = await this.comercialClient.execute(`
+                SELECT name FROM sqlite_master
+                WHERE type='table'
+                AND name NOT LIKE 'sqlite_%'
+                ORDER BY name
+            `);
+
+            const estrutura = [];
+
+            // Para cada tabela, buscar suas colunas
+            for (const tabela of resultTabelas.rows) {
+                const nomeTabela = tabela.name;
+
+                // Buscar informações das colunas
+                const resultColunas = await this.comercialClient.execute(`
+                    PRAGMA table_info(${nomeTabela})
+                `);
+
+                // Buscar contagem de registros
+                let totalRegistros = 0;
+                try {
+                    const resultCount = await this.comercialClient.execute(`
+                        SELECT COUNT(*) as total FROM ${nomeTabela}
+                    `);
+                    totalRegistros = resultCount.rows[0].total;
+                } catch (e) {
+                    console.warn(`Não foi possível contar registros de ${nomeTabela}`);
+                }
+
+                estrutura.push({
+                    tabela: nomeTabela,
+                    totalRegistros: totalRegistros,
+                    colunas: resultColunas.rows.map(col => ({
+                        nome: col.name,
+                        tipo: col.type,
+                        notNull: col.notnull === 1,
+                        defaultValue: col.dflt_value,
+                        primaryKey: col.pk === 1
+                    }))
+                });
+            }
+
+            return {
+                error: false,
+                estrutura: estrutura
+            };
+        } catch (error) {
+            console.error('Erro ao buscar estrutura do banco comercial:', error);
+            return {
+                error: true,
+                message: error.message || 'Erro ao buscar estrutura do banco'
+            };
+        }
+    }
+
+    async getSampleDataComercial(nomeTabela, limit = 5) {
+        try {
+            await this.connectComercial();
+
+            if (!this.comercialClient) {
+                return [];
+            }
+
+            const result = await this.comercialClient.execute({
+                sql: `SELECT * FROM ${nomeTabela} LIMIT ?`,
+                args: [limit]
+            });
+
+            return result.rows;
+        } catch (error) {
+            console.error(`Erro ao buscar dados de ${nomeTabela}:`, error);
+            return [];
+        }
+    }
 }
 
 export const db = new TursoDatabase();
