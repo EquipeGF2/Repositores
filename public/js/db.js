@@ -50,6 +50,7 @@ class TursoDatabase {
                     repo_data_fim DATE,
                     repo_cidade_ref TEXT,
                     repo_representante TEXT,
+                    rep_contato_telefone TEXT,
                     repo_vinculo TEXT DEFAULT 'repositor',
                     repo_supervisor INTEGER,
                     dias_trabalhados TEXT DEFAULT 'seg,ter,qua,qui,sex',
@@ -122,6 +123,16 @@ class TursoDatabase {
                     ALTER TABLE cad_repositor ADD COLUMN rep_representante_nome TEXT
                 `);
                 console.log('✅ Coluna rep_representante_nome adicionada');
+            } catch (e) {
+                // Coluna já existe, ignorar
+            }
+
+            // Adicionar coluna rep_contato_telefone se não existir
+            try {
+                await this.mainClient.execute(`
+                    ALTER TABLE cad_repositor ADD COLUMN rep_contato_telefone TEXT
+                `);
+                console.log('✅ Coluna rep_contato_telefone adicionada');
             } catch (e) {
                 // Coluna já existe, ignorar
             }
@@ -372,18 +383,21 @@ class TursoDatabase {
     }
 
     // ==================== REPOSITOR ====================
-    async createRepositor(nome, dataInicio, dataFim, cidadeRef, repCodigo, repNome, vinculo = 'repositor', repSupervisor = null, diasTrabalhados = 'seg,ter,qua,qui,sex', jornada = 'integral') {
+    async createRepositor(nome, dataInicio, dataFim, cidadeRef, repCodigo, repNome, repContatoTelefone = null, vinculo = 'repositor', repSupervisor = null, diasTrabalhados = 'seg,ter,qua,qui,sex', jornada = 'integral') {
         try {
             const result = await this.mainClient.execute({
                 sql: `INSERT INTO cad_repositor (
                         repo_nome, repo_data_inicio, repo_data_fim,
-                        repo_cidade_ref, repo_representante, repo_vinculo,
+                        repo_cidade_ref, repo_representante, rep_contato_telefone, repo_vinculo,
                         repo_supervisor, dias_trabalhados, jornada,
                         rep_supervisor, rep_representante_codigo, rep_representante_nome
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
                 args: [
                     nome, dataInicio, dataFim,
-                    cidadeRef, `${repCodigo || ''}${repNome ? ' - ' + repNome : ''}`.trim(), vinculo,
+                    cidadeRef,
+                    `${repCodigo || ''}${repNome ? ' - ' + repNome : ''}`.trim(),
+                    repContatoTelefone,
+                    vinculo,
                     null,
                     diasTrabalhados, jornada,
                     repSupervisor, repCodigo, repNome
@@ -424,7 +438,7 @@ class TursoDatabase {
         }
     }
 
-    async updateRepositor(cod, nome, dataInicio, dataFim, cidadeRef, repCodigo, repNome, vinculo = 'repositor', repSupervisor = null, diasTrabalhados = 'seg,ter,qua,qui,sex', jornada = 'integral') {
+    async updateRepositor(cod, nome, dataInicio, dataFim, cidadeRef, repCodigo, repNome, repContatoTelefone = null, vinculo = 'repositor', repSupervisor = null, diasTrabalhados = 'seg,ter,qua,qui,sex', jornada = 'integral') {
         try {
             // Buscar dados antigos para comparação
             const dadosAntigos = await this.getRepositor(cod);
@@ -433,7 +447,7 @@ class TursoDatabase {
             await this.mainClient.execute({
                 sql: `UPDATE cad_repositor
                       SET repo_nome = ?, repo_data_inicio = ?, repo_data_fim = ?,
-                          repo_cidade_ref = ?, repo_representante = ?, repo_vinculo = ?,
+                          repo_cidade_ref = ?, repo_representante = ?, rep_contato_telefone = ?, repo_vinculo = ?,
                           repo_supervisor = ?, dias_trabalhados = ?, jornada = ?,
                           rep_supervisor = ?, rep_representante_codigo = ?, rep_representante_nome = ?,
                           updated_at = CURRENT_TIMESTAMP
@@ -442,6 +456,7 @@ class TursoDatabase {
                     nome, dataInicio, dataFim,
                     cidadeRef,
                     `${repCodigo || ''}${repNome ? ' - ' + repNome : ''}`.trim(),
+                    repContatoTelefone,
                     vinculo,
                     null,
                     diasTrabalhados, jornada,

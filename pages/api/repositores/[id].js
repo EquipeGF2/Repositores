@@ -21,15 +21,15 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'PUT') {
-      const { nome, dataInicio, dataFim, cidadeRef, representante } = req.body || {};
+      const { nome, dataInicio, dataFim, cidadeRef, representante, contatoTelefone } = req.body || {};
 
       if (!nome || !dataInicio) {
         return res.status(400).json({ error: 'Nome e data de início são obrigatórios.' });
       }
 
       await client.execute({
-        sql: 'UPDATE cad_repositor SET repo_nome = ?, repo_data_inicio = ?, repo_data_fim = ?, repo_cidade_ref = ?, repo_representante = ?, updated_at = CURRENT_TIMESTAMP WHERE repo_cod = ?',
-        args: [nome, dataInicio, dataFim || null, cidadeRef || null, representante || null, id],
+        sql: 'UPDATE cad_repositor SET repo_nome = ?, repo_data_inicio = ?, repo_data_fim = ?, repo_cidade_ref = ?, repo_representante = ?, rep_contato_telefone = ?, updated_at = CURRENT_TIMESTAMP WHERE repo_cod = ?',
+        args: [nome, dataInicio, dataFim || null, cidadeRef || null, representante || null, contatoTelefone || null, id],
       });
 
       const updated = await client.execute({

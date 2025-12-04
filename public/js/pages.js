@@ -47,6 +47,7 @@ export const pages = {
                                         <th>Nome</th>
                                         <th>Supervisor</th>
                                         <th>Representante</th>
+                                        <th>Contato</th>
                                         <th>Vínculo</th>
                                         <th>Data Início</th>
                                         <th>Data Fim</th>
@@ -61,6 +62,7 @@ export const pages = {
                                             <td>${repo.repo_nome}</td>
                                             <td>${repo.rep_supervisor || '-'}</td>
                                             <td>${repo.rep_representante_codigo ? repo.rep_representante_codigo + ' - ' + (repo.rep_representante_nome || '') : '-'}</td>
+                                            <td>${repo.rep_contato_telefone || '-'}</td>
                                             <td><span class="badge ${repo.repo_vinculo === 'agencia' ? 'badge-warning' : 'badge-info'}">${repo.repo_vinculo === 'agencia' ? 'Agência' : 'Repositor'}</span></td>
                                             <td>${formatarData(repo.repo_data_inicio)}</td>
                                             <td>${formatarData(repo.repo_data_fim)}</td>
@@ -135,6 +137,12 @@ export const pages = {
                                     <option value="">Selecione</option>
                                     ${supervisorOptions}
                                 </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="repo_contato_telefone">Contato (Telefone):</label>
+                                <input type="text" id="repo_contato_telefone" placeholder="(99) 99999-9999">
+                                <small>Opcional</small>
                             </div>
 
                             <div class="form-group">

@@ -138,6 +138,7 @@ class App {
         const cidadeRef = document.getElementById('repo_cidade_ref').value;
         const repCodigo = document.getElementById('repo_representante').value;
         const repNome = document.getElementById('repo_representante').selectedOptions[0]?.dataset?.nome || '';
+        const contatoTelefone = document.getElementById('repo_contato_telefone').value || null;
         const vinculo = document.getElementById('repo_vinculo_agencia').checked ? 'agencia' : 'repositor';
         const supervisor = document.getElementById('repo_supervisor').value || null;
 
@@ -150,10 +151,10 @@ class App {
 
         try {
             if (cod) {
-                await db.updateRepositor(cod, nome, dataInicio, dataFim, cidadeRef, repCodigo, repNome, vinculo, supervisor, diasTrabalhados, jornada);
+                await db.updateRepositor(cod, nome, dataInicio, dataFim, cidadeRef, repCodigo, repNome, contatoTelefone, vinculo, supervisor, diasTrabalhados, jornada);
                 this.showNotification(`${vinculo === 'agencia' ? 'Agência' : 'Repositor'} atualizado com sucesso!`, 'success');
             } else {
-                await db.createRepositor(nome, dataInicio, dataFim, cidadeRef, repCodigo, repNome, vinculo, supervisor, diasTrabalhados, jornada);
+                await db.createRepositor(nome, dataInicio, dataFim, cidadeRef, repCodigo, repNome, contatoTelefone, vinculo, supervisor, diasTrabalhados, jornada);
                 this.showNotification(`${vinculo === 'agencia' ? 'Agência' : 'Repositor'} cadastrado com sucesso!`, 'success');
             }
 
@@ -212,14 +213,13 @@ class App {
                             <th>Data Início</th>
                             <th>Data Fim</th>
                             <th>Cidade Ref.</th>
-                            <th>Contato Representante</th>
+                            <th>Contato (Telefone)</th>
                             <th>Ações</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${repositores.map((repo, index) => {
                             const representante = repo.representante;
-                            const contato = representante ? [representante.rep_fone, representante.rep_email].filter(Boolean).join(' / ') : '-';
                             const repLabel = representante ? `${representante.representante} - ${representante.desc_representante}` : `${repo.rep_representante_codigo || '-'}${repo.rep_representante_nome ? ' - ' + repo.rep_representante_nome : ''}`;
 
                             return `
@@ -232,7 +232,7 @@ class App {
                                     <td>${this.formatarDataSimples(repo.repo_data_inicio)}</td>
                                     <td>${this.formatarDataSimples(repo.repo_data_fim)}</td>
                                     <td>${repo.repo_cidade_ref || '-'}</td>
-                                    <td>${contato || '-'}</td>
+                                    <td>${repo.rep_contato_telefone || '-'}</td>
                                     <td class="table-actions">
                                         <button class="btn-icon" onclick="window.app.abrirDetalhesRepresentante(${index}, 'consulta')" title="Detalhes do Representante">👁️</button>
                                         <button class="btn-icon" onclick="window.app.editRepositor(${repo.repo_cod})" title="Editar">✏️</button>
@@ -370,6 +370,7 @@ class App {
             document.getElementById('repo_data_fim').value = repositor.repo_data_fim || '';
             document.getElementById('repo_cidade_ref').value = repositor.repo_cidade_ref || '';
             document.getElementById('repo_representante').value = repositor.rep_representante_codigo || '';
+            document.getElementById('repo_contato_telefone').value = repositor.rep_contato_telefone || '';
             document.getElementById('repo_vinculo_agencia').checked = repositor.repo_vinculo === 'agencia';
             document.getElementById('repo_supervisor').value = repositor.rep_supervisor || '';
 
