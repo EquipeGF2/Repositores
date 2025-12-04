@@ -507,6 +507,10 @@ tbody td {
     animation: modalSlideIn 0.3s ease;
 }
 
+.modal-representante .modal-content {
+    max-width: 1100px;
+}
+
 @keyframes modalSlideIn {
     from {
         transform: translateY(-50px);
@@ -673,7 +677,7 @@ tbody td {
 
 .info-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: var(--spacing-sm);
 }
 

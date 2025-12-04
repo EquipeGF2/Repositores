@@ -27,7 +27,7 @@ export const pages = {
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">Cadastro de Repositores</h3>
-                    <button class="btn btn-primary btn-sm" onclick="window.app.showModalRepositor()">
+                    <button class="btn btn-primary btn-sm" onclick="window.app.showModalRepositor('create')">
                         + Novo Repositor
                     </button>
                 </div>
@@ -187,7 +187,7 @@ export const pages = {
 
                             <div class="modal-footer">
                                 <button type="button" class="btn btn-secondary" onclick="window.app.closeModalRepositor()">Cancelar</button>
-                                <button type="submit" class="btn btn-primary">Salvar</button>
+                                <button type="submit" class="btn btn-primary" id="btnSubmitRepositor">Cadastrar</button>
                             </div>
                         </form>
                     </div>
@@ -247,7 +247,7 @@ export const pages = {
                 </div>
             </div>
 
-            <div class="modal" id="modalRepresentanteDetalhes">
+            <div class="modal modal-representante" id="modalRepresentanteDetalhes">
                 <div class="modal-content">
                     <div class="modal-header">
                         <h3>Detalhes do Representante</h3>
@@ -259,10 +259,6 @@ export const pages = {
                             <div>
                                 <small>Supervisor</small>
                                 <div id="repSupervisor">-</div>
-                            </div>
-                            <div>
-                                <small>Período</small>
-                                <div id="repDatas">-</div>
                             </div>
                             <div>
                                 <small>Endereço</small>
@@ -346,7 +342,7 @@ export const pages = {
                 </div>
             </div>
 
-            <div class="modal" id="modalRepresentanteDetalhes">
+            <div class="modal modal-representante" id="modalRepresentanteDetalhes">
                 <div class="modal-content">
                     <div class="modal-header">
                         <h3>Detalhes do Representante</h3>
@@ -358,10 +354,6 @@ export const pages = {
                             <div>
                                 <small>Supervisor</small>
                                 <div id="repSupervisor">-</div>
-                            </div>
-                            <div>
-                                <small>Período</small>
-                                <div id="repDatas">-</div>
                             </div>
                             <div>
                                 <small>Endereço</small>

@@ -117,11 +117,36 @@ class App {
         return `${dia}/${mes}/${ano}`;
     }
 
-    showModalRepositor() {
-        document.getElementById('modalRepositor').classList.add('active');
-        document.getElementById('formRepositor').reset();
-        document.getElementById('repo_cod').value = '';
-        document.getElementById('modalRepositorTitle').textContent = 'Novo Repositor';
+    showModalRepositor(modo = 'create', repositor = null) {
+        const modal = document.getElementById('modalRepositor');
+        const form = document.getElementById('formRepositor');
+        const titulo = document.getElementById('modalRepositorTitle');
+        const botao = document.getElementById('btnSubmitRepositor');
+
+        if (!modal || !form) return;
+
+        if (modo === 'create') {
+            form.reset();
+            const diasPadrao = ['seg', 'ter', 'qua', 'qui', 'sex'];
+
+            document.getElementById('repo_cod').value = '';
+            document.getElementById('repo_vinculo_agencia').checked = false;
+
+            document.querySelectorAll('.dia-trabalho').forEach(checkbox => {
+                checkbox.checked = diasPadrao.includes(checkbox.value);
+            });
+
+            const jornadaPadrao = document.querySelector('input[name="jornada"][value="integral"]');
+            if (jornadaPadrao) jornadaPadrao.checked = true;
+
+            if (titulo) titulo.textContent = 'Novo Repositor';
+            if (botao) botao.textContent = 'Cadastrar';
+        } else {
+            if (titulo) titulo.textContent = repositor?.repo_vinculo === 'agencia' ? 'Editar Agência' : 'Editar Repositor';
+            if (botao) botao.textContent = 'Salvar alterações';
+        }
+
+        modal.classList.add('active');
     }
 
     closeModalRepositor() {
@@ -235,7 +260,7 @@ class App {
                                     <td>${repo.rep_contato_telefone || '-'}</td>
                                     <td class="table-actions">
                                         <button class="btn-icon" onclick="window.app.abrirDetalhesRepresentante(${index}, 'consulta')" title="Detalhes do Representante">👁️</button>
-                                        <button class="btn-icon" onclick="window.app.editRepositor(${repo.repo_cod})" title="Editar">✏️</button>
+                                        <button class="btn-icon" onclick="window.app.abrirCadastroRepositor(${repo.repo_cod})" title="Editar">✏️</button>
                                     </td>
                                 </tr>
                             `;
@@ -265,7 +290,6 @@ class App {
         modal.querySelector('#repFone').textContent = representante.rep_fone || '-';
         modal.querySelector('#repEmail').textContent = representante.rep_email || '-';
         modal.querySelector('#repSupervisor').textContent = representante.rep_supervisor || '-';
-        modal.querySelector('#repDatas').textContent = `${this.formatarDataSimples(representante.rep_data_inicio)} até ${this.formatarDataSimples(representante.rep_data_fim)}`;
 
         modal.classList.add('active');
     }
@@ -357,6 +381,10 @@ class App {
 
     async editRepositor(cod) {
         try {
+            if (this.currentPage !== 'cadastro-repositor') {
+                await this.navigateTo('cadastro-repositor');
+            }
+
             const repositor = await db.getRepositor(cod);
 
             if (!repositor) {
@@ -364,15 +392,29 @@ class App {
                 return;
             }
 
-            document.getElementById('repo_cod').value = repositor.repo_cod;
-            document.getElementById('repo_nome').value = repositor.repo_nome;
-            document.getElementById('repo_data_inicio').value = repositor.repo_data_inicio;
-            document.getElementById('repo_data_fim').value = repositor.repo_data_fim || '';
-            document.getElementById('repo_cidade_ref').value = repositor.repo_cidade_ref || '';
-            document.getElementById('repo_representante').value = repositor.rep_representante_codigo || '';
-            document.getElementById('repo_contato_telefone').value = repositor.rep_contato_telefone || '';
-            document.getElementById('repo_vinculo_agencia').checked = repositor.repo_vinculo === 'agencia';
-            document.getElementById('repo_supervisor').value = repositor.rep_supervisor || '';
+            const formulario = document.getElementById('formRepositor');
+            if (!formulario) {
+                throw new Error('Formulário de repositor não encontrado na tela.');
+            }
+
+            const setValor = (id, valor = '') => {
+                const elemento = document.getElementById(id);
+                if (elemento) elemento.value = valor ?? '';
+            };
+
+            setValor('repo_cod', repositor.repo_cod);
+            setValor('repo_nome', repositor.repo_nome);
+            setValor('repo_data_inicio', repositor.repo_data_inicio);
+            setValor('repo_data_fim', repositor.repo_data_fim || '');
+            setValor('repo_cidade_ref', repositor.repo_cidade_ref || '');
+            setValor('repo_representante', repositor.rep_representante_codigo || '');
+            setValor('repo_contato_telefone', repositor.rep_contato_telefone || '');
+            setValor('repo_supervisor', repositor.rep_supervisor || '');
+
+            const campoVinculo = document.getElementById('repo_vinculo_agencia');
+            if (campoVinculo) {
+                campoVinculo.checked = repositor.repo_vinculo === 'agencia';
+            }
 
             // Marcar dias trabalhados
             const dias = (repositor.dias_trabalhados || 'seg,ter,qua,qui,sex').split(',');
@@ -382,11 +424,10 @@ class App {
 
             // Marcar jornada
             const jornada = repositor.jornada || 'integral';
-            document.querySelector(`input[name="jornada"][value="${jornada}"]`).checked = true;
+            const campoJornada = document.querySelector(`input[name="jornada"][value="${jornada}"]`) || document.querySelector('input[name="jornada"][value="integral"]');
+            if (campoJornada) campoJornada.checked = true;
 
-            document.getElementById('modalRepositorTitle').textContent = repositor.repo_vinculo === 'agencia' ? 'Editar Agência' : 'Editar Repositor';
-
-            this.showModalRepositor();
+            this.showModalRepositor('edit', repositor);
         } catch (error) {
             this.showNotification('Erro ao carregar repositor: ' + error.message, 'error');
         }
