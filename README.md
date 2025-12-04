@@ -1,70 +1,208 @@
-# 🚀 Sistema Turso + GitHub Pages (com API Next.js)
+# 🚀 Sistema de Repositores - GitHub Pages + Turso
 
-Ecossistema web para gerenciar dados no **Turso Database** com interface estática servida pelo GitHub Pages e camada de API em **Next.js**.
+Sistema web completo para gerenciar repositores e supervisores, hospedado no **GitHub Pages** e conectado diretamente ao **Turso Database**.
 
-## 📋 Visão Geral
+## 📋 Características
 
-- **Frontend**: permanece em `public/index.html` e consome endpoints REST.
-- **Backend**: rotas em `Next.js` (`/api/*`) para proteger credenciais e centralizar a conexão com o Turso.
-- **Hospedagem**: código pronto para GitHub Pages (assets estáticos) e para rodar a API em um runtime Node (Vercel, Railway, etc.).
+- ✅ **100% Estático**: Roda completamente no GitHub Pages (sem necessidade de servidor Node.js)
+- ✅ **Conexão Direta**: Frontend conecta diretamente ao Turso Database via browser
+- ✅ **Deploy Automático**: GitHub Actions cuida de tudo automaticamente
+- ✅ **Seguro**: Credenciais injetadas durante o build (nunca expostas no código)
+- ✅ **Moderno**: Interface responsiva e intuitiva
 
 ## 🏗️ Estrutura
 
 ```
 Repositores/
+├── .github/workflows/
+│   └── deploy.yml           # GitHub Actions para deploy automático
 ├── public/
-│   ├── index.html        # Interface principal
-│   ├── css/style.css     # Estilos
-│   └── js/*.js           # Lógica de interface
-├── pages/api/            # Endpoints Next.js
-├── lib/tursoClient.js    # Cliente e criação de schema
-├── docs/CONFIGURACAO_API.md
-├── .env.example
-└── README.md
+│   ├── index.html           # Interface principal
+│   ├── css/style.css        # Estilos
+│   └── js/
+│       ├── db.js            # Cliente Turso para browser
+│       ├── app.js           # Lógica da aplicação
+│       └── turso-config.js  # Config (substituído no build)
+├── scripts/
+│   └── build-static.js      # Script de build que injeta secrets
+└── package.json
 ```
 
-## ⚙️ Configuração
+## ⚙️ Configuração Inicial
 
-1. Copie `.env.example` para `.env.local` e preencha as variáveis:
-   ```
-   TURSO_MAIN_URL=libsql://seu-banco-principal.turso.io
-   TURSO_MAIN_TOKEN=seu-token-principal
-   TURSO_COMERCIAL_URL=
-   TURSO_COMERCIAL_TOKEN=
-   ```
-2. (Opcional) Cadastre os mesmos nomes em **Settings > Secrets and variables** do GitHub se for usar Actions ou implantar a API.
+### 1. Secrets do GitHub (✅ Já configurado!)
 
-## 🚀 Executar localmente
+Você já configurou os seguintes secrets em **Settings > Secrets and variables > Actions**:
 
-```bash
-npm install
-npm run dev
+- `TURSO_MAIN_URL` - URL do banco principal
+- `TURSO_MAIN_TOKEN` - Token do banco principal
+- `TURSO_COMERCIAL_URL` - URL do banco comercial (opcional)
+- `TURSO_COMERCIAL_TOKEN` - Token do banco comercial (opcional)
+
+### 2. Habilitar GitHub Pages
+
+Agora você precisa habilitar o GitHub Pages:
+
+1. Vá em **Settings** do repositório
+2. No menu lateral, clique em **Pages**
+3. Em **Source**, selecione: **GitHub Actions**
+4. Clique em **Save**
+
+### 3. Deploy Automático
+
+Assim que você fizer push para a branch, o GitHub Actions irá:
+
+1. ✅ Instalar dependências
+2. ✅ Injetar os secrets do GitHub no código
+3. ✅ Gerar os arquivos estáticos
+4. ✅ Fazer deploy no GitHub Pages
+
+**URL do seu site**: `https://equipegf2.github.io/Repositores/`
+
+## 🔄 Como Funciona
+
+### Fluxo de Deploy
+
 ```
-- Interface: `http://localhost:3000/index.html`
-- API: `http://localhost:3000/api/health`
+Push para GitHub
+    ↓
+GitHub Actions detecta push
+    ↓
+Executa build (npm run build:static)
+    ↓
+Injeta TURSO_* secrets no código
+    ↓
+Gera pasta /out com arquivos estáticos
+    ↓
+Deploy no GitHub Pages
+    ↓
+✅ Site no ar!
+```
 
-O health check cria automaticamente as tabelas `cad_supervisor` e `cad_repositor` caso não existam.
+### Conexão com Turso
 
-## 🔌 Endpoints
+O frontend usa `@libsql/client/web` para conectar diretamente ao Turso:
 
-- `GET /api/health` — valida conexão e prepara schema.
-- `GET/POST /api/supervisores` — lista e cria supervisores.
-- `GET/PUT/DELETE /api/supervisores/:id` — CRUD individual.
-- `GET/POST /api/repositores` — lista e cria repositores (retorna cidades do banco comercial quando configurado).
-- `GET/PUT/DELETE /api/repositores/:id` — CRUD individual.
+```javascript
+import { createClient } from 'https://esm.sh/@libsql/client@0.6.0/web';
 
-## 📚 Documentação adicional
+const client = createClient({
+  url: 'libsql://seu-banco.turso.io',
+  authToken: 'seu-token'
+});
+```
 
-Consulte `docs/CONFIGURACAO_API.md` para orientações detalhadas e boas práticas de segurança/performance.
+As credenciais são injetadas automaticamente durante o build pelo GitHub Actions.
+
+## 📊 Funcionalidades
+
+### Cadastros
+- ✅ Cadastro de Supervisores
+- ✅ Cadastro de Repositores
+- ✅ Edição e exclusão de registros
+
+### Banco de Dados
+- ✅ Tabela `cad_supervisor`
+- ✅ Tabela `cad_repositor`
+- ✅ Schema criado automaticamente na primeira conexão
+
+### Reposição (Em desenvolvimento)
+- Resumo do Período
+- Resumo Mensal
+- Relatório Detalhado
+- Análise Gráfica
+- Alterações de Rota
 
 ## 🛡️ Segurança
 
-- Nunca publique tokens reais em commits.
-- Prefira tokens com validade curta gerados pelo Turso.
-- Faça o deploy da API em ambiente que suporte variáveis de ambiente seguras.
+### ✅ O que está protegido:
+- Credenciais NUNCA aparecem no código fonte
+- Secrets injetados apenas durante o build
+- Tokens não são commitados no repositório
+
+### ⚠️ Importante entender:
+- Os tokens Turso ficam embutidos nos arquivos JavaScript após o build
+- Qualquer pessoa pode ver os tokens inspecionando o código da página
+- **Recomendação**: Use tokens Turso com permissões limitadas
+
+### 🔒 Para máxima segurança:
+
+Se você precisar de segurança adicional, considere:
+1. Criar uma API intermediária (Next.js/Vercel)
+2. Usar tokens Turso com permissões somente leitura
+3. Implementar autenticação de usuários
+
+## 🚀 Desenvolvimento Local
+
+Para testar localmente:
+
+1. Crie `public/js/turso-config.local.js`:
+```javascript
+export const TURSO_CONFIG = {
+  main: {
+    url: 'libsql://seu-banco-principal.turso.io',
+    authToken: 'seu-token-principal'
+  },
+  comercial: {
+    url: '',
+    authToken: ''
+  }
+};
+```
+
+2. Atualize `public/js/db.js` para importar do arquivo local:
+```javascript
+import { TURSO_CONFIG } from './turso-config.local.js';
+```
+
+3. Abra `public/index.html` diretamente no navegador
+
+## 📝 Comandos
+
+```bash
+# Instalar dependências
+npm install
+
+# Build estático (com secrets do ambiente)
+npm run build:static
+
+# Desenvolvimento com Next.js (legado)
+npm run dev
+```
+
+## 🔧 Troubleshooting
+
+### GitHub Actions falha no build
+- Verifique se os secrets estão configurados corretamente
+- Certifique-se que `TURSO_MAIN_URL` e `TURSO_MAIN_TOKEN` existem
+
+### Página não carrega no GitHub Pages
+- Vá em **Settings > Pages** e verifique se está configurado para **GitHub Actions**
+- Aguarde alguns minutos após o deploy
+- Verifique o log do GitHub Actions para erros
+
+### Erro de conexão com Turso
+- Verifique se os tokens Turso são válidos
+- Confirme que a URL está no formato correto: `libsql://nome.turso.io`
+- Teste a conexão localmente primeiro
+
+## 📚 Próximos Passos
+
+Agora que o banco está integrado, você pode:
+
+1. ✅ Desenvolver as telas de cadastro
+2. ✅ Implementar as funcionalidades de reposição
+3. ✅ Adicionar validações nos formulários
+4. ✅ Criar relatórios e gráficos
+5. ✅ Melhorar a UX/UI
 
 ## 🤝 Contribuindo
 
-- Abra issues com dúvidas ou sugestões.
-- Envie PRs com melhorias de performance/UX.
-- Avalie cache/CDN para os assets da pasta `public/` ao usar GitHub Pages.
+1. Faça suas alterações
+2. Commit e push para a branch
+3. GitHub Actions fará o deploy automaticamente
+4. Acesse sua URL do GitHub Pages para ver as mudanças
+
+## 📄 Licença
+
+Projeto privado - EquipeGF2
