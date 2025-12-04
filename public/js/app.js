@@ -198,13 +198,21 @@ class App {
         const cidadeRef = document.getElementById('repo_cidade_ref').value;
         const representante = document.getElementById('repo_representante').value;
         const vinculo = document.getElementById('repo_vinculo_agencia').checked ? 'agencia' : 'repositor';
+        const supervisor = document.getElementById('repo_supervisor').value || null;
+
+        // Coletar dias trabalhados
+        const diasCheckboxes = document.querySelectorAll('.dia-trabalho:checked');
+        const diasTrabalhados = Array.from(diasCheckboxes).map(cb => cb.value).join(',') || 'seg,ter,qua,qui,sex';
+
+        // Pegar jornada
+        const jornada = document.querySelector('input[name="jornada"]:checked').value;
 
         try {
             if (cod) {
-                await db.updateRepositor(cod, nome, dataInicio, dataFim, cidadeRef, representante, vinculo);
+                await db.updateRepositor(cod, nome, dataInicio, dataFim, cidadeRef, representante, vinculo, supervisor, diasTrabalhados, jornada);
                 this.showNotification(`${vinculo === 'agencia' ? 'Agência' : 'Repositor'} atualizado com sucesso!`, 'success');
             } else {
-                await db.createRepositor(nome, dataInicio, dataFim, cidadeRef, representante, vinculo);
+                await db.createRepositor(nome, dataInicio, dataFim, cidadeRef, representante, vinculo, supervisor, diasTrabalhados, jornada);
                 this.showNotification(`${vinculo === 'agencia' ? 'Agência' : 'Repositor'} cadastrado com sucesso!`, 'success');
             }
 
@@ -231,6 +239,18 @@ class App {
             document.getElementById('repo_cidade_ref').value = repositor.repo_cidade_ref || '';
             document.getElementById('repo_representante').value = repositor.repo_representante || '';
             document.getElementById('repo_vinculo_agencia').checked = repositor.repo_vinculo === 'agencia';
+            document.getElementById('repo_supervisor').value = repositor.repo_supervisor || '';
+
+            // Marcar dias trabalhados
+            const dias = (repositor.dias_trabalhados || 'seg,ter,qua,qui,sex').split(',');
+            document.querySelectorAll('.dia-trabalho').forEach(checkbox => {
+                checkbox.checked = dias.includes(checkbox.value);
+            });
+
+            // Marcar jornada
+            const jornada = repositor.jornada || 'integral';
+            document.querySelector(`input[name="jornada"][value="${jornada}"]`).checked = true;
+
             document.getElementById('modalRepositorTitle').textContent = repositor.repo_vinculo === 'agencia' ? 'Editar Agência' : 'Editar Repositor';
 
             this.showModalRepositor();

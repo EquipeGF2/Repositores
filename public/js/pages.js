@@ -202,6 +202,56 @@ export const pages = {
                                 </div>
                             </div>
 
+                            <div class="form-group">
+                                <label for="repo_supervisor">Supervisor:</label>
+                                <select id="repo_supervisor">
+                                    <option value="">Sem supervisor</option>
+                                    ${(await db.getAllSupervisors()).map(sup => `
+                                        <option value="${sup.sup_cod}">${sup.sup_nome}</option>
+                                    `).join('')}
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Dias Trabalhados:</label>
+                                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                                        <input type="checkbox" class="dia-trabalho" value="seg" style="width: auto;" checked> Segunda
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                                        <input type="checkbox" class="dia-trabalho" value="ter" style="width: auto;" checked> Terça
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                                        <input type="checkbox" class="dia-trabalho" value="qua" style="width: auto;" checked> Quarta
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                                        <input type="checkbox" class="dia-trabalho" value="qui" style="width: auto;" checked> Quinta
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                                        <input type="checkbox" class="dia-trabalho" value="sex" style="width: auto;" checked> Sexta
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                                        <input type="checkbox" class="dia-trabalho" value="sab" style="width: auto;"> Sábado
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                                        <input type="checkbox" class="dia-trabalho" value="dom" style="width: auto;"> Domingo
+                                    </label>
+                                </div>
+                                <small>Marque os dias que o repositor trabalha (padrão: Seg a Sex)</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Jornada de Trabalho:</label>
+                                <div style="display: flex; gap: 20px;">
+                                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                                        <input type="radio" name="jornada" value="integral" style="width: auto;" checked> Turno Integral
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                                        <input type="radio" name="jornada" value="meio_turno" style="width: auto;"> Meio Turno
+                                    </label>
+                                </div>
+                            </div>
+
                             <div class="modal-footer">
                                 <button type="button" class="btn btn-secondary" onclick="window.app.closeModalRepositor()">Cancelar</button>
                                 <button type="submit" class="btn btn-primary">Salvar</button>

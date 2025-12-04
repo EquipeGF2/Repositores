@@ -68,12 +68,64 @@ class TursoDatabase {
                 )
             `);
 
+            // Adicionar colunas novas se não existirem (migração)
+            await this.migrateDatabase();
+
             this.schemaInitialized = true;
             console.log('✅ Schema inicializado com sucesso');
             return true;
         } catch (error) {
             console.error('❌ Erro ao inicializar schema:', error);
             throw error;
+        }
+    }
+
+    async migrateDatabase() {
+        try {
+            // Adicionar coluna repo_vinculo se não existir
+            try {
+                await this.mainClient.execute(`
+                    ALTER TABLE cad_repositor ADD COLUMN repo_vinculo TEXT DEFAULT 'repositor'
+                `);
+                console.log('✅ Coluna repo_vinculo adicionada');
+            } catch (e) {
+                // Coluna já existe, ignorar
+            }
+
+            // Adicionar coluna repo_supervisor se não existir
+            try {
+                await this.mainClient.execute(`
+                    ALTER TABLE cad_repositor ADD COLUMN repo_supervisor INTEGER
+                `);
+                console.log('✅ Coluna repo_supervisor adicionada');
+            } catch (e) {
+                // Coluna já existe, ignorar
+            }
+
+            // Adicionar coluna dias_trabalhados se não existir
+            try {
+                await this.mainClient.execute(`
+                    ALTER TABLE cad_repositor ADD COLUMN dias_trabalhados TEXT DEFAULT 'seg,ter,qua,qui,sex'
+                `);
+                console.log('✅ Coluna dias_trabalhados adicionada');
+            } catch (e) {
+                // Coluna já existe, ignorar
+            }
+
+            // Adicionar coluna jornada se não existir
+            try {
+                await this.mainClient.execute(`
+                    ALTER TABLE cad_repositor ADD COLUMN jornada TEXT DEFAULT 'integral'
+                `);
+                console.log('✅ Coluna jornada adicionada');
+            } catch (e) {
+                // Coluna já existe, ignorar
+            }
+
+            console.log('✅ Migração concluída');
+        } catch (error) {
+            console.error('❌ Erro na migração:', error);
+            // Não lançar erro, apenas logar
         }
     }
 
@@ -157,11 +209,11 @@ class TursoDatabase {
     }
 
     // ==================== REPOSITOR ====================
-    async createRepositor(nome, dataInicio, dataFim, cidadeRef, representante, vinculo = 'repositor') {
+    async createRepositor(nome, dataInicio, dataFim, cidadeRef, representante, vinculo = 'repositor', supervisor = null, diasTrabalhados = 'seg,ter,qua,qui,sex', jornada = 'integral') {
         try {
             const result = await this.mainClient.execute({
-                sql: 'INSERT INTO cad_repositor (repo_nome, repo_data_inicio, repo_data_fim, repo_cidade_ref, repo_representante, repo_vinculo) VALUES (?, ?, ?, ?, ?, ?)',
-                args: [nome, dataInicio, dataFim, cidadeRef, representante, vinculo]
+                sql: 'INSERT INTO cad_repositor (repo_nome, repo_data_inicio, repo_data_fim, repo_cidade_ref, repo_representante, repo_vinculo, repo_supervisor, dias_trabalhados, jornada) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                args: [nome, dataInicio, dataFim, cidadeRef, representante, vinculo, supervisor, diasTrabalhados, jornada]
             });
 
             return {
@@ -198,15 +250,16 @@ class TursoDatabase {
         }
     }
 
-    async updateRepositor(cod, nome, dataInicio, dataFim, cidadeRef, representante, vinculo = 'repositor') {
+    async updateRepositor(cod, nome, dataInicio, dataFim, cidadeRef, representante, vinculo = 'repositor', supervisor = null, diasTrabalhados = 'seg,ter,qua,qui,sex', jornada = 'integral') {
         try {
             await this.mainClient.execute({
                 sql: `UPDATE cad_repositor
                       SET repo_nome = ?, repo_data_inicio = ?, repo_data_fim = ?,
                           repo_cidade_ref = ?, repo_representante = ?, repo_vinculo = ?,
+                          repo_supervisor = ?, dias_trabalhados = ?, jornada = ?,
                           updated_at = CURRENT_TIMESTAMP
                       WHERE repo_cod = ?`,
-                args: [nome, dataInicio, dataFim, cidadeRef, representante, vinculo, cod]
+                args: [nome, dataInicio, dataFim, cidadeRef, representante, vinculo, supervisor, diasTrabalhados, jornada, cod]
             });
 
             return {
