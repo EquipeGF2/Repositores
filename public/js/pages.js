@@ -123,6 +123,7 @@ export const pages = {
                                     <tr>
                                         <th>Código</th>
                                         <th>Nome</th>
+                                        <th>Vínculo</th>
                                         <th>Data Início</th>
                                         <th>Data Fim</th>
                                         <th>Cidade Ref.</th>
@@ -135,6 +136,7 @@ export const pages = {
                                         <tr>
                                             <td>${repo.repo_cod}</td>
                                             <td>${repo.repo_nome}</td>
+                                            <td><span class="badge ${repo.repo_vinculo === 'agencia' ? 'badge-warning' : 'badge-info'}">${repo.repo_vinculo === 'agencia' ? 'Agência' : 'Repositor'}</span></td>
                                             <td>${new Date(repo.repo_data_inicio).toLocaleDateString('pt-BR')}</td>
                                             <td>${repo.repo_data_fim ? new Date(repo.repo_data_fim).toLocaleDateString('pt-BR') : '-'}</td>
                                             <td>${repo.repo_cidade_ref || '-'}</td>
@@ -166,6 +168,13 @@ export const pages = {
                             <div class="form-group">
                                 <label for="repo_nome">Nome do Repositor:</label>
                                 <input type="text" id="repo_nome" required>
+                            </div>
+
+                            <div class="form-group">
+                                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                    <input type="checkbox" id="repo_vinculo_agencia" style="width: auto;">
+                                    <span>É uma Agência (marque se for agência, deixe desmarcado se for repositor)</span>
+                                </label>
                             </div>
 
                             <div class="form-row">

@@ -197,14 +197,15 @@ class App {
         const dataFim = document.getElementById('repo_data_fim').value || null;
         const cidadeRef = document.getElementById('repo_cidade_ref').value;
         const representante = document.getElementById('repo_representante').value;
+        const vinculo = document.getElementById('repo_vinculo_agencia').checked ? 'agencia' : 'repositor';
 
         try {
             if (cod) {
-                await db.updateRepositor(cod, nome, dataInicio, dataFim, cidadeRef, representante);
-                this.showNotification('Repositor atualizado com sucesso!', 'success');
+                await db.updateRepositor(cod, nome, dataInicio, dataFim, cidadeRef, representante, vinculo);
+                this.showNotification(`${vinculo === 'agencia' ? 'Agência' : 'Repositor'} atualizado com sucesso!`, 'success');
             } else {
-                await db.createRepositor(nome, dataInicio, dataFim, cidadeRef, representante);
-                this.showNotification('Repositor cadastrado com sucesso!', 'success');
+                await db.createRepositor(nome, dataInicio, dataFim, cidadeRef, representante, vinculo);
+                this.showNotification(`${vinculo === 'agencia' ? 'Agência' : 'Repositor'} cadastrado com sucesso!`, 'success');
             }
 
             this.closeModalRepositor();
@@ -229,7 +230,8 @@ class App {
             document.getElementById('repo_data_fim').value = repositor.repo_data_fim || '';
             document.getElementById('repo_cidade_ref').value = repositor.repo_cidade_ref || '';
             document.getElementById('repo_representante').value = repositor.repo_representante || '';
-            document.getElementById('modalRepositorTitle').textContent = 'Editar Repositor';
+            document.getElementById('repo_vinculo_agencia').checked = repositor.repo_vinculo === 'agencia';
+            document.getElementById('modalRepositorTitle').textContent = repositor.repo_vinculo === 'agencia' ? 'Editar Agência' : 'Editar Repositor';
 
             this.showModalRepositor();
         } catch (error) {

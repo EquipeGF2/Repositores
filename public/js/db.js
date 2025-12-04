@@ -62,6 +62,7 @@ class TursoDatabase {
                     repo_data_fim DATE,
                     repo_cidade_ref TEXT,
                     repo_representante TEXT,
+                    repo_vinculo TEXT DEFAULT 'repositor',
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
@@ -156,17 +157,17 @@ class TursoDatabase {
     }
 
     // ==================== REPOSITOR ====================
-    async createRepositor(nome, dataInicio, dataFim, cidadeRef, representante) {
+    async createRepositor(nome, dataInicio, dataFim, cidadeRef, representante, vinculo = 'repositor') {
         try {
             const result = await this.mainClient.execute({
-                sql: 'INSERT INTO cad_repositor (repo_nome, repo_data_inicio, repo_data_fim, repo_cidade_ref, repo_representante) VALUES (?, ?, ?, ?, ?)',
-                args: [nome, dataInicio, dataFim, cidadeRef, representante]
+                sql: 'INSERT INTO cad_repositor (repo_nome, repo_data_inicio, repo_data_fim, repo_cidade_ref, repo_representante, repo_vinculo) VALUES (?, ?, ?, ?, ?, ?)',
+                args: [nome, dataInicio, dataFim, cidadeRef, representante, vinculo]
             });
 
             return {
                 success: true,
                 id: Number(result.lastInsertRowid),
-                message: 'Repositor cadastrado com sucesso!'
+                message: `${vinculo === 'agencia' ? 'Agência' : 'Repositor'} cadastrado com sucesso!`
             };
         } catch (error) {
             console.error('Erro ao criar repositor:', error);
@@ -197,20 +198,20 @@ class TursoDatabase {
         }
     }
 
-    async updateRepositor(cod, nome, dataInicio, dataFim, cidadeRef, representante) {
+    async updateRepositor(cod, nome, dataInicio, dataFim, cidadeRef, representante, vinculo = 'repositor') {
         try {
             await this.mainClient.execute({
                 sql: `UPDATE cad_repositor
                       SET repo_nome = ?, repo_data_inicio = ?, repo_data_fim = ?,
-                          repo_cidade_ref = ?, repo_representante = ?,
+                          repo_cidade_ref = ?, repo_representante = ?, repo_vinculo = ?,
                           updated_at = CURRENT_TIMESTAMP
                       WHERE repo_cod = ?`,
-                args: [nome, dataInicio, dataFim, cidadeRef, representante, cod]
+                args: [nome, dataInicio, dataFim, cidadeRef, representante, vinculo, cod]
             });
 
             return {
                 success: true,
-                message: 'Repositor atualizado com sucesso!'
+                message: `${vinculo === 'agencia' ? 'Agência' : 'Repositor'} atualizado com sucesso!`
             };
         } catch (error) {
             console.error('Erro ao atualizar repositor:', error);
