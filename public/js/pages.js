@@ -368,6 +368,55 @@ export const pages = {
                 </div>
             </div>
         `;
+    },
+
+    'consulta-alteracoes': async () => {
+        const motivos = await db.getMotivosAlteracao();
+
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Consulta de Alterações</h3>
+                </div>
+                <div class="card-body">
+                    <div class="filter-bar">
+                        <div class="filter-group">
+                            <label for="filtro_motivo">Tipo de Alteração:</label>
+                            <select id="filtro_motivo">
+                                <option value="">Todos</option>
+                                ${motivos.map(m => `
+                                    <option value="${m.mot_descricao}">${m.mot_descricao}</option>
+                                `).join('')}
+                            </select>
+                        </div>
+
+                        <div class="filter-group">
+                            <label for="filtro_data_inicio">Data Início:</label>
+                            <input type="date" id="filtro_data_inicio">
+                        </div>
+
+                        <div class="filter-group">
+                            <label for="filtro_data_fim">Data Fim:</label>
+                            <input type="date" id="filtro_data_fim">
+                        </div>
+
+                        <div class="filter-group">
+                            <label>&nbsp;</label>
+                            <button class="btn btn-primary" onclick="window.app.aplicarFiltrosHistorico()">
+                                🔍 Buscar
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="resultadosHistorico">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📋</div>
+                            <p>Selecione os filtros e clique em "Buscar" para consultar as alterações</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
     }
 };
 
@@ -379,5 +428,6 @@ export const pageTitles = {
     'resumo-mensal': 'Resumo Mensal',
     'relatorio-detalhado-repo': 'Relatório Detalhado',
     'analise-grafica-repo': 'Análise Gráfica',
-    'alteracoes-rota': 'Alterações de Rota'
+    'alteracoes-rota': 'Alterações de Rota',
+    'consulta-alteracoes': 'Consulta de Alterações'
 };

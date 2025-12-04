@@ -499,9 +499,9 @@ tbody td {
 .modal-content {
     background: var(--white);
     border-radius: var(--radius-lg);
-    max-width: 500px;
-    width: 90%;
-    max-height: 90vh;
+    max-width: 900px;
+    width: 95%;
+    max-height: 95vh;
     overflow-y: auto;
     box-shadow: var(--shadow-xl);
     animation: modalSlideIn 0.3s ease;
