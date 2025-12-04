@@ -81,7 +81,7 @@ export const pages = {
             </div>
 
             <!-- Modal Repositor -->
-            <div class="modal" id="modalRepositor">
+            <div class="modal modal-repositor" id="modalRepositor">
                 <div class="modal-content">
                     <div class="modal-header">
                         <h3 id="modalRepositorTitle">Novo Repositor</h3>
@@ -91,7 +91,7 @@ export const pages = {
                         <form id="formRepositor" onsubmit="window.app.saveRepositor(event)">
                             <input type="hidden" id="repo_cod" value="">
 
-                            <div class="form-group">
+                            <div class="form-group full-width">
                                 <label for="repo_nome">Nome do Repositor:</label>
                                 <input type="text" id="repo_nome" required>
                             </div>
@@ -103,7 +103,7 @@ export const pages = {
                                 </label>
                             </div>
 
-                            <div class="form-row">
+                            <div class="form-row full-width">
                                 <div class="form-group">
                                     <label for="repo_data_inicio">Data Início:</label>
                                     <input type="date" id="repo_data_inicio" required>
@@ -116,7 +116,7 @@ export const pages = {
                                 </div>
                             </div>
 
-                            <div class="form-row">
+                            <div class="form-row full-width">
                                 <div class="form-group">
                                     <label for="repo_cidade_ref">Cidade Referência:</label>
                                     <input type="text" id="repo_cidade_ref" placeholder="Ex: São Paulo" required>
@@ -145,7 +145,7 @@ export const pages = {
                                 <small>Opcional</small>
                             </div>
 
-                            <div class="form-group">
+                            <div class="form-group full-width">
                                 <label>Dias Trabalhados:</label>
                                 <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                                     <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
@@ -173,7 +173,7 @@ export const pages = {
                                 <small>Marque os dias que o repositor trabalha (padrão: Seg a Sex)</small>
                             </div>
 
-                            <div class="form-group">
+                            <div class="form-group full-width">
                                 <label>Jornada de Trabalho:</label>
                                 <div style="display: flex; gap: 20px;">
                                     <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
