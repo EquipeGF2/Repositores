@@ -122,10 +122,56 @@ class TursoDatabase {
                 // Coluna já existe, ignorar
             }
 
+            // Criar tabela de histórico se não existir
+            try {
+                await this.mainClient.execute(`
+                    CREATE TABLE IF NOT EXISTS hist_repositor (
+                        hist_cod INTEGER PRIMARY KEY AUTOINCREMENT,
+                        repo_cod INTEGER NOT NULL,
+                        campo_alterado TEXT NOT NULL,
+                        valor_anterior TEXT,
+                        valor_novo TEXT,
+                        data_alteracao DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        usuario TEXT
+                    )
+                `);
+                console.log('✅ Tabela hist_repositor criada');
+            } catch (e) {
+                // Tabela já existe, ignorar
+            }
+
             console.log('✅ Migração concluída');
         } catch (error) {
             console.error('❌ Erro na migração:', error);
             // Não lançar erro, apenas logar
+        }
+    }
+
+    // Registrar mudança no histórico
+    async registrarHistorico(repoCod, campo, valorAnterior, valorNovo) {
+        try {
+            await this.mainClient.execute({
+                sql: 'INSERT INTO hist_repositor (repo_cod, campo_alterado, valor_anterior, valor_novo) VALUES (?, ?, ?, ?)',
+                args: [repoCod, campo, valorAnterior || '', valorNovo || '']
+            });
+            console.log(`📝 Histórico registrado: ${campo}`);
+        } catch (error) {
+            console.error('Erro ao registrar histórico:', error);
+            // Não lançar erro para não bloquear a operação principal
+        }
+    }
+
+    // Buscar histórico de um repositor
+    async getHistoricoRepositor(repoCod) {
+        try {
+            const result = await this.mainClient.execute({
+                sql: 'SELECT * FROM hist_repositor WHERE repo_cod = ? ORDER BY data_alteracao DESC',
+                args: [repoCod]
+            });
+            return result.rows;
+        } catch (error) {
+            console.error('Erro ao buscar histórico:', error);
+            return [];
         }
     }
 
@@ -252,6 +298,10 @@ class TursoDatabase {
 
     async updateRepositor(cod, nome, dataInicio, dataFim, cidadeRef, representante, vinculo = 'repositor', supervisor = null, diasTrabalhados = 'seg,ter,qua,qui,sex', jornada = 'integral') {
         try {
+            // Buscar dados antigos para comparação
+            const dadosAntigos = await this.getRepositor(cod);
+
+            // Atualizar o registro
             await this.mainClient.execute({
                 sql: `UPDATE cad_repositor
                       SET repo_nome = ?, repo_data_inicio = ?, repo_data_fim = ?,
@@ -261,6 +311,31 @@ class TursoDatabase {
                       WHERE repo_cod = ?`,
                 args: [nome, dataInicio, dataFim, cidadeRef, representante, vinculo, supervisor, diasTrabalhados, jornada, cod]
             });
+
+            // Registrar mudanças no histórico
+            if (dadosAntigos) {
+                if (dadosAntigos.repo_supervisor != supervisor) {
+                    await this.registrarHistorico(cod, 'supervisor',
+                        dadosAntigos.repo_supervisor?.toString() || 'Nenhum',
+                        supervisor?.toString() || 'Nenhum');
+                }
+                if (dadosAntigos.dias_trabalhados !== diasTrabalhados) {
+                    await this.registrarHistorico(cod, 'dias_trabalhados',
+                        dadosAntigos.dias_trabalhados, diasTrabalhados);
+                }
+                if (dadosAntigos.jornada !== jornada) {
+                    await this.registrarHistorico(cod, 'jornada',
+                        dadosAntigos.jornada, jornada);
+                }
+                if (dadosAntigos.repo_vinculo !== vinculo) {
+                    await this.registrarHistorico(cod, 'vinculo',
+                        dadosAntigos.repo_vinculo, vinculo);
+                }
+                if (dadosAntigos.repo_nome !== nome) {
+                    await this.registrarHistorico(cod, 'nome',
+                        dadosAntigos.repo_nome, nome);
+                }
+            }
 
             return {
                 success: true,

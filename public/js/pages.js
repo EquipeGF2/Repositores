@@ -4,6 +4,7 @@
  */
 
 import { db } from './db.js';
+import { formatarData } from './utils.js';
 
 export const pages = {
     // ==================== CADASTROS ====================
@@ -43,8 +44,8 @@ export const pages = {
                                         <tr>
                                             <td>${sup.sup_cod}</td>
                                             <td>${sup.sup_nome}</td>
-                                            <td>${new Date(sup.sup_data_inicio).toLocaleDateString('pt-BR')}</td>
-                                            <td>${sup.sup_data_fim ? new Date(sup.sup_data_fim).toLocaleDateString('pt-BR') : '-'}</td>
+                                            <td>${formatarData(sup.sup_data_inicio)}</td>
+                                            <td>${formatarData(sup.sup_data_fim)}</td>
                                             <td class="table-actions">
                                                 <button class="btn-icon" onclick="window.app.editSupervisor(${sup.sup_cod})" title="Editar">✏️</button>
                                                 <button class="btn-icon" onclick="window.app.deleteSupervisor(${sup.sup_cod})" title="Deletar">🗑️</button>
@@ -137,8 +138,8 @@ export const pages = {
                                             <td>${repo.repo_cod}</td>
                                             <td>${repo.repo_nome}</td>
                                             <td><span class="badge ${repo.repo_vinculo === 'agencia' ? 'badge-warning' : 'badge-info'}">${repo.repo_vinculo === 'agencia' ? 'Agência' : 'Repositor'}</span></td>
-                                            <td>${new Date(repo.repo_data_inicio).toLocaleDateString('pt-BR')}</td>
-                                            <td>${repo.repo_data_fim ? new Date(repo.repo_data_fim).toLocaleDateString('pt-BR') : '-'}</td>
+                                            <td>${formatarData(repo.repo_data_inicio)}</td>
+                                            <td>${formatarData(repo.repo_data_fim)}</td>
                                             <td>${repo.repo_cidade_ref || '-'}</td>
                                             <td>${repo.repo_representante || '-'}</td>
                                             <td class="table-actions">
@@ -192,19 +193,19 @@ export const pages = {
 
                             <div class="form-row">
                                 <div class="form-group">
-                                    <label for="repo_cidade_ref">Cidade Referência:</label>
-                                    <input type="text" id="repo_cidade_ref" placeholder="Ex: São Paulo">
+                                    <label for="repo_cidade_ref">Cidade Referência: *</label>
+                                    <input type="text" id="repo_cidade_ref" placeholder="Ex: São Paulo" required>
                                 </div>
 
                                 <div class="form-group">
-                                    <label for="repo_representante">Representante:</label>
-                                    <input type="text" id="repo_representante" placeholder="Ex: João Silva">
+                                    <label for="repo_representante">Representante: *</label>
+                                    <input type="text" id="repo_representante" placeholder="Ex: João Silva" required>
                                 </div>
                             </div>
 
                             <div class="form-group">
-                                <label for="repo_supervisor">Supervisor:</label>
-                                <select id="repo_supervisor">
+                                <label for="repo_supervisor">Supervisor: *</label>
+                                <select id="repo_supervisor" required>
                                     <option value="">Sem supervisor</option>
                                     ${(await db.getAllSupervisors()).map(sup => `
                                         <option value="${sup.sup_cod}">${sup.sup_nome}</option>
