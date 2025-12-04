@@ -45,6 +45,18 @@ const publicDir = path.join(__dirname, '..', 'public');
 console.log('📁 Copiando arquivos públicos...');
 copyRecursive(publicDir, outDir);
 
+// Criar arquivo .nojekyll para desabilitar Jekyll no GitHub Pages
+const nojekyllPath = path.join(outDir, '.nojekyll');
+fs.writeFileSync(nojekyllPath, '');
+console.log('✅ Arquivo .nojekyll criado');
+
+// Remover README.md se existir (para não sobrepor o index.html)
+const readmePath = path.join(outDir, 'README.md');
+if (fs.existsSync(readmePath)) {
+  fs.unlinkSync(readmePath);
+  console.log('✅ README.md removido do build');
+}
+
 // Criar arquivo de configuração com as credenciais
 const configContent = `// Configuração gerada automaticamente durante o build
 export const TURSO_CONFIG = {
