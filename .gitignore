@@ -28,3 +28,9 @@ dist/
 build/
 .next/
 out/
+
+# Configuração local do Turso (não commitar credenciais reais)
+public/js/turso-config.local.js
+
+# Backup de arquivos antigos
+*.backup

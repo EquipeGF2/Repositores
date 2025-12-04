@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "build:static": "node scripts/build-static.js"
   },
   "dependencies": {
     "@libsql/client": "^0.6.0",
