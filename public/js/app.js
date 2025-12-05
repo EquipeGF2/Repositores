@@ -1146,27 +1146,35 @@ class App {
             return;
         }
 
-        tabela.innerHTML = `
-            <table class="roteiro-cidades-table">
-                <thead>
-                    <tr>
-                        <th>Cidade</th>
-                        <th>Ordem</th>
-                        <th>Ações</th>
-                    </tr>
-                </thead>
-                <tbody>${cidades.map(cidade => `<tr class="${this.estadoRoteiro.cidadeSelecionada === cidade.rot_cid_id ? 'cidade-ativa' : ''}">
-                            <td>${cidade.rot_cidade}</td>
-                            <td><input type="number" class="input-ordem-cidade" data-id="${cidade.rot_cid_id}" value="${cidade.rot_ordem_cidade || ''}" placeholder="-" min="1"></td>
-                            <td class="table-actions">
-                                <button class="btn btn-secondary btn-sm" data-acao="selecionar-cidade" data-id="${cidade.rot_cid_id}">Selecionar</button>
-                                <button class="btn-icon" data-acao="remover-cidade" data-id="${cidade.rot_cid_id}" title="Remover">🗑️</button>
-                            </td>
-                        </tr>`).join('')}</tbody>
-            </table>
-        `;
+        // Novo design com checkboxes
+        const container = document.getElementById('roteiroCidadesContainer');
+        if (!container) return;
 
-        tabela.querySelectorAll('[data-acao="selecionar-cidade"]').forEach(btn => {
+        container.innerHTML = cidades.map(cidade => `
+            <div class="cidade-item ${this.estadoRoteiro.cidadeSelecionada === cidade.rot_cid_id ? 'cidade-ativa' : ''}" data-id="${cidade.rot_cid_id}">
+                <input type="checkbox" class="cidade-checkbox" data-id="${cidade.rot_cid_id}">
+                <div class="cidade-item-info" data-acao="selecionar-cidade" data-id="${cidade.rot_cid_id}">
+                    <span class="cidade-item-nome">${cidade.rot_cidade}</span>
+                    <div class="cidade-item-ordem" onclick="event.stopPropagation()">
+                        <label>Ordem:</label>
+                        <input type="number" class="input-ordem-cidade" data-id="${cidade.rot_cid_id}" value="${cidade.rot_ordem_cidade || ''}" placeholder="-" min="1">
+                    </div>
+                </div>
+                <div class="cidade-item-acoes">
+                    <button class="btn-icon" data-acao="remover-cidade" data-id="${cidade.rot_cid_id}" title="Remover cidade">🗑️</button>
+                </div>
+            </div>
+        `).join('');
+
+        // Botão Selecionar Todas
+        const btnSelecionarTodas = document.getElementById('btnSelecionarTodasCidades');
+        if (btnSelecionarTodas) {
+            btnSelecionarTodas.style.display = cidades.length > 1 ? 'block' : 'none';
+            btnSelecionarTodas.onclick = () => this.toggleSelecionarTodasCidades();
+        }
+
+        // Event listeners
+        container.querySelectorAll('[data-acao="selecionar-cidade"]').forEach(btn => {
             btn.addEventListener('click', () => {
                 this.estadoRoteiro.cidadeSelecionada = Number(btn.dataset.id);
                 this.carregarCidadesRoteiro();
@@ -1174,14 +1182,26 @@ class App {
             });
         });
 
-        tabela.querySelectorAll('[data-acao="remover-cidade"]').forEach(btn => {
+        container.querySelectorAll('[data-acao="remover-cidade"]').forEach(btn => {
             btn.addEventListener('click', async () => {
                 const id = Number(btn.dataset.id);
                 await this.removerCidadeRoteiro(id);
             });
         });
 
-        tabela.querySelectorAll('.input-ordem-cidade').forEach(input => {
+        container.querySelectorAll('.cidade-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', () => {
+                this.atualizarBotaoSelecionarTodas();
+                this.atualizarBotaoRemoverSelecionadas();
+            });
+        });
+
+        const btnRemoverSelecionadas = document.getElementById('btnRemoverSelecionadas');
+        if (btnRemoverSelecionadas) {
+            btnRemoverSelecionadas.onclick = () => this.removerCidadesSelecionadas();
+        }
+
+        container.querySelectorAll('.input-ordem-cidade').forEach(input => {
             const handler = async () => {
                 const valor = input.value ? Number(input.value) : null;
                 await this.atualizarOrdemCidade(Number(input.dataset.id), valor);
@@ -2360,6 +2380,73 @@ class App {
         URL.revokeObjectURL(url);
 
         this.showNotification('Roteiro exportado com sucesso!', 'success');
+    }
+
+    // ==================== SELEÇÃO MÚLTIPLA DE CIDADES ====================
+
+    toggleSelecionarTodasCidades() {
+        const checkboxes = document.querySelectorAll('.cidade-checkbox');
+        const todasSelecionadas = Array.from(checkboxes).every(cb => cb.checked);
+
+        checkboxes.forEach(cb => {
+            cb.checked = !todasSelecionadas;
+        });
+
+        this.atualizarBotaoSelecionarTodas();
+        this.atualizarBotaoRemoverSelecionadas();
+    }
+
+    atualizarBotaoSelecionarTodas() {
+        const checkboxes = document.querySelectorAll('.cidade-checkbox');
+        const todasSelecionadas = Array.from(checkboxes).every(cb => cb.checked);
+        const texto = document.getElementById('textoSelecionarTodas');
+
+        if (texto) {
+            texto.textContent = todasSelecionadas ? '☐ Desmarcar Todas' : '✓ Selecionar Todas';
+        }
+    }
+
+    atualizarBotaoRemoverSelecionadas() {
+        const checkboxes = document.querySelectorAll('.cidade-checkbox:checked');
+        const container = document.getElementById('cidadesAcoesContainer');
+
+        if (container) {
+            container.style.display = checkboxes.length > 0 ? 'block' : 'none';
+        }
+    }
+
+    async removerCidadesSelecionadas() {
+        const checkboxes = document.querySelectorAll('.cidade-checkbox:checked');
+        const ids = Array.from(checkboxes).map(cb => Number(cb.dataset.id));
+
+        if (ids.length === 0) {
+            this.showNotification('Nenhuma cidade selecionada.', 'warning');
+            return;
+        }
+
+        const cidadesNomes = ids.map(id => {
+            const cidade = this.cidadesRoteiroCache?.find(c => c.rot_cid_id === id);
+            return cidade?.rot_cidade;
+        }).filter(Boolean).join(', ');
+
+        if (!confirm(`Remover ${ids.length} cidade(s)?\n\n${cidadesNomes}\n\nTodos os clientes vinculados também serão removidos.`)) {
+            return;
+        }
+
+        try {
+            const usuario = this.usuarioLogado?.username || 'desconhecido';
+            for (const id of ids) {
+                await db.removerCidadeRoteiro(id, usuario);
+                if (this.estadoRoteiro.cidadeSelecionada === id) {
+                    this.estadoRoteiro.cidadeSelecionada = null;
+                }
+            }
+
+            await this.carregarCidadesRoteiro();
+            this.showNotification(`${ids.length} cidade(s) removida(s) com sucesso.`, 'success');
+        } catch (error) {
+            this.showNotification('Erro ao remover cidades: ' + error.message, 'error');
+        }
     }
 
     // ==================== ESTRUTURA DO BANCO ====================
