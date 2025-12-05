@@ -39,6 +39,7 @@ class App {
             'controle-acessos': 'mod_configuracoes',
             'roteiro-repositor': 'mod_repositores'
         };
+        this.filtroStatusRepositores = 'ativos';
         this.init();
     }
 
@@ -487,13 +488,16 @@ class App {
         const vinculo = document.getElementById('repo_vinculo_agencia').checked ? 'agencia' : 'repositor';
         const supervisor = document.getElementById('repo_supervisor').value || null;
 
-        // Coletar dias trabalhados
         const diasCheckboxes = document.querySelectorAll('.dia-trabalho:checked');
-        const diasTrabalhados = Array.from(diasCheckboxes).map(cb => cb.value).join(',') || 'seg,ter,qua,qui,sex';
+        const diasTrabalhados = Array.from(diasCheckboxes).map(cb => cb.value).join(',');
 
-        // Pegar jornada
         const campoJornada = document.querySelector('input[name="rep_jornada_tipo"]:checked');
-        const jornada = campoJornada?.value || 'INTEGRAL';
+        const jornada = vinculo === 'agencia' ? null : (campoJornada?.value || 'INTEGRAL');
+
+        if (vinculo !== 'agencia' && !diasTrabalhados) {
+            this.showNotification('Selecione ao menos um dia trabalhado para o repositor.', 'warning');
+            return;
+        }
 
         try {
             if (cod) {
@@ -520,6 +524,51 @@ class App {
 
             this._onRepresentanteChange = () => this.atualizarDadosRepresentante({ forcarSupervisor: true });
             selectRepresentante.addEventListener('change', this._onRepresentanteChange);
+        }
+
+        const checkboxVinculo = document.getElementById('repo_vinculo_agencia');
+        if (checkboxVinculo) {
+            if (this._onVinculoChange) {
+                checkboxVinculo.removeEventListener('change', this._onVinculoChange);
+            }
+
+            this._onVinculoChange = () => this.ajustarJornadaParaVinculo();
+            checkboxVinculo.addEventListener('change', this._onVinculoChange);
+        }
+
+        this.ajustarJornadaParaVinculo();
+    }
+
+    ajustarJornadaParaVinculo() {
+        const checkboxVinculo = document.getElementById('repo_vinculo_agencia');
+        const isAgencia = checkboxVinculo?.checked;
+        const cardJornada = document.getElementById('cardJornadaTrabalho');
+        const diasTrabalho = document.querySelectorAll('.dia-trabalho');
+        const jornadas = document.querySelectorAll('input[name="rep_jornada_tipo"]');
+
+        diasTrabalho.forEach(cb => {
+            cb.disabled = !!isAgencia;
+            if (isAgencia) cb.checked = false;
+        });
+
+        if (!isAgencia && !Array.from(diasTrabalho).some(cb => cb.checked)) {
+            const diasPadrao = ['seg', 'ter', 'qua', 'qui', 'sex'];
+            diasTrabalho.forEach(cb => {
+                cb.checked = diasPadrao.includes(cb.value);
+            });
+        }
+
+        jornadas.forEach(rd => {
+            rd.disabled = !!isAgencia;
+            if (isAgencia) rd.checked = false;
+        });
+
+        if (!isAgencia && !Array.from(jornadas).some(j => j.checked) && jornadas[0]) {
+            jornadas[0].checked = true;
+        }
+
+        if (cardJornada) {
+            cardJornada.classList.toggle('card-desabilitado', !!isAgencia);
         }
     }
 
@@ -576,6 +625,10 @@ class App {
                 return;
             }
 
+            if (repositor.repo_vinculo === 'agencia') {
+                this.showNotification('Agências não utilizam roteiro por dia da semana. Será exibido um aviso.', 'warning');
+            }
+
             this.contextoRoteiro = repositor;
             this.estadoRoteiro = {
                 diaSelecionado: null,
@@ -598,16 +651,32 @@ class App {
         const repositor = document.getElementById('filtro_nome_repositor')?.value || '';
         const vinculo = document.getElementById('filtro_vinculo_cadastro')?.value || '';
         const cidadeRef = document.getElementById('filtro_cidade_ref_cadastro')?.value || '';
-        const incluirInativos = document.getElementById('filtro_incluir_inativos')?.checked || false;
 
         try {
-            const filtros = { supervisor, representante, repositor, vinculo, cidadeRef, incluirInativos };
+            const filtros = { supervisor, representante, repositor, vinculo, cidadeRef, status: this.filtroStatusRepositores };
             const repositores = await db.getRepositoresDetalhados(filtros);
             this.ultimaConsultaRepositores = repositores;
             this.renderCadastroRepositores(repositores);
+            this.atualizarBotoesFiltroStatus();
         } catch (error) {
             this.showNotification('Erro ao consultar repositores: ' + error.message, 'error');
         }
+    }
+
+    atualizarBotoesFiltroStatus() {
+        const botoes = document.querySelectorAll('.filtro-status-btn');
+        botoes.forEach(btn => {
+            const ativo = btn.dataset.status === this.filtroStatusRepositores;
+            btn.classList.toggle('active', ativo);
+        });
+    }
+
+    definirStatusFiltroRepositores(status) {
+        const valoresPermitidos = ['todos', 'ativos', 'inativos'];
+        if (!valoresPermitidos.includes(status)) return;
+
+        this.filtroStatusRepositores = status;
+        this.aplicarFiltrosCadastroRepositores();
     }
 
     renderCadastroRepositores(repositores) {
@@ -650,8 +719,10 @@ class App {
                             const repositorAtivo = db.isRepositorAtivo(repo, hoje);
                             const badgeStatus = repositorAtivo ? '<span class="badge badge-success">Ativo</span>' : '<span class="badge badge-gray">Inativo</span>';
 
+                            const classeLinha = repositorAtivo ? '' : 'row-inativo';
+
                             return `
-                                <tr>
+                                <tr class="${classeLinha}">
                                     <td>${repo.repo_cod}</td>
                                     <td>${repo.repo_nome}</td>
                                     <td>${repo.rep_supervisor || '-'}</td>
@@ -714,6 +785,10 @@ class App {
 
         if (!repositor) {
             this.showNotification('Selecione um repositor pela consulta para abrir o roteiro.', 'warning');
+            return;
+        }
+
+        if (repositor.repo_vinculo === 'agencia') {
             return;
         }
 
@@ -1124,14 +1199,16 @@ class App {
             }
 
             // Marcar dias trabalhados
-            const dias = (repositor.dias_trabalhados || 'seg,ter,qua,qui,sex').split(',');
+            const dias = repositor.repo_vinculo === 'agencia'
+                ? []
+                : (repositor.dias_trabalhados || 'seg,ter,qua,qui,sex').split(',');
             document.querySelectorAll('.dia-trabalho').forEach(checkbox => {
                 checkbox.checked = dias.includes(checkbox.value);
             });
 
             // Marcar jornada
-            const jornada = repositor.rep_jornada_tipo || repositor.jornada?.toUpperCase() || 'INTEGRAL';
-            const campoJornada = document.querySelector(`input[name="rep_jornada_tipo"][value="${jornada}"]`) || document.querySelector('input[name="rep_jornada_tipo"][value="INTEGRAL"]');
+            const jornada = repositor.repo_vinculo === 'agencia' ? null : (repositor.rep_jornada_tipo || repositor.jornada?.toUpperCase() || 'INTEGRAL');
+            const campoJornada = jornada ? (document.querySelector(`input[name="rep_jornada_tipo"][value="${jornada}"]`) || document.querySelector('input[name="rep_jornada_tipo"][value="INTEGRAL"]')) : null;
             if (campoJornada) campoJornada.checked = true;
 
             this.configurarEventosRepositor();

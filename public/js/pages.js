@@ -66,12 +66,13 @@ export const pages = {
                             <label for="filtro_nome_repositor">Nome do Repositor</label>
                             <input type="text" id="filtro_nome_repositor" placeholder="Nome ou código" onblur="window.app.aplicarFiltrosCadastroRepositores()" onkeyup="window.app.aplicarFiltrosCadastroRepositores()">
                         </div>
-                        <div class="filter-group compact-checkbox">
-                            <label>&nbsp;</label>
-                            <label class="checkbox-inline">
-                                <input type="checkbox" id="filtro_incluir_inativos" onchange="window.app.aplicarFiltrosCadastroRepositores()" style="width: auto;">
-                                <span>Incluir repositores inativos</span>
-                            </label>
+                        <div class="filter-group">
+                            <label>Status</label>
+                            <div class="status-toggle-group">
+                                <button type="button" class="btn filtro-status-btn" data-status="todos" onclick="window.app.definirStatusFiltroRepositores('todos')">Todos</button>
+                                <button type="button" class="btn filtro-status-btn" data-status="ativos" onclick="window.app.definirStatusFiltroRepositores('ativos')">Ativos</button>
+                                <button type="button" class="btn filtro-status-btn" data-status="inativos" onclick="window.app.definirStatusFiltroRepositores('inativos')">Inativos</button>
+                            </div>
                         </div>
                     </div>
 
@@ -140,7 +141,7 @@ export const pages = {
                                     </div>
                                 </section>
 
-                                <section class="form-card">
+                                <section class="form-card" id="cardJornadaTrabalho">
                                     <div class="form-card-header">
                                         <p class="form-card-eyebrow">Rotina</p>
                                         <h4>Jornada de Trabalho</h4>
@@ -256,6 +257,23 @@ export const pages = {
         }
 
         const repositor = contexto;
+
+        if (repositor.repo_vinculo === 'agencia') {
+            return `
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Roteirização não disponível para agências</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">🏢</div>
+                            <p>${repositor.repo_nome} está cadastrado como agência.</p>
+                            <small>O modelo atual de roteiro por jornada se aplica apenas a repositores individuais.</small>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
 
         return `
             <div class="roteiro-header">

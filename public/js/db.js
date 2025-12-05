@@ -5,6 +5,7 @@
 
 import { TURSO_CONFIG } from './turso-config.js';
 import { createClient } from 'https://esm.sh/@libsql/client@0.6.0/web';
+import { normalizarTextoCadastro } from './utils.js';
 
 class TursoDatabase {
     constructor() {
@@ -562,10 +563,41 @@ class TursoDatabase {
     }
 
     // ==================== REPOSITOR ====================
+    async nomeRepositorJaExiste(nome, ignorarCod = null) {
+        const nomeNormalizado = normalizarTextoCadastro(nome);
+
+        const resultado = await this.mainClient.execute({
+            sql: 'SELECT repo_cod, repo_nome FROM cad_repositor',
+            args: []
+        });
+
+        return resultado.rows.some(row => {
+            const nomeBase = normalizarTextoCadastro(row.repo_nome || '');
+            const mesmoNome = nomeBase === nomeNormalizado;
+            const mesmoRegistro = ignorarCod ? Number(row.repo_cod) === Number(ignorarCod) : false;
+            return mesmoNome && !mesmoRegistro;
+        });
+    }
+
     async createRepositor(nome, dataInicio, dataFim, cidadeRef, repCodigo, repNome, vinculo = 'repositor', repSupervisor = null, diasTrabalhados = 'seg,ter,qua,qui,sex', repJornadaTipo = 'INTEGRAL') {
         try {
-            const jornadaNormalizada = repJornadaTipo || 'INTEGRAL';
-            const jornadaLegada = jornadaNormalizada.toLowerCase();
+            const nomeNormalizado = normalizarTextoCadastro(nome);
+            const cidadeNormalizada = normalizarTextoCadastro(cidadeRef);
+            const jornadaNormalizada = vinculo === 'agencia' ? null : (repJornadaTipo || 'INTEGRAL');
+            const jornadaLegada = jornadaNormalizada ? jornadaNormalizada.toLowerCase() : null;
+            const diasParaGravar = vinculo === 'agencia' ? null : (diasTrabalhados || 'seg,ter,qua,qui,sex');
+
+            const nomeDuplicado = await this.nomeRepositorJaExiste(nomeNormalizado);
+            if (nomeDuplicado) {
+                throw new Error('Já existe um repositor cadastrado com este nome.');
+            }
+
+            if (vinculo !== 'agencia') {
+                const diasSelecionados = (diasTrabalhados || '').split(',').map(d => d.trim()).filter(Boolean);
+                if (diasSelecionados.length === 0) {
+                    throw new Error('Selecione pelo menos um dia de trabalho para o repositor.');
+                }
+            }
 
             const result = await this.mainClient.execute({
                 sql: `INSERT INTO cad_repositor (
@@ -575,12 +607,12 @@ class TursoDatabase {
                         rep_supervisor, rep_representante_codigo, rep_representante_nome
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
                 args: [
-                    nome, dataInicio, dataFim,
-                    cidadeRef,
+                    nomeNormalizado, dataInicio, dataFim,
+                    cidadeNormalizada,
                     `${repCodigo || ''}${repNome ? ' - ' + repNome : ''}`.trim(),
                     null,
                     vinculo,
-                    diasTrabalhados, jornadaLegada, jornadaNormalizada,
+                    diasParaGravar, jornadaLegada, jornadaNormalizada,
                     repSupervisor, repCodigo, repNome
                 ]
             });
@@ -639,8 +671,23 @@ class TursoDatabase {
             // Buscar dados antigos para comparação
             const dadosAntigos = await this.getRepositor(cod);
 
-            const jornadaNormalizada = repJornadaTipo || 'INTEGRAL';
-            const jornadaLegada = jornadaNormalizada.toLowerCase();
+            const nomeNormalizado = normalizarTextoCadastro(nome);
+            const cidadeNormalizada = normalizarTextoCadastro(cidadeRef);
+            const jornadaNormalizada = vinculo === 'agencia' ? null : (repJornadaTipo || 'INTEGRAL');
+            const jornadaLegada = jornadaNormalizada ? jornadaNormalizada.toLowerCase() : null;
+            const diasParaGravar = vinculo === 'agencia' ? null : (diasTrabalhados || 'seg,ter,qua,qui,sex');
+
+            const nomeDuplicado = await this.nomeRepositorJaExiste(nomeNormalizado, cod);
+            if (nomeDuplicado) {
+                throw new Error('Já existe um repositor cadastrado com este nome.');
+            }
+
+            if (vinculo !== 'agencia') {
+                const diasSelecionados = (diasTrabalhados || '').split(',').map(d => d.trim()).filter(Boolean);
+                if (diasSelecionados.length === 0) {
+                    throw new Error('Selecione pelo menos um dia de trabalho para o repositor.');
+                }
+            }
 
             // Atualizar o registro
             await this.mainClient.execute({
@@ -652,12 +699,12 @@ class TursoDatabase {
                           updated_at = CURRENT_TIMESTAMP
                       WHERE repo_cod = ?`,
                 args: [
-                    nome, dataInicio, dataFim,
-                    cidadeRef,
+                    nomeNormalizado, dataInicio, dataFim,
+                    cidadeNormalizada,
                     `${repCodigo || ''}${repNome ? ' - ' + repNome : ''}`.trim(),
                     null,
                     vinculo,
-                    diasTrabalhados, jornadaLegada, jornadaNormalizada,
+                    diasParaGravar, jornadaLegada, jornadaNormalizada,
                     repSupervisor, repCodigo, repNome,
                     cod
                 ]
@@ -735,6 +782,7 @@ class TursoDatabase {
     }
 
     obterDiasTrabalho(repo) {
+        if (repo?.repo_vinculo === 'agencia') return [];
         const dias = (repo?.dias_trabalhados || '')
             .split(',')
             .map(d => d.trim())
@@ -1105,9 +1153,11 @@ class TursoDatabase {
         }
     }
 
-    async getRepositoresDetalhados({ supervisor = '', representante = '', repositor = '', vinculo = '', cidadeRef = '', incluirInativos = false } = {}) {
+    async getRepositoresDetalhados({ supervisor = '', representante = '', repositor = '', vinculo = '', cidadeRef = '', status = 'ativos' } = {}) {
         const args = [];
         let sql = `SELECT * FROM cad_repositor WHERE 1=1`;
+
+        const hoje = new Date().toISOString().split('T')[0];
 
         if (supervisor) {
             sql += ' AND rep_supervisor = ?';
@@ -1134,9 +1184,14 @@ class TursoDatabase {
             args.push(`%${cidadeRef}%`);
         }
 
-        if (!incluirInativos) {
-            sql += ` AND (repo_data_inicio IS NULL OR DATE(repo_data_inicio) <= DATE('now'))`;
-            sql += ` AND (repo_data_fim IS NULL OR DATE(repo_data_fim) >= DATE('now'))`;
+        if (status === 'ativos') {
+            sql += ` AND repo_data_inicio IS NOT NULL`;
+            sql += ` AND DATE(repo_data_inicio) <= DATE(?)`;
+            sql += ` AND (repo_data_fim IS NULL OR DATE(repo_data_fim) >= DATE(?))`;
+            args.push(hoje, hoje);
+        } else if (status === 'inativos') {
+            sql += ` AND (repo_data_inicio IS NULL OR DATE(repo_data_inicio) > DATE(?) OR (repo_data_fim IS NOT NULL AND DATE(repo_data_fim) < DATE(?)))`;
+            args.push(hoje, hoje);
         }
 
         sql += ' ORDER BY repo_nome';
