@@ -779,22 +779,36 @@ class App {
 
         const registro = baseDados?.[index];
         if (!registro) {
-            this.showNotification('Registro do representante não está disponível para consulta.', 'warning');
+            this.showNotification('Não foi possível carregar os dados do representante. Tente recarregar a página.', 'warning');
+            console.error('Registro não encontrado. Origem:', origem, 'Index:', index, 'Dados disponíveis:', baseDados?.length);
             return;
         }
+
         const codigoRepresentante = registro?.rep_representante_codigo || db.extrairCodigoRepresentante(registro?.repo_representante);
         let representante = registro?.representante;
         const modal = document.getElementById('modalRepresentanteDetalhes');
 
-        if (!representante && codigoRepresentante) {
-            const mapa = await db.getRepresentantesPorCodigo([codigoRepresentante]);
-            representante = mapa[codigoRepresentante];
-            if (representante) {
-                registro.representante = representante;
+        if (!modal) {
+            this.showNotification('Erro ao abrir modal de detalhes.', 'error');
+            return;
+        }
+
+        // Sempre buscar o representante da base comercial se tiver código
+        if (codigoRepresentante) {
+            try {
+                const mapa = await db.getRepresentantesPorCodigo([codigoRepresentante]);
+                representante = mapa[codigoRepresentante];
+                if (representante) {
+                    registro.representante = representante;
+                }
+            } catch (error) {
+                console.error('Erro ao buscar representante:', error);
+                this.showNotification('Erro ao buscar dados do representante na base comercial.', 'error');
+                return;
             }
         }
 
-        if (!modal || !representante) {
+        if (!representante) {
             this.showNotification('Representante não localizado na base comercial.', 'warning');
             return;
         }
@@ -1141,18 +1155,14 @@ class App {
                         <th>Ações</th>
                     </tr>
                 </thead>
-                <tbody>
-                    ${cidades.map(cidade => `
-                        <tr class="${this.estadoRoteiro.cidadeSelecionada === cidade.rot_cid_id ? 'cidade-ativa' : ''}">
+                <tbody>${cidades.map(cidade => `<tr class="${this.estadoRoteiro.cidadeSelecionada === cidade.rot_cid_id ? 'cidade-ativa' : ''}">
                             <td>${cidade.rot_cidade}</td>
                             <td><input type="number" class="input-ordem-cidade" data-id="${cidade.rot_cid_id}" value="${cidade.rot_ordem_cidade || ''}" placeholder="-" min="1"></td>
                             <td class="table-actions">
                                 <button class="btn btn-secondary btn-sm" data-acao="selecionar-cidade" data-id="${cidade.rot_cid_id}">Selecionar</button>
                                 <button class="btn-icon" data-acao="remover-cidade" data-id="${cidade.rot_cid_id}" title="Remover">🗑️</button>
                             </td>
-                        </tr>
-                    `).join('')}
-                </tbody>
+                        </tr>`).join('')}</tbody>
             </table>
         `;
 
@@ -1219,8 +1229,13 @@ class App {
     }
 
     async atualizarOrdemVisita(rotCliId, ordem) {
-        const usuario = this.usuarioLogado?.username || 'desconhecido';
-        await db.atualizarOrdemVisita(rotCliId, ordem, usuario);
+        try {
+            const usuario = this.usuarioLogado?.username || 'desconhecido';
+            await db.atualizarOrdemVisita(rotCliId, ordem, usuario);
+        } catch (error) {
+            this.showNotification(error.message, 'error');
+            throw error;
+        }
     }
 
     async carregarClientesRoteiro() {
@@ -1342,7 +1357,11 @@ class App {
         tabela.querySelectorAll('.input-ordem-visita').forEach(input => {
             const handler = async () => {
                 const valor = input.value ? Number(input.value) : null;
-                await this.atualizarOrdemVisita(Number(input.dataset.cliId), valor);
+                try {
+                    await this.atualizarOrdemVisita(Number(input.dataset.cliId), valor);
+                } catch (error) {
+                    // Erro já foi tratado em atualizarOrdemVisita
+                }
                 await this.carregarClientesRoteiro();
             };
 
@@ -2237,26 +2256,98 @@ class App {
             return;
         }
 
-        const header = ['Repositor', 'Dia da semana', 'Cidade', 'Ordem Cidade', 'Código', 'Nome', 'Fantasia', 'Endereço', 'Bairro', 'Grupo', 'Ordem Visita'];
-        const linhas = this.resultadosConsultaRoteiro.map(item => {
-            const cliente = item.cliente_dados || {};
-            const endereco = `${cliente.endereco || ''} ${cliente.num_endereco || ''}`.trim();
-            return [
-                `${item.repo_cod} - ${item.repo_nome}`,
-                this.formatarDiaSemanaLabel(item.rot_dia_semana),
-                item.rot_cidade,
-                item.rot_ordem_cidade || '-',
-                item.rot_cliente_codigo,
-                cliente.nome || '-',
-                cliente.fantasia || '-',
-                endereco || '-',
-                cliente.bairro || '-',
-                cliente.grupo_desc || '-',
-                item.rot_ordem_visita || '-'
-            ];
+        // Agrupar dados por repositor e dia da semana
+        const primeiroItem = this.resultadosConsultaRoteiro[0];
+        const nomeRepositor = `${primeiroItem.repo_cod} - ${primeiroItem.repo_nome}`;
+        const telefone = primeiroItem.rep_contato_telefone || '';
+        const supervisor = normalizarSupervisor(primeiroItem.rep_supervisor) || '';
+        const representante = primeiroItem.repo_representante || '';
+
+        // Organizar dados por dia da semana
+        const diasSemana = ['segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
+        const dadosPorDia = {};
+
+        diasSemana.forEach(dia => {
+            dadosPorDia[dia] = this.resultadosConsultaRoteiro
+                .filter(item => item.rot_dia_semana === dia)
+                .sort((a, b) => {
+                    // Ordenar por ordem de cidade e depois ordem de visita
+                    const ordemCidadeA = a.rot_ordem_cidade || 999;
+                    const ordemCidadeB = b.rot_ordem_cidade || 999;
+                    if (ordemCidadeA !== ordemCidadeB) return ordemCidadeA - ordemCidadeB;
+
+                    const ordemVisitaA = a.rot_ordem_visita || 999;
+                    const ordemVisitaB = b.rot_ordem_visita || 999;
+                    return ordemVisitaA - ordemVisitaB;
+                });
         });
 
-        const csv = [header, ...linhas]
+        // Calcular número máximo de linhas
+        const maxLinhas = Math.max(...diasSemana.map(dia => dadosPorDia[dia].length));
+
+        // Criar CSV
+        const linhas = [];
+
+        // Cabeçalho
+        const dataAtual = new Date().toLocaleDateString('pt-BR');
+        linhas.push(['ROTEIRO DE VISITAS - RS', '', '', '', '', `Atualizado em ${dataAtual}`]);
+        linhas.push(['REPOSITOR:', nomeRepositor, '', 'Turno Integral', '', '']);
+        linhas.push(['TELEFONE:', telefone, '', '', '', '']);
+        linhas.push([]);
+
+        // Cabeçalho da tabela
+        linhas.push(['SEGUNDA-FEIRA', 'TERÇA-FEIRA', 'QUARTA-FEIRA', 'QUINTA-FEIRA', 'SEXTA-FEIRA', 'SÁBADO']);
+
+        // Dados da tabela
+        for (let i = 0; i < maxLinhas; i++) {
+            const linha = [];
+            diasSemana.forEach(dia => {
+                const item = dadosPorDia[dia][i];
+                if (item) {
+                    const cliente = item.cliente_dados || {};
+                    const fantasia = cliente.fantasia || cliente.nome || '';
+                    const cidade = item.rot_cidade || '';
+                    linha.push(`${item.rot_cliente_codigo} - ${fantasia} (${cidade})`);
+                } else {
+                    linha.push('');
+                }
+            });
+            linhas.push(linha);
+        }
+
+        // Rodapé
+        linhas.push([]);
+        linhas.push([]);
+        linhas.push(['Supervisora:', supervisor, '', 'Coordenador:', '', 'Representantes']);
+        linhas.push(['Telefone:', '', '', 'Telefone:', '', representante]);
+        linhas.push([]);
+        linhas.push(['CÓDIGO - RAZÃO SOCIAL - CIDADE']);
+
+        // Adicionar lista de clientes por cidade
+        const cidadesUnicas = [...new Set(this.resultadosConsultaRoteiro.map(item => item.rot_cidade))].sort();
+        cidadesUnicas.forEach(cidade => {
+            linhas.push([cidade]);
+            const clientesCidade = this.resultadosConsultaRoteiro
+                .filter(item => item.rot_cidade === cidade)
+                .sort((a, b) => (a.rot_cliente_codigo || 0) - (b.rot_cliente_codigo || 0));
+
+            const clientesUnicos = [];
+            const codigosVistos = new Set();
+            clientesCidade.forEach(item => {
+                if (!codigosVistos.has(item.rot_cliente_codigo)) {
+                    codigosVistos.add(item.rot_cliente_codigo);
+                    const cliente = item.cliente_dados || {};
+                    clientesUnicos.push(item);
+                }
+            });
+
+            clientesUnicos.forEach(item => {
+                const cliente = item.cliente_dados || {};
+                linhas.push([`${item.rot_cliente_codigo} - ${cliente.nome || '-'}`]);
+            });
+        });
+
+        const csv = linhas
             .map(linha => linha.map(valor => `"${String(valor).replace(/"/g, '""')}"`).join(','))
             .join('\n');
 
@@ -2264,9 +2355,11 @@ class App {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = 'consulta-roteiro.csv';
+        link.download = `roteiro-visitas-${primeiroItem.repo_cod}.csv`;
         link.click();
         URL.revokeObjectURL(url);
+
+        this.showNotification('Roteiro exportado com sucesso!', 'success');
     }
 
     // ==================== ESTRUTURA DO BANCO ====================
