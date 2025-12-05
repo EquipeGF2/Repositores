@@ -6,6 +6,7 @@
 import { db } from './db.js';
 import { pages, pageTitles } from './pages.js';
 import { ACL_RECURSOS } from './acl-resources.js';
+import { normalizarTextoCadastro } from './utils.js';
 
 const AUTH_STORAGE_KEY = 'GERMANI_AUTH_USER';
 
@@ -27,7 +28,6 @@ class App {
         this.roteiroBuscaTimeout = null;
         this.recursosPorPagina = {
             'cadastro-repositor': 'mod_repositores',
-            'consulta-repositores': 'mod_repositores',
             'validacao-dados': 'mod_repositores',
             'resumo-periodo': 'mod_repositores',
             'resumo-mensal': 'mod_repositores',
@@ -39,6 +39,7 @@ class App {
             'controle-acessos': 'mod_configuracoes',
             'roteiro-repositor': 'mod_repositores'
         };
+        this.filtroStatusRepositores = 'ativos';
         this.init();
     }
 
@@ -388,12 +389,14 @@ class App {
             this.elements.contentBody.innerHTML = pageContent;
             this.currentPage = pageName;
 
-            if (pageName === 'consulta-repositores') {
-                this.aplicarFiltrosConsultaRepositores();
+            if (pageName === 'cadastro-repositor') {
+                await this.aplicarFiltrosCadastroRepositores();
             } else if (pageName === 'controle-acessos') {
                 await this.inicializarControleAcessos();
             } else if (pageName === 'roteiro-repositor') {
                 await this.inicializarRoteiroRepositor();
+            } else if (pageName === 'consulta-alteracoes') {
+                await this.inicializarConsultaAlteracoes();
             }
         } catch (error) {
             console.error('Erro ao carregar página:', error);
@@ -463,6 +466,7 @@ class App {
         }
 
         this.configurarEventosRepositor();
+        this.aplicarNormalizacaoCadastroRepositor();
         this.atualizarDadosRepresentante({ forcarSupervisor: modo === 'create' });
         modal.classList.add('active');
     }
@@ -475,22 +479,25 @@ class App {
         event.preventDefault();
 
         const cod = document.getElementById('repo_cod').value;
-        const nome = document.getElementById('repo_nome').value;
+        const nome = normalizarTextoCadastro(document.getElementById('repo_nome').value);
         const dataInicio = document.getElementById('repo_data_inicio').value;
         const dataFim = document.getElementById('repo_data_fim').value || null;
-        const cidadeRef = document.getElementById('repo_cidade_ref').value;
+        const cidadeRef = normalizarTextoCadastro(document.getElementById('repo_cidade_ref').value);
         const repCodigo = document.getElementById('repo_representante').value;
         const repNome = document.getElementById('repo_representante').selectedOptions[0]?.dataset?.nome || '';
         const vinculo = document.getElementById('repo_vinculo_agencia').checked ? 'agencia' : 'repositor';
         const supervisor = document.getElementById('repo_supervisor').value || null;
 
-        // Coletar dias trabalhados
         const diasCheckboxes = document.querySelectorAll('.dia-trabalho:checked');
-        const diasTrabalhados = Array.from(diasCheckboxes).map(cb => cb.value).join(',') || 'seg,ter,qua,qui,sex';
+        const diasTrabalhados = Array.from(diasCheckboxes).map(cb => cb.value).join(',');
 
-        // Pegar jornada
         const campoJornada = document.querySelector('input[name="rep_jornada_tipo"]:checked');
-        const jornada = campoJornada?.value || 'INTEGRAL';
+        const jornada = vinculo === 'agencia' ? null : (campoJornada?.value || 'INTEGRAL');
+
+        if (vinculo !== 'agencia' && !diasTrabalhados) {
+            this.showNotification('Selecione ao menos um dia trabalhado para o repositor.', 'warning');
+            return;
+        }
 
         try {
             if (cod) {
@@ -518,6 +525,71 @@ class App {
             this._onRepresentanteChange = () => this.atualizarDadosRepresentante({ forcarSupervisor: true });
             selectRepresentante.addEventListener('change', this._onRepresentanteChange);
         }
+
+        const checkboxVinculo = document.getElementById('repo_vinculo_agencia');
+        if (checkboxVinculo) {
+            if (this._onVinculoChange) {
+                checkboxVinculo.removeEventListener('change', this._onVinculoChange);
+            }
+
+            this._onVinculoChange = () => this.ajustarJornadaParaVinculo();
+            checkboxVinculo.addEventListener('change', this._onVinculoChange);
+        }
+
+        this.ajustarJornadaParaVinculo();
+    }
+
+    ajustarJornadaParaVinculo() {
+        const checkboxVinculo = document.getElementById('repo_vinculo_agencia');
+        const isAgencia = checkboxVinculo?.checked;
+        const cardJornada = document.getElementById('cardJornadaTrabalho');
+        const diasTrabalho = document.querySelectorAll('.dia-trabalho');
+        const jornadas = document.querySelectorAll('input[name="rep_jornada_tipo"]');
+
+        diasTrabalho.forEach(cb => {
+            cb.disabled = !!isAgencia;
+            if (isAgencia) cb.checked = false;
+        });
+
+        if (!isAgencia && !Array.from(diasTrabalho).some(cb => cb.checked)) {
+            const diasPadrao = ['seg', 'ter', 'qua', 'qui', 'sex'];
+            diasTrabalho.forEach(cb => {
+                cb.checked = diasPadrao.includes(cb.value);
+            });
+        }
+
+        jornadas.forEach(rd => {
+            rd.disabled = !!isAgencia;
+            if (isAgencia) rd.checked = false;
+        });
+
+        if (!isAgencia && !Array.from(jornadas).some(j => j.checked) && jornadas[0]) {
+            jornadas[0].checked = true;
+        }
+
+        if (cardJornada) {
+            cardJornada.classList.toggle('card-desabilitado', !!isAgencia);
+        }
+    }
+
+    aplicarNormalizacaoCadastroRepositor() {
+        const camposTexto = ['repo_nome', 'repo_cidade_ref'];
+
+        camposTexto.forEach(id => {
+            const campo = document.getElementById(id);
+            if (!campo) return;
+
+            const handler = () => {
+                campo.value = normalizarTextoCadastro(campo.value);
+            };
+
+            campo.removeEventListener('blur', campo._normalizacaoListener || (() => {}));
+            campo._normalizacaoListener = handler;
+            campo.addEventListener('blur', handler);
+
+            // Normaliza imediatamente para evitar salvar valores divergentes
+            campo.value = normalizarTextoCadastro(campo.value);
+        });
     }
 
     atualizarDadosRepresentante({ forcarSupervisor = false } = {}) {
@@ -553,6 +625,10 @@ class App {
                 return;
             }
 
+            if (repositor.repo_vinculo === 'agencia') {
+                this.showNotification('Agências não utilizam roteiro por dia da semana. Será exibido um aviso.', 'warning');
+            }
+
             this.contextoRoteiro = repositor;
             this.estadoRoteiro = {
                 diaSelecionado: null,
@@ -569,22 +645,42 @@ class App {
 
     // ==================== CONSULTA GERAL DE REPOSITORES ====================
 
-    async aplicarFiltrosConsultaRepositores() {
-        const supervisor = document.getElementById('filtro_supervisor_consulta')?.value || '';
-        const representante = document.getElementById('filtro_representante_consulta')?.value || '';
-        const repositor = document.getElementById('filtro_repositor_consulta')?.value || '';
+    async aplicarFiltrosCadastroRepositores() {
+        const supervisor = document.getElementById('filtro_supervisor_cadastro')?.value || '';
+        const representante = document.getElementById('filtro_representante_cadastro')?.value || '';
+        const repositor = document.getElementById('filtro_nome_repositor')?.value || '';
+        const vinculo = document.getElementById('filtro_vinculo_cadastro')?.value || '';
+        const cidadeRef = document.getElementById('filtro_cidade_ref_cadastro')?.value || '';
 
         try {
-            const repositores = await db.getRepositoresDetalhados({ supervisor, representante, repositor });
+            const filtros = { supervisor, representante, repositor, vinculo, cidadeRef, status: this.filtroStatusRepositores };
+            const repositores = await db.getRepositoresDetalhados(filtros);
             this.ultimaConsultaRepositores = repositores;
-            this.renderConsultaRepositores(repositores);
+            this.renderCadastroRepositores(repositores);
+            this.atualizarBotoesFiltroStatus();
         } catch (error) {
             this.showNotification('Erro ao consultar repositores: ' + error.message, 'error');
         }
     }
 
-    renderConsultaRepositores(repositores) {
-        const container = document.getElementById('consultaRepositoresResultado');
+    atualizarBotoesFiltroStatus() {
+        const botoes = document.querySelectorAll('.filtro-status-btn');
+        botoes.forEach(btn => {
+            const ativo = btn.dataset.status === this.filtroStatusRepositores;
+            btn.classList.toggle('active', ativo);
+        });
+    }
+
+    definirStatusFiltroRepositores(status) {
+        const valoresPermitidos = ['todos', 'ativos', 'inativos'];
+        if (!valoresPermitidos.includes(status)) return;
+
+        this.filtroStatusRepositores = status;
+        this.aplicarFiltrosCadastroRepositores();
+    }
+
+    renderCadastroRepositores(repositores) {
+        const container = document.getElementById('cadastroRepositoresResultado');
         if (!container) return;
 
         if (!repositores || repositores.length === 0) {
@@ -597,6 +693,8 @@ class App {
             return;
         }
 
+        const hoje = new Date();
+
         container.innerHTML = `
             <div class="table-container">
                 <table>
@@ -606,11 +704,11 @@ class App {
                             <th>Repositor</th>
                             <th>Supervisor</th>
                             <th>Representante</th>
+                            <th class="col-contato">Contato (Telefone)</th>
                             <th>Vínculo</th>
+                            <th>Status</th>
                             <th>Data Início</th>
-                            <th>Data Fim</th>
                             <th>Cidade Ref.</th>
-                            <th>Contato (Telefone)</th>
                             <th>Ações</th>
                         </tr>
                     </thead>
@@ -618,22 +716,27 @@ class App {
                         ${repositores.map((repo, index) => {
                             const representante = repo.representante;
                             const repLabel = representante ? `${representante.representante} - ${representante.desc_representante}` : `${repo.rep_representante_codigo || '-'}${repo.rep_representante_nome ? ' - ' + repo.rep_representante_nome : ''}`;
+                            const repositorAtivo = db.isRepositorAtivo(repo, hoje);
+                            const badgeStatus = repositorAtivo ? '<span class="badge badge-success">Ativo</span>' : '<span class="badge badge-gray">Inativo</span>';
+
+                            const classeLinha = repositorAtivo ? '' : 'row-inativo';
 
                             return `
-                                <tr>
+                                <tr class="${classeLinha}">
                                     <td>${repo.repo_cod}</td>
                                     <td>${repo.repo_nome}</td>
                                     <td>${repo.rep_supervisor || '-'}</td>
                                     <td>${repLabel || '-'}</td>
+                                    <td class="col-contato">${repo.rep_contato_telefone || '-'}</td>
                                     <td><span class="badge ${repo.repo_vinculo === 'agencia' ? 'badge-warning' : 'badge-info'}">${repo.repo_vinculo === 'agencia' ? 'Agência' : 'Repositor'}</span></td>
+                                    <td>${badgeStatus}</td>
                                     <td>${this.formatarDataSimples(repo.repo_data_inicio)}</td>
-                                    <td>${this.formatarDataSimples(repo.repo_data_fim)}</td>
                                     <td>${repo.repo_cidade_ref || '-'}</td>
-                                    <td>${repo.rep_contato_telefone || '-'}</td>
                                     <td class="table-actions">
                                         <button class="btn-icon" onclick="window.app.abrirDetalhesRepresentante(${index}, 'consulta')" title="Detalhes do Representante">👁️</button>
                                         <button class="btn-icon" onclick="window.app.abrirRoteiroRepositor(${repo.repo_cod})" title="Roteiro">🗺️</button>
                                         <button class="btn-icon" onclick="window.app.abrirCadastroRepositor(${repo.repo_cod})" title="Editar">✏️</button>
+                                        <button class="btn-icon" onclick="window.app.deleteRepositor(${repo.repo_cod})" title="Deletar">🗑️</button>
                                     </td>
                                 </tr>
                             `;
@@ -682,6 +785,10 @@ class App {
 
         if (!repositor) {
             this.showNotification('Selecione um repositor pela consulta para abrir o roteiro.', 'warning');
+            return;
+        }
+
+        if (repositor.repo_vinculo === 'agencia') {
             return;
         }
 
@@ -782,7 +889,8 @@ class App {
         }
 
         try {
-            const novoId = await db.adicionarCidadeRoteiro(this.contextoRoteiro.repo_cod, dia, cidade);
+            const usuario = this.usuarioLogado?.username || 'desconhecido';
+            const novoId = await db.adicionarCidadeRoteiro(this.contextoRoteiro.repo_cod, dia, cidade, usuario);
             this.estadoRoteiro.cidadeSelecionada = novoId;
             if (mensagem) mensagem.textContent = '';
             await this.carregarCidadesRoteiro();
@@ -877,7 +985,8 @@ class App {
         }
 
         try {
-            await db.removerCidadeRoteiro(rotCidId);
+            const usuario = this.usuarioLogado?.username || 'desconhecido';
+            await db.removerCidadeRoteiro(rotCidId, usuario);
             if (this.estadoRoteiro.cidadeSelecionada === rotCidId) {
                 this.estadoRoteiro.cidadeSelecionada = null;
             }
@@ -889,7 +998,8 @@ class App {
     }
 
     async atualizarOrdemCidade(rotCidId, ordem) {
-        await db.atualizarOrdemCidade(rotCidId, ordem);
+        const usuario = this.usuarioLogado?.username || 'desconhecido';
+        await db.atualizarOrdemCidade(rotCidId, ordem, usuario);
     }
 
     async carregarClientesRoteiro() {
@@ -965,10 +1075,11 @@ class App {
 
     async alternarClienteRoteiro(rotCidId, clienteCodigo, selecionado) {
         try {
+            const usuario = this.usuarioLogado?.username || 'desconhecido';
             if (selecionado) {
-                await db.adicionarClienteRoteiro(rotCidId, clienteCodigo);
+                await db.adicionarClienteRoteiro(rotCidId, clienteCodigo, usuario);
             } else {
-                await db.removerClienteRoteiro(rotCidId, clienteCodigo);
+                await db.removerClienteRoteiro(rotCidId, clienteCodigo, usuario);
             }
         } catch (error) {
             this.showNotification(error.message || 'Erro ao atualizar cliente no roteiro.', 'error');
@@ -1088,14 +1199,16 @@ class App {
             }
 
             // Marcar dias trabalhados
-            const dias = (repositor.dias_trabalhados || 'seg,ter,qua,qui,sex').split(',');
+            const dias = repositor.repo_vinculo === 'agencia'
+                ? []
+                : (repositor.dias_trabalhados || 'seg,ter,qua,qui,sex').split(',');
             document.querySelectorAll('.dia-trabalho').forEach(checkbox => {
                 checkbox.checked = dias.includes(checkbox.value);
             });
 
             // Marcar jornada
-            const jornada = repositor.rep_jornada_tipo || repositor.jornada?.toUpperCase() || 'INTEGRAL';
-            const campoJornada = document.querySelector(`input[name="rep_jornada_tipo"][value="${jornada}"]`) || document.querySelector('input[name="rep_jornada_tipo"][value="INTEGRAL"]');
+            const jornada = repositor.repo_vinculo === 'agencia' ? null : (repositor.rep_jornada_tipo || repositor.jornada?.toUpperCase() || 'INTEGRAL');
+            const campoJornada = jornada ? (document.querySelector(`input[name="rep_jornada_tipo"][value="${jornada}"]`) || document.querySelector('input[name="rep_jornada_tipo"][value="INTEGRAL"]')) : null;
             if (campoJornada) campoJornada.checked = true;
 
             this.configurarEventosRepositor();
@@ -1123,9 +1236,9 @@ class App {
     // ==================== CONSULTA DE ALTERAÇÕES ====================
 
     async aplicarFiltrosHistorico() {
-        const motivo = document.getElementById('filtro_motivo').value || null;
-        const dataInicio = document.getElementById('filtro_data_inicio').value || null;
-        const dataFim = document.getElementById('filtro_data_fim').value || null;
+        const motivo = document.getElementById('filtro_motivo_cadastro')?.value || null;
+        const dataInicio = document.getElementById('filtro_data_inicio_cadastro')?.value || null;
+        const dataFim = document.getElementById('filtro_data_fim_cadastro')?.value || null;
 
         try {
             const historico = await db.getHistoricoComFiltros(motivo, dataInicio, dataFim);
@@ -1177,6 +1290,102 @@ class App {
         } catch (error) {
             this.showNotification('Erro ao buscar histórico: ' + error.message, 'error');
         }
+    }
+
+    async aplicarFiltrosAuditoriaRoteiro() {
+        const repositorId = document.getElementById('filtro_repositor_roteiro')?.value || null;
+        const diaSemana = document.getElementById('filtro_dia_roteiro')?.value || '';
+        const cidade = document.getElementById('filtro_cidade_roteiro')?.value || '';
+        const dataInicioRaw = document.getElementById('filtro_data_inicio_roteiro')?.value || '';
+        const dataFimRaw = document.getElementById('filtro_data_fim_roteiro')?.value || '';
+
+        const dataInicio = dataInicioRaw ? dataInicioRaw.replace('T', ' ') : null;
+        const dataFim = dataFimRaw ? dataFimRaw.replace('T', ' ') : null;
+
+        try {
+            const auditoria = await db.getAuditoriaRoteiro({
+                repositorId: repositorId ? Number(repositorId) : null,
+                diaSemana,
+                cidade,
+                dataInicio,
+                dataFim
+            });
+            this.renderAuditoriaRoteiro(auditoria);
+        } catch (error) {
+            this.showNotification('Erro ao consultar alterações de roteiro: ' + error.message, 'error');
+        }
+    }
+
+    renderAuditoriaRoteiro(registros) {
+        const container = document.getElementById('resultadosAuditoriaRoteiro');
+        if (!container) return;
+
+        if (!registros || registros.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">🔍</div>
+                    <p>Nenhuma alteração de roteiro encontrada com os filtros selecionados</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Data/Hora</th>
+                            <th>Usuário</th>
+                            <th>Repositor</th>
+                            <th>Dia</th>
+                            <th>Cidade</th>
+                            <th>Cliente</th>
+                            <th>Ação</th>
+                            <th>Detalhes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${registros.map(item => {
+                            const dataFormatada = item.rot_aud_data_hora ? new Date(item.rot_aud_data_hora).toLocaleString('pt-BR') : '-';
+                            return `
+                                <tr>
+                                    <td>${dataFormatada}</td>
+                                    <td>${item.rot_aud_usuario || '-'}</td>
+                                    <td>${item.repo_nome ? `${item.rot_aud_repositor_id} - ${item.repo_nome}` : item.rot_aud_repositor_id}</td>
+                                    <td>${item.rot_aud_dia_semana || '-'}</td>
+                                    <td>${item.rot_aud_cidade || '-'}</td>
+                                    <td>${item.rot_aud_cliente_codigo || '-'}</td>
+                                    <td><span class="badge badge-info">${item.rot_aud_acao}</span></td>
+                                    <td>${item.rot_aud_detalhes || '-'}</td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+                <p style="margin-top: 1rem; color: var(--gray-600); font-size: 0.9rem;">
+                    Total de alterações: ${registros.length}
+                </p>
+            </div>
+        `;
+    }
+
+    inicializarConsultaAlteracoes() {
+        const botoes = document.querySelectorAll('.tab-button');
+        botoes.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const alvo = btn.dataset.target;
+                document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+
+                btn.classList.add('active');
+                const pane = document.getElementById(alvo);
+                if (pane) pane.classList.add('active');
+            });
+        });
+
+        this.aplicarFiltrosHistorico();
+        this.aplicarFiltrosAuditoriaRoteiro();
     }
 
     // ==================== ESTRUTURA DO BANCO ====================

@@ -33,6 +33,21 @@ export function formatarDataHora(dataString) {
 }
 
 /**
+ * Normaliza texto digitado pelo usuário para cadastros:
+ * - Converte para caixa alta
+ * - Remove acentuação
+ */
+export function normalizarTextoCadastro(valor) {
+    if (!valor) return '';
+
+    const semAcento = valor
+        .normalize('NFD')
+        .replace(/\p{Diacritic}/gu, '');
+
+    return semAcento.toUpperCase();
+}
+
+/**
  * Valida se todos os campos obrigatórios estão preenchidos
  */
 export function validarCamposObrigatorios(campos) {

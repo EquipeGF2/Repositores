@@ -10,10 +10,10 @@ export const pages = {
     // ==================== CADASTROS ====================
 
     'cadastro-repositor': async () => {
-        const [repositores, supervisores, representantes] = await Promise.all([
-            db.getAllRepositors(),
+        const [supervisores, representantes, cidadesReferencia] = await Promise.all([
             db.getSupervisoresComercial(),
-            db.getRepresentantesComercial()
+            db.getRepresentantesComercial(),
+            db.getCidadesReferencia()
         ]);
 
         const supervisorOptions = supervisores.map(sup => `<option value="${sup}">${sup}</option>`).join('');
@@ -23,10 +23,7 @@ export const pages = {
             </option>
         `).join('');
 
-        const telefonePorRepresentante = representantes.reduce((mapa, rep) => {
-            mapa[rep.representante] = rep.rep_fone || '';
-            return mapa;
-        }, {});
+        const cidadesRefOptions = cidadesReferencia.map(cidade => `<option value="${cidade}"></option>`).join('');
 
         return `
             <div class="card">
@@ -37,51 +34,54 @@ export const pages = {
                     </button>
                 </div>
                 <div class="card-body">
-                    ${repositores.length === 0 ? `
+                    <div class="filter-bar filter-bar-wide">
+                        <div class="filter-group">
+                            <label for="filtro_supervisor_cadastro">Supervisor</label>
+                            <select id="filtro_supervisor_cadastro" onchange="window.app.aplicarFiltrosCadastroRepositores()">
+                                <option value="">Todos</option>
+                                ${supervisorOptions}
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filtro_representante_cadastro">Representante</label>
+                            <select id="filtro_representante_cadastro" onchange="window.app.aplicarFiltrosCadastroRepositores()">
+                                <option value="">Todos</option>
+                                ${representanteOptions}
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filtro_vinculo_cadastro">Vínculo</label>
+                            <select id="filtro_vinculo_cadastro" onchange="window.app.aplicarFiltrosCadastroRepositores()">
+                                <option value="">Todos</option>
+                                <option value="repositor">Repositor</option>
+                                <option value="agencia">Agência</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filtro_cidade_ref_cadastro">Cidade Referência</label>
+                            <input type="text" list="lista_cidades_ref" id="filtro_cidade_ref_cadastro" placeholder="Ex: PORTO ALEGRE" onblur="window.app.aplicarFiltrosCadastroRepositores()">
+                            <datalist id="lista_cidades_ref">${cidadesRefOptions}</datalist>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filtro_nome_repositor">Nome do Repositor</label>
+                            <input type="text" id="filtro_nome_repositor" placeholder="Nome ou código" onblur="window.app.aplicarFiltrosCadastroRepositores()" onkeyup="window.app.aplicarFiltrosCadastroRepositores()">
+                        </div>
+                        <div class="filter-group">
+                            <label>Status</label>
+                            <div class="status-toggle-group">
+                                <button type="button" class="btn filtro-status-btn" data-status="todos" onclick="window.app.definirStatusFiltroRepositores('todos')">Todos</button>
+                                <button type="button" class="btn filtro-status-btn" data-status="ativos" onclick="window.app.definirStatusFiltroRepositores('ativos')">Ativos</button>
+                                <button type="button" class="btn filtro-status-btn" data-status="inativos" onclick="window.app.definirStatusFiltroRepositores('inativos')">Inativos</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="cadastroRepositoresResultado">
                         <div class="empty-state">
-                            <div class="empty-state-icon">👤</div>
-                            <p>Nenhum repositor cadastrado</p>
-                            <small>Clique em "Novo Repositor" para começar</small>
+                            <div class="empty-state-icon">📑</div>
+                            <p>Use os filtros para consultar os repositores</p>
                         </div>
-                    ` : `
-                        <div class="table-container">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Código</th>
-                                        <th>Nome</th>
-                                        <th>Supervisor</th>
-                                        <th>Representante</th>
-                                        <th>Contato</th>
-                                        <th>Vínculo</th>
-                                        <th>Data Início</th>
-                                        <th>Data Fim</th>
-                                        <th>Cidade Ref.</th>
-                                        <th>Ações</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${repositores.map(repo => `
-                                        <tr>
-                                            <td>${repo.repo_cod}</td>
-                                            <td>${repo.repo_nome}</td>
-                                            <td>${repo.rep_supervisor || '-'}</td>
-                                            <td>${repo.rep_representante_codigo ? repo.rep_representante_codigo + ' - ' + (repo.rep_representante_nome || '') : '-'}</td>
-                                            <td>${telefonePorRepresentante[repo.rep_representante_codigo] || repo.rep_contato_telefone || '-'}</td>
-                                            <td><span class="badge ${repo.repo_vinculo === 'agencia' ? 'badge-warning' : 'badge-info'}">${repo.repo_vinculo === 'agencia' ? 'Agência' : 'Repositor'}</span></td>
-                                            <td>${formatarData(repo.repo_data_inicio)}</td>
-                                            <td>${formatarData(repo.repo_data_fim)}</td>
-                                            <td>${repo.repo_cidade_ref || '-'}</td>
-                                            <td class="table-actions">
-                                                <button class="btn-icon" onclick="window.app.editRepositor(${repo.repo_cod})" title="Editar">✏️</button>
-                                                <button class="btn-icon" onclick="window.app.deleteRepositor(${repo.repo_cod})" title="Deletar">🗑️</button>
-                                            </td>
-                                        </tr>
-                                    `).join('')}
-                                </tbody>
-                            </table>
-                        </div>
-                    `}
+                    </div>
                 </div>
             </div>
 
@@ -141,7 +141,7 @@ export const pages = {
                                     </div>
                                 </section>
 
-                                <section class="form-card">
+                                <section class="form-card" id="cardJornadaTrabalho">
                                     <div class="form-card-header">
                                         <p class="form-card-eyebrow">Rotina</p>
                                         <h4>Jornada de Trabalho</h4>
@@ -239,98 +239,129 @@ export const pages = {
         `;
     },
 
-    'consulta-repositores': async () => {
-        const [supervisores, representantes] = await Promise.all([
-            db.getSupervisoresComercial(),
-            db.getRepresentantesComercial()
-        ]);
+    'roteiro-repositor': async () => {
+        const contexto = window.app?.contextoRoteiro;
 
-        const supervisorOptions = supervisores.map(sup => `<option value="${sup}">${sup}</option>`).join('');
-        const representanteOptions = representantes.map(rep => `
-            <option value="${rep.representante}">${rep.representante} - ${rep.desc_representante}</option>
-        `).join('');
+        if (!contexto) {
+            return `
+                <div class="card">
+                    <div class="card-body">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">ℹ️</div>
+                            <p>Nenhum repositor selecionado.</p>
+                            <small>Volte à consulta de repositores e escolha um repositor para configurar o roteiro.</small>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        const repositor = contexto;
+
+        if (repositor.repo_vinculo === 'agencia') {
+            return `
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Roteirização não disponível para agências</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">🏢</div>
+                            <p>${repositor.repo_nome} está cadastrado como agência.</p>
+                            <small>O modelo atual de roteiro por jornada se aplica apenas a repositores individuais.</small>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
 
         return `
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Consulta Geral de Repositores</h3>
+            <div class="roteiro-header">
+                <div>
+                    <p class="form-card-eyebrow">Roteiro do Repositor</p>
+                    <h3>${repositor.repo_nome}</h3>
+                    <p class="text-muted">Configure os dias, cidades e clientes atendidos.</p>
                 </div>
-                <div class="card-body">
-                    <div class="filter-bar">
-                        <div class="filter-group">
-                            <label for="filtro_supervisor_consulta">Supervisor</label>
-                            <select id="filtro_supervisor_consulta">
-                                <option value="">Todos</option>
-                                ${supervisorOptions}
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label for="filtro_representante_consulta">Representante</label>
-                            <select id="filtro_representante_consulta">
-                                <option value="">Todos</option>
-                                ${representanteOptions}
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label for="filtro_repositor_consulta">Repositor</label>
-                            <input type="text" id="filtro_repositor_consulta" placeholder="Nome ou código">
-                        </div>
-                        <div class="filter-group">
-                            <label>&nbsp;</label>
-                            <button class="btn btn-primary" onclick="window.app.aplicarFiltrosConsultaRepositores()">🔍 Buscar</button>
-                        </div>
-                    </div>
-
-                    <div id="consultaRepositoresResultado">
-                        <div class="empty-state">
-                            <div class="empty-state-icon">📑</div>
-                            <p>Use os filtros para consultar os repositores</p>
-                        </div>
-                    </div>
+                <div class="roteiro-badges">
+                    <span class="badge badge-info">Código ${repositor.repo_cod}</span>
+                    <span class="badge">${repositor.repo_vinculo === 'agencia' ? 'Agência' : 'Repositor'}</span>
                 </div>
             </div>
 
-            <div class="modal modal-representante" id="modalRepresentanteDetalhes">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h3>Detalhes do Representante</h3>
-                        <button class="modal-close" onclick="window.app.fecharDetalhesRepresentante()">&times;</button>
-                    </div>
-                    <div class="modal-body modal-body-representante">
-                        <div class="representante-detalhes">
-                            <p class="rep-nome"><strong id="repNomeLabel">-</strong></p>
-                            <div class="info-grid representante-info-grid">
-                                <div>
-                                    <small>Supervisor</small>
-                                    <div id="repSupervisor">-</div>
-                                </div>
-                                <div>
-                                    <small>Endereço</small>
-                                    <div id="repEndereco">-</div>
-                                </div>
-                                <div>
-                                    <small>Bairro</small>
-                                    <div id="repBairro">-</div>
-                                </div>
-                                <div>
-                                    <small>Cidade</small>
-                                    <div id="repCidade">-</div>
-                                </div>
-                                <div>
-                                    <small>Estado</small>
-                                    <div id="repEstado">-</div>
-                                </div>
-                                <div>
-                                    <small>Telefone</small>
-                                    <div id="repFone">-</div>
-                                </div>
-                                <div>
-                                    <small>E-mail</small>
-                                    <div id="repEmail">-</div>
-                                </div>
+            <div class="roteiro-detalhes-grid">
+                <div class="roteiro-detalhe">
+                    <small>Supervisor</small>
+                    <strong id="roteiroSupervisor">${repositor.rep_supervisor || '-'}</strong>
+                </div>
+                <div class="roteiro-detalhe">
+                    <small>Representante</small>
+                    <strong id="roteiroRepresentante">${repositor.rep_representante_nome || repositor.rep_representante_codigo || '-'}</strong>
+                </div>
+                <div class="roteiro-detalhe">
+                    <small>Cidade referência</small>
+                    <strong id="roteiroCidadeRef">${repositor.repo_cidade_ref || '-'}</strong>
+                </div>
+                <div class="roteiro-detalhe">
+                    <small>Jornada</small>
+                    <strong>${(repositor.rep_jornada_tipo || 'INTEGRAL').replace('_', ' ')}</strong>
+                </div>
+            </div>
+
+            <div class="roteiro-layout">
+                <div class="roteiro-coluna">
+                    <section class="card">
+                        <div class="card-header">
+                            <div>
+                                <p class="form-card-eyebrow">Dia de Trabalho</p>
+                                <h4>Selecione um dia</h4>
                             </div>
                         </div>
-                    </div>
+                        <div class="card-body">
+                            <div id="roteiroDiasContainer" class="dia-trabalho-chips"></div>
+                            <div id="roteiroDiaMensagem" class="roteiro-hint"></div>
+                        </div>
+                    </section>
+
+                    <section class="card">
+                        <div class="card-header">
+                            <div>
+                                <p class="form-card-eyebrow">Cidades atendidas</p>
+                                <h4>Cidades no dia selecionado</h4>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-row">
+                                <div class="form-group" style="flex:1">
+                                    <label for="roteiroCidadeSelect">Cidade</label>
+                                    <select id="roteiroCidadeSelect"></select>
+                                </div>
+                                <div class="form-group compact-checkbox" style="align-self: flex-end;">
+                                    <button class="btn btn-primary" id="btnAdicionarCidade">+ Adicionar cidade</button>
+                                </div>
+                            </div>
+
+                            <div id="roteiroCidadesMensagem" class="roteiro-hint"></div>
+                            <div class="table-container" id="roteiroCidadesTabela"></div>
+                        </div>
+                    </section>
+                </div>
+
+                <div class="roteiro-coluna">
+                    <section class="card">
+                        <div class="card-header">
+                            <div>
+                                <p class="form-card-eyebrow">Clientes</p>
+                                <h4>Clientes da cidade selecionada</h4>
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <input type="text" id="roteiroBuscaCliente" placeholder="Buscar por nome, fantasia ou código" />
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div id="roteiroClientesMensagem" class="roteiro-hint"></div>
+                            <div class="table-container" id="roteiroClientesTabela"></div>
+                        </div>
+                    </section>
                 </div>
             </div>
         `;
@@ -651,7 +682,19 @@ export const pages = {
     },
 
     'consulta-alteracoes': async () => {
-        const motivos = await db.getMotivosAlteracao();
+        const [motivos, repositores, cidadesRoteiro] = await Promise.all([
+            db.getMotivosAlteracao(),
+            db.getAllRepositors(),
+            db.getCidadesRoteiroDistintas()
+        ]);
+
+        const repositorOptions = repositores.map(repo => `
+            <option value="${repo.repo_cod}">${repo.repo_cod} - ${repo.repo_nome}</option>
+        `).join('');
+
+        const cidadesRoteiroOptions = cidadesRoteiro.map(cidade => `<option value="${cidade}"></option>`).join('');
+
+        const diasSemana = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SAB', 'DOM'];
 
         return `
             <div class="card">
@@ -659,39 +702,89 @@ export const pages = {
                     <h3 class="card-title">Consulta de Alterações</h3>
                 </div>
                 <div class="card-body">
-                    <div class="filter-bar">
-                        <div class="filter-group">
-                            <label for="filtro_motivo">Tipo de Alteração:</label>
-                            <select id="filtro_motivo">
-                                <option value="">Todos</option>
-                                ${motivos.map(m => `
-                                    <option value="${m.mot_descricao}">${m.mot_descricao}</option>
-                                `).join('')}
-                            </select>
+                    <div class="tab-switcher">
+                        <button class="tab-button active" data-target="aba-cadastro">Alterações de Cadastro</button>
+                        <button class="tab-button" data-target="aba-roteiro">Alterações de Roteiro</button>
+                    </div>
+
+                    <div id="aba-cadastro" class="tab-pane active">
+                        <div class="filter-bar">
+                            <div class="filter-group">
+                                <label for="filtro_motivo_cadastro">Tipo de Alteração:</label>
+                                <select id="filtro_motivo_cadastro">
+                                    <option value="">Todos</option>
+                                    ${motivos.map(m => `
+                                        <option value="${m.mot_descricao}">${m.mot_descricao}</option>
+                                    `).join('')}
+                                </select>
+                            </div>
+
+                            <div class="filter-group">
+                                <label for="filtro_data_inicio_cadastro">Data Início:</label>
+                                <input type="date" id="filtro_data_inicio_cadastro">
+                            </div>
+
+                            <div class="filter-group">
+                                <label for="filtro_data_fim_cadastro">Data Fim:</label>
+                                <input type="date" id="filtro_data_fim_cadastro">
+                            </div>
+
+                            <div class="filter-group">
+                                <label>&nbsp;</label>
+                                <button class="btn btn-primary" onclick="window.app.aplicarFiltrosHistorico()">
+                                    🔍 Buscar
+                                </button>
+                            </div>
                         </div>
 
-                        <div class="filter-group">
-                            <label for="filtro_data_inicio">Data Início:</label>
-                            <input type="date" id="filtro_data_inicio">
-                        </div>
-
-                        <div class="filter-group">
-                            <label for="filtro_data_fim">Data Fim:</label>
-                            <input type="date" id="filtro_data_fim">
-                        </div>
-
-                        <div class="filter-group">
-                            <label>&nbsp;</label>
-                            <button class="btn btn-primary" onclick="window.app.aplicarFiltrosHistorico()">
-                                🔍 Buscar
-                            </button>
+                        <div id="resultadosHistorico">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">📋</div>
+                                <p>Selecione os filtros e clique em "Buscar" para consultar as alterações</p>
+                            </div>
                         </div>
                     </div>
 
-                    <div id="resultadosHistorico">
-                        <div class="empty-state">
-                            <div class="empty-state-icon">📋</div>
-                            <p>Selecione os filtros e clique em "Buscar" para consultar as alterações</p>
+                    <div id="aba-roteiro" class="tab-pane">
+                        <div class="filter-bar filter-bar-wide">
+                            <div class="filter-group">
+                                <label for="filtro_repositor_roteiro">Repositor</label>
+                                <select id="filtro_repositor_roteiro">
+                                    <option value="">Todos</option>
+                                    ${repositorOptions}
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="filtro_dia_roteiro">Dia da semana</label>
+                                <select id="filtro_dia_roteiro">
+                                    <option value="">Todos</option>
+                                    ${diasSemana.map(dia => `<option value="${dia}">${dia}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="filtro_cidade_roteiro">Cidade</label>
+                                <input type="text" id="filtro_cidade_roteiro" list="lista_cidades_roteiro" placeholder="Cidade" />
+                                <datalist id="lista_cidades_roteiro">${cidadesRoteiroOptions}</datalist>
+                            </div>
+                            <div class="filter-group">
+                                <label for="filtro_data_inicio_roteiro">Data/Hora Início</label>
+                                <input type="datetime-local" id="filtro_data_inicio_roteiro">
+                            </div>
+                            <div class="filter-group">
+                                <label for="filtro_data_fim_roteiro">Data/Hora Fim</label>
+                                <input type="datetime-local" id="filtro_data_fim_roteiro">
+                            </div>
+                            <div class="filter-group">
+                                <label>&nbsp;</label>
+                                <button class="btn btn-primary" onclick="window.app.aplicarFiltrosAuditoriaRoteiro()">🔍 Buscar</button>
+                            </div>
+                        </div>
+
+                        <div id="resultadosAuditoriaRoteiro">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">🗺️</div>
+                                <p>Use os filtros acima para consultar as alterações de roteiro.</p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -800,7 +893,6 @@ export const pages = {
 // Mapeamento de títulos das páginas
 export const pageTitles = {
     'cadastro-repositor': 'Cadastro de Repositores',
-    'consulta-repositores': 'Consulta de Repositores',
     'validacao-dados': 'Validação de Dados',
     'resumo-periodo': 'Resumo do Período',
     'resumo-mensal': 'Resumo Mensal',

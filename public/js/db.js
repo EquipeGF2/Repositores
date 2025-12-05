@@ -5,6 +5,7 @@
 
 import { TURSO_CONFIG } from './turso-config.js';
 import { createClient } from 'https://esm.sh/@libsql/client@0.6.0/web';
+import { normalizarTextoCadastro } from './utils.js';
 
 class TursoDatabase {
     constructor() {
@@ -344,7 +345,21 @@ class TursoDatabase {
                     rot_criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
                     rot_atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
                     CONSTRAINT fk_rot_cidade FOREIGN KEY (rot_cid_id) REFERENCES rot_roteiro_cidade(rot_cid_id),
-                    CONSTRAINT uniq_rot_cliente UNIQUE (rot_cid_id, rot_cliente_codigo)
+                CONSTRAINT uniq_rot_cliente UNIQUE (rot_cid_id, rot_cliente_codigo)
+            )
+        `);
+
+            await this.mainClient.execute(`
+                CREATE TABLE IF NOT EXISTS rot_roteiro_auditoria (
+                    rot_aud_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    rot_aud_data_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    rot_aud_usuario TEXT,
+                    rot_aud_repositor_id INTEGER NOT NULL,
+                    rot_aud_dia_semana TEXT,
+                    rot_aud_cidade TEXT,
+                    rot_aud_cliente_codigo TEXT,
+                    rot_aud_acao TEXT NOT NULL,
+                    rot_aud_detalhes TEXT
                 )
             `);
         } catch (error) {
@@ -502,11 +517,87 @@ class TursoDatabase {
         }
     }
 
+    async getAuditoriaRoteiro({ repositorId = null, diaSemana = '', cidade = '', dataInicio = null, dataFim = null } = {}) {
+        try {
+            let sql = `
+                SELECT a.*, r.repo_nome
+                FROM rot_roteiro_auditoria a
+                LEFT JOIN cad_repositor r ON r.repo_cod = a.rot_aud_repositor_id
+                WHERE 1=1
+            `;
+            const args = [];
+
+            if (repositorId) {
+                sql += ' AND a.rot_aud_repositor_id = ?';
+                args.push(repositorId);
+            }
+
+            if (diaSemana) {
+                sql += ' AND a.rot_aud_dia_semana = ?';
+                args.push(diaSemana);
+            }
+
+            if (cidade) {
+                sql += ' AND a.rot_aud_cidade LIKE ?';
+                args.push(`%${cidade}%`);
+            }
+
+            if (dataInicio) {
+                sql += ' AND datetime(a.rot_aud_data_hora) >= datetime(?)';
+                args.push(dataInicio);
+            }
+
+            if (dataFim) {
+                sql += ' AND datetime(a.rot_aud_data_hora) <= datetime(?)';
+                args.push(dataFim);
+            }
+
+            sql += ' ORDER BY a.rot_aud_data_hora DESC';
+
+            const resultado = await this.mainClient.execute({ sql, args });
+            return resultado.rows;
+        } catch (error) {
+            console.error('Erro ao consultar auditoria de roteiro:', error);
+            return [];
+        }
+    }
+
     // ==================== REPOSITOR ====================
+    async nomeRepositorJaExiste(nome, ignorarCod = null) {
+        const nomeNormalizado = normalizarTextoCadastro(nome);
+
+        const resultado = await this.mainClient.execute({
+            sql: 'SELECT repo_cod, repo_nome FROM cad_repositor',
+            args: []
+        });
+
+        return resultado.rows.some(row => {
+            const nomeBase = normalizarTextoCadastro(row.repo_nome || '');
+            const mesmoNome = nomeBase === nomeNormalizado;
+            const mesmoRegistro = ignorarCod ? Number(row.repo_cod) === Number(ignorarCod) : false;
+            return mesmoNome && !mesmoRegistro;
+        });
+    }
+
     async createRepositor(nome, dataInicio, dataFim, cidadeRef, repCodigo, repNome, vinculo = 'repositor', repSupervisor = null, diasTrabalhados = 'seg,ter,qua,qui,sex', repJornadaTipo = 'INTEGRAL') {
         try {
-            const jornadaNormalizada = repJornadaTipo || 'INTEGRAL';
-            const jornadaLegada = jornadaNormalizada.toLowerCase();
+            const nomeNormalizado = normalizarTextoCadastro(nome);
+            const cidadeNormalizada = normalizarTextoCadastro(cidadeRef);
+            const jornadaNormalizada = vinculo === 'agencia' ? null : (repJornadaTipo || 'INTEGRAL');
+            const jornadaLegada = jornadaNormalizada ? jornadaNormalizada.toLowerCase() : null;
+            const diasParaGravar = vinculo === 'agencia' ? null : (diasTrabalhados || 'seg,ter,qua,qui,sex');
+
+            const nomeDuplicado = await this.nomeRepositorJaExiste(nomeNormalizado);
+            if (nomeDuplicado) {
+                throw new Error('Já existe um repositor cadastrado com este nome.');
+            }
+
+            if (vinculo !== 'agencia') {
+                const diasSelecionados = (diasTrabalhados || '').split(',').map(d => d.trim()).filter(Boolean);
+                if (diasSelecionados.length === 0) {
+                    throw new Error('Selecione pelo menos um dia de trabalho para o repositor.');
+                }
+            }
 
             const result = await this.mainClient.execute({
                 sql: `INSERT INTO cad_repositor (
@@ -516,12 +607,12 @@ class TursoDatabase {
                         rep_supervisor, rep_representante_codigo, rep_representante_nome
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
                 args: [
-                    nome, dataInicio, dataFim,
-                    cidadeRef,
+                    nomeNormalizado, dataInicio, dataFim,
+                    cidadeNormalizada,
                     `${repCodigo || ''}${repNome ? ' - ' + repNome : ''}`.trim(),
                     null,
                     vinculo,
-                    diasTrabalhados, jornadaLegada, jornadaNormalizada,
+                    diasParaGravar, jornadaLegada, jornadaNormalizada,
                     repSupervisor, repCodigo, repNome
                 ]
             });
@@ -547,6 +638,21 @@ class TursoDatabase {
         }
     }
 
+    async getCidadesReferencia() {
+        try {
+            const result = await this.mainClient.execute(`
+                SELECT DISTINCT repo_cidade_ref
+                FROM cad_repositor
+                WHERE repo_cidade_ref IS NOT NULL AND repo_cidade_ref <> ''
+                ORDER BY repo_cidade_ref
+            `);
+            return result.rows.map(row => row.repo_cidade_ref);
+        } catch (error) {
+            console.error('Erro ao buscar cidades de referência:', error);
+            return [];
+        }
+    }
+
     async getRepositor(cod) {
         try {
             const result = await this.mainClient.execute({
@@ -565,8 +671,23 @@ class TursoDatabase {
             // Buscar dados antigos para comparação
             const dadosAntigos = await this.getRepositor(cod);
 
-            const jornadaNormalizada = repJornadaTipo || 'INTEGRAL';
-            const jornadaLegada = jornadaNormalizada.toLowerCase();
+            const nomeNormalizado = normalizarTextoCadastro(nome);
+            const cidadeNormalizada = normalizarTextoCadastro(cidadeRef);
+            const jornadaNormalizada = vinculo === 'agencia' ? null : (repJornadaTipo || 'INTEGRAL');
+            const jornadaLegada = jornadaNormalizada ? jornadaNormalizada.toLowerCase() : null;
+            const diasParaGravar = vinculo === 'agencia' ? null : (diasTrabalhados || 'seg,ter,qua,qui,sex');
+
+            const nomeDuplicado = await this.nomeRepositorJaExiste(nomeNormalizado, cod);
+            if (nomeDuplicado) {
+                throw new Error('Já existe um repositor cadastrado com este nome.');
+            }
+
+            if (vinculo !== 'agencia') {
+                const diasSelecionados = (diasTrabalhados || '').split(',').map(d => d.trim()).filter(Boolean);
+                if (diasSelecionados.length === 0) {
+                    throw new Error('Selecione pelo menos um dia de trabalho para o repositor.');
+                }
+            }
 
             // Atualizar o registro
             await this.mainClient.execute({
@@ -578,12 +699,12 @@ class TursoDatabase {
                           updated_at = CURRENT_TIMESTAMP
                       WHERE repo_cod = ?`,
                 args: [
-                    nome, dataInicio, dataFim,
-                    cidadeRef,
+                    nomeNormalizado, dataInicio, dataFim,
+                    cidadeNormalizada,
                     `${repCodigo || ''}${repNome ? ' - ' + repNome : ''}`.trim(),
                     null,
                     vinculo,
-                    diasTrabalhados, jornadaLegada, jornadaNormalizada,
+                    diasParaGravar, jornadaLegada, jornadaNormalizada,
                     repSupervisor, repCodigo, repNome,
                     cod
                 ]
@@ -661,6 +782,7 @@ class TursoDatabase {
     }
 
     obterDiasTrabalho(repo) {
+        if (repo?.repo_vinculo === 'agencia') return [];
         const dias = (repo?.dias_trabalhados || '')
             .split(',')
             .map(d => d.trim())
@@ -683,6 +805,21 @@ class TursoDatabase {
             return result.rows.map(row => row.cidade);
         } catch (error) {
             console.error('Erro ao buscar cidades potenciais:', error);
+            return [];
+        }
+    }
+
+    async getCidadesRoteiroDistintas() {
+        try {
+            const resultado = await this.mainClient.execute(`
+                SELECT DISTINCT rot_cidade
+                FROM rot_roteiro_cidade
+                WHERE rot_cidade IS NOT NULL AND rot_cidade <> ''
+                ORDER BY rot_cidade
+            `);
+            return resultado.rows.map(row => row.rot_cidade);
+        } catch (error) {
+            console.error('Erro ao buscar cidades distintas do roteiro:', error);
             return [];
         }
     }
@@ -714,6 +851,37 @@ class TursoDatabase {
         }
     }
 
+    async getRoteiroCidadePorId(rotCidId) {
+        try {
+            const resultado = await this.mainClient.execute({
+                sql: 'SELECT * FROM rot_roteiro_cidade WHERE rot_cid_id = ?',
+                args: [rotCidId]
+            });
+            return resultado.rows[0] || null;
+        } catch (error) {
+            console.error('Erro ao buscar cidade do roteiro pelo ID:', error);
+            return null;
+        }
+    }
+
+    async registrarAuditoriaRoteiro({ usuario = '', repositorId, diaSemana = null, cidade = null, clienteCodigo = null, acao, detalhes = '' }) {
+        if (!repositorId || !acao) return;
+
+        try {
+            await this.mainClient.execute({
+                sql: `
+                    INSERT INTO rot_roteiro_auditoria (
+                        rot_aud_usuario, rot_aud_repositor_id, rot_aud_dia_semana,
+                        rot_aud_cidade, rot_aud_cliente_codigo, rot_aud_acao, rot_aud_detalhes
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                `,
+                args: [usuario || 'desconhecido', repositorId, diaSemana, cidade, clienteCodigo, acao, detalhes]
+            });
+        } catch (error) {
+            console.error('Erro ao registrar auditoria de roteiro:', error);
+        }
+    }
+
     async getRoteiroCidades(repositorId, diaSemana) {
         if (!repositorId || !diaSemana) return [];
         try {
@@ -733,7 +901,7 @@ class TursoDatabase {
         }
     }
 
-    async adicionarCidadeRoteiro(repositorId, diaSemana, cidade) {
+    async adicionarCidadeRoteiro(repositorId, diaSemana, cidade, usuario = '') {
         try {
             const result = await this.mainClient.execute({
                 sql: `
@@ -741,6 +909,15 @@ class TursoDatabase {
                     VALUES (?, ?, ?)
                 `,
                 args: [repositorId, diaSemana, cidade]
+            });
+
+            await this.registrarAuditoriaRoteiro({
+                usuario,
+                repositorId,
+                diaSemana,
+                cidade,
+                acao: 'INCLUIR_CIDADE',
+                detalhes: 'Cidade incluída no roteiro'
             });
 
             return Number(result.lastInsertRowid);
@@ -753,8 +930,10 @@ class TursoDatabase {
         }
     }
 
-    async atualizarOrdemCidade(rotCidId, ordem) {
+    async atualizarOrdemCidade(rotCidId, ordem, usuario = '') {
         try {
+            const cidadeAnterior = await this.getRoteiroCidadePorId(rotCidId);
+
             await this.mainClient.execute({
                 sql: `
                     UPDATE rot_roteiro_cidade
@@ -763,13 +942,37 @@ class TursoDatabase {
                 `,
                 args: [ordem, rotCidId]
             });
+
+            if (cidadeAnterior) {
+                await this.registrarAuditoriaRoteiro({
+                    usuario,
+                    repositorId: cidadeAnterior.rot_repositor_id,
+                    diaSemana: cidadeAnterior.rot_dia_semana,
+                    cidade: cidadeAnterior.rot_cidade,
+                    acao: 'ALTERAR_ORDEM',
+                    detalhes: `Ordem ${cidadeAnterior.rot_ordem_cidade ?? '-'} -> ${ordem ?? '-'}`
+                });
+            }
         } catch (error) {
             console.error('Erro ao atualizar ordem da cidade:', error);
         }
     }
 
-    async removerCidadeRoteiro(rotCidId) {
+    async removerCidadeRoteiro(rotCidId, usuario = '') {
         try {
+            const cidade = await this.getRoteiroCidadePorId(rotCidId);
+            let totalClientes = 0;
+
+            try {
+                const contagem = await this.mainClient.execute({
+                    sql: 'SELECT COUNT(*) as total FROM rot_roteiro_cliente WHERE rot_cid_id = ?',
+                    args: [rotCidId]
+                });
+                totalClientes = contagem.rows?.[0]?.total || 0;
+            } catch (e) {
+                console.warn('Não foi possível contar clientes antes da exclusão:', e?.message || e);
+            }
+
             await this.mainClient.execute({
                 sql: 'DELETE FROM rot_roteiro_cliente WHERE rot_cid_id = ?',
                 args: [rotCidId]
@@ -779,6 +982,17 @@ class TursoDatabase {
                 sql: 'DELETE FROM rot_roteiro_cidade WHERE rot_cid_id = ?',
                 args: [rotCidId]
             });
+
+            if (cidade) {
+                await this.registrarAuditoriaRoteiro({
+                    usuario,
+                    repositorId: cidade.rot_repositor_id,
+                    diaSemana: cidade.rot_dia_semana,
+                    cidade: cidade.rot_cidade,
+                    acao: 'EXCLUIR_CIDADE',
+                    detalhes: totalClientes ? `Cidade removida com ${totalClientes} clientes vinculados` : 'Cidade removida do roteiro'
+                });
+            }
         } catch (error) {
             console.error('Erro ao remover cidade do roteiro:', error);
             throw new Error('Não foi possível remover a cidade do roteiro.');
@@ -803,8 +1017,10 @@ class TursoDatabase {
         }
     }
 
-    async adicionarClienteRoteiro(rotCidId, clienteCodigo) {
+    async adicionarClienteRoteiro(rotCidId, clienteCodigo, usuario = '') {
         try {
+            const cidade = await this.getRoteiroCidadePorId(rotCidId);
+
             await this.mainClient.execute({
                 sql: `
                     INSERT INTO rot_roteiro_cliente (rot_cid_id, rot_cliente_codigo)
@@ -814,14 +1030,28 @@ class TursoDatabase {
                 `,
                 args: [rotCidId, clienteCodigo]
             });
+
+            if (cidade) {
+                await this.registrarAuditoriaRoteiro({
+                    usuario,
+                    repositorId: cidade.rot_repositor_id,
+                    diaSemana: cidade.rot_dia_semana,
+                    cidade: cidade.rot_cidade,
+                    clienteCodigo,
+                    acao: 'INCLUIR_CLIENTE',
+                    detalhes: 'Cliente incluído na rota'
+                });
+            }
         } catch (error) {
             console.error('Erro ao adicionar cliente no roteiro:', error);
             throw new Error('Não foi possível adicionar o cliente ao roteiro.');
         }
     }
 
-    async removerClienteRoteiro(rotCidId, clienteCodigo) {
+    async removerClienteRoteiro(rotCidId, clienteCodigo, usuario = '') {
         try {
+            const cidade = await this.getRoteiroCidadePorId(rotCidId);
+
             await this.mainClient.execute({
                 sql: `
                     DELETE FROM rot_roteiro_cliente
@@ -829,6 +1059,18 @@ class TursoDatabase {
                 `,
                 args: [rotCidId, clienteCodigo]
             });
+
+            if (cidade) {
+                await this.registrarAuditoriaRoteiro({
+                    usuario,
+                    repositorId: cidade.rot_repositor_id,
+                    diaSemana: cidade.rot_dia_semana,
+                    cidade: cidade.rot_cidade,
+                    clienteCodigo,
+                    acao: 'EXCLUIR_CLIENTE',
+                    detalhes: 'Cliente removido do roteiro'
+                });
+            }
         } catch (error) {
             console.error('Erro ao remover cliente do roteiro:', error);
             throw new Error('Não foi possível remover o cliente do roteiro.');
@@ -911,9 +1153,11 @@ class TursoDatabase {
         }
     }
 
-    async getRepositoresDetalhados({ supervisor = '', representante = '', repositor = '' } = {}) {
+    async getRepositoresDetalhados({ supervisor = '', representante = '', repositor = '', vinculo = '', cidadeRef = '', status = 'ativos' } = {}) {
         const args = [];
         let sql = `SELECT * FROM cad_repositor WHERE 1=1`;
+
+        const hoje = new Date().toISOString().split('T')[0];
 
         if (supervisor) {
             sql += ' AND rep_supervisor = ?';
@@ -928,6 +1172,26 @@ class TursoDatabase {
         if (repositor) {
             sql += ' AND (repo_nome LIKE ? OR CAST(repo_cod AS TEXT) LIKE ?)';
             args.push(`%${repositor}%`, `%${repositor}%`);
+        }
+
+        if (vinculo) {
+            sql += ' AND repo_vinculo = ?';
+            args.push(vinculo);
+        }
+
+        if (cidadeRef) {
+            sql += ' AND repo_cidade_ref LIKE ?';
+            args.push(`%${cidadeRef}%`);
+        }
+
+        if (status === 'ativos') {
+            sql += ` AND repo_data_inicio IS NOT NULL`;
+            sql += ` AND DATE(repo_data_inicio) <= DATE(?)`;
+            sql += ` AND (repo_data_fim IS NULL OR DATE(repo_data_fim) >= DATE(?))`;
+            args.push(hoje, hoje);
+        } else if (status === 'inativos') {
+            sql += ` AND (repo_data_inicio IS NULL OR DATE(repo_data_inicio) > DATE(?) OR (repo_data_fim IS NOT NULL AND DATE(repo_data_fim) < DATE(?)))`;
+            args.push(hoje, hoje);
         }
 
         sql += ' ORDER BY repo_nome';
