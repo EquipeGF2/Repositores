@@ -1,6 +1,11 @@
 /**
  * Cliente Turso direto para GitHub Pages
  * Conecta diretamente ao banco Turso do navegador usando @libsql/client/web
+ *
+ * IMPORTANTE:
+ * - mainClient: Banco principal (LEITURA E ESCRITA) - usado para armazenar repositores, roteiros, etc.
+ * - comercialClient: Banco comercial (APENAS LEITURA) - usado para consultar clientes, representantes, etc.
+ *   O banco comercial NÃO deve ser modificado por esta aplicação. Alterações são feitas via GitHub Actions.
  */
 
 import { TURSO_CONFIG } from './turso-config.js';
@@ -9,8 +14,8 @@ import { normalizarDataISO, normalizarSupervisor, normalizarTextoCadastro } from
 
 class TursoDatabase {
     constructor() {
-        this.mainClient = null;
-        this.comercialClient = null;
+        this.mainClient = null;        // Banco principal (leitura/escrita)
+        this.comercialClient = null;   // Banco comercial (APENAS LEITURA)
         this.schemaInitialized = false;
     }
 
@@ -26,6 +31,13 @@ class TursoDatabase {
         return true;
     }
 
+    /**
+     * Conecta ao banco comercial (APENAS LEITURA)
+     *
+     * IMPORTANTE: Este banco NÃO deve ser modificado por esta aplicação.
+     * Todas as operações devem ser SELECT (consultas). Qualquer alteração
+     * nos dados comerciais deve ser feita via GitHub Actions.
+     */
     async connectComercial() {
         if (TURSO_CONFIG.comercial.url && TURSO_CONFIG.comercial.authToken) {
             if (!this.comercialClient) {
@@ -1154,6 +1166,27 @@ class TursoDatabase {
             });
 
             const registro = detalhes.rows?.[0];
+
+            // Validar se já existe outro cliente com a mesma ordem no mesmo dia
+            if (ordem != null && registro) {
+                const duplicados = await this.mainClient.execute({
+                    sql: `
+                        SELECT cli.rot_cli_id, cli.rot_cliente_codigo, cid.rot_cidade
+                        FROM rot_roteiro_cliente cli
+                        JOIN rot_roteiro_cidade cid ON cid.rot_cid_id = cli.rot_cid_id
+                        WHERE cid.rot_repositor_id = ?
+                        AND cid.rot_dia_semana = ?
+                        AND cli.rot_ordem_visita = ?
+                        AND cli.rot_cli_id != ?
+                    `,
+                    args: [registro.rot_repositor_id, registro.rot_dia_semana, ordem, rotCliId]
+                });
+
+                if (duplicados.rows && duplicados.rows.length > 0) {
+                    const clienteDuplicado = duplicados.rows[0];
+                    throw new Error(`Já existe o cliente ${clienteDuplicado.rot_cliente_codigo} (${clienteDuplicado.rot_cidade}) com a ordem ${ordem} neste dia. Por favor, escolha outra ordem.`);
+                }
+            }
 
             await this.mainClient.execute({
                 sql: `
