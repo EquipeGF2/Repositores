@@ -97,14 +97,13 @@ As credenciais são injetadas automaticamente durante o build pelo GitHub Action
 ## 📊 Funcionalidades
 
 ### Cadastros
-- ✅ Cadastro de Supervisores
 - ✅ Cadastro de Repositores
 - ✅ Edição e exclusão de registros
 
 ### Banco de Dados
-- ✅ Tabela `cad_supervisor`
 - ✅ Tabela `cad_repositor`
 - ✅ Schema criado automaticamente na primeira conexão
+- 🧹 Limpeza automática da tabela `cad_supervisor` e da coluna obsoleta `repo_supervisor` via migração
 
 ### Reposição (Em desenvolvimento)
 - Resumo do Período
@@ -112,6 +111,10 @@ As credenciais são injetadas automaticamente durante o build pelo GitHub Action
 - Relatório Detalhado
 - Análise Gráfica
 - Alterações de Rota
+
+### Autenticação
+- Login único no Dashboard Germani Alimentos, com compartilhamento automático para o módulo Repositores via `localStorage` (`GERMANI_AUTH_USER`).
+- Consulte `docs/AUTENTICACAO.md` para detalhes de integração.
 
 ## 🛡️ Segurança
 

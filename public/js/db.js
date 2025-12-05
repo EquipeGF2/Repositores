@@ -52,7 +52,6 @@ class TursoDatabase {
                     repo_representante TEXT,
                     rep_contato_telefone TEXT,
                     repo_vinculo TEXT DEFAULT 'repositor',
-                    repo_supervisor INTEGER,
                     dias_trabalhados TEXT DEFAULT 'seg,ter,qua,qui,sex',
                     jornada TEXT DEFAULT 'integral',
                     rep_supervisor TEXT,
@@ -90,16 +89,6 @@ class TursoDatabase {
                 // Coluna já existe, ignorar
             }
 
-            // Adicionar coluna repo_supervisor se não existir
-            try {
-                await this.mainClient.execute(`
-                    ALTER TABLE cad_repositor ADD COLUMN repo_supervisor INTEGER
-                `);
-                console.log('✅ Coluna repo_supervisor adicionada');
-            } catch (e) {
-                // Coluna já existe, ignorar
-            }
-
             // Adicionar coluna rep_supervisor se não existir
             try {
                 await this.mainClient.execute(`
@@ -108,6 +97,16 @@ class TursoDatabase {
                 console.log('✅ Coluna rep_supervisor adicionada');
             } catch (e) {
                 // Coluna já existe, ignorar
+            }
+
+            // Remover coluna obsoleta repo_supervisor se existir
+            try {
+                await this.mainClient.execute(`
+                    ALTER TABLE cad_repositor DROP COLUMN IF EXISTS repo_supervisor
+                `);
+                console.log('🧹 Coluna repo_supervisor removida');
+            } catch (e) {
+                console.warn('Aviso ao remover repo_supervisor:', e?.message || e);
             }
 
             // Adicionar coluna rep_representante_codigo se não existir
@@ -138,6 +137,14 @@ class TursoDatabase {
                 console.log('✅ Coluna rep_contato_telefone adicionada');
             } catch (e) {
                 // Coluna já existe, ignorar
+            }
+
+            // Remover tabela cad_supervisor descontinuada
+            try {
+                await this.mainClient.execute('DROP TABLE IF EXISTS cad_supervisor');
+                console.log('🧹 Tabela cad_supervisor removida');
+            } catch (e) {
+                console.warn('Aviso ao remover cad_supervisor:', e?.message || e);
             }
 
             // Adicionar coluna dias_trabalhados se não existir
@@ -417,16 +424,15 @@ class TursoDatabase {
                 sql: `INSERT INTO cad_repositor (
                         repo_nome, repo_data_inicio, repo_data_fim,
                         repo_cidade_ref, repo_representante, rep_contato_telefone, repo_vinculo,
-                        repo_supervisor, dias_trabalhados, jornada,
+                        dias_trabalhados, jornada,
                         rep_supervisor, rep_representante_codigo, rep_representante_nome
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
                 args: [
                     nome, dataInicio, dataFim,
                     cidadeRef,
                     `${repCodigo || ''}${repNome ? ' - ' + repNome : ''}`.trim(),
                     repContatoTelefone,
                     vinculo,
-                    null,
                     diasTrabalhados, jornada,
                     repSupervisor, repCodigo, repNome
                 ]
@@ -476,7 +482,7 @@ class TursoDatabase {
                 sql: `UPDATE cad_repositor
                       SET repo_nome = ?, repo_data_inicio = ?, repo_data_fim = ?,
                           repo_cidade_ref = ?, repo_representante = ?, rep_contato_telefone = ?, repo_vinculo = ?,
-                          repo_supervisor = ?, dias_trabalhados = ?, jornada = ?,
+                          dias_trabalhados = ?, jornada = ?,
                           rep_supervisor = ?, rep_representante_codigo = ?, rep_representante_nome = ?,
                           updated_at = CURRENT_TIMESTAMP
                       WHERE repo_cod = ?`,
@@ -486,7 +492,6 @@ class TursoDatabase {
                     `${repCodigo || ''}${repNome ? ' - ' + repNome : ''}`.trim(),
                     repContatoTelefone,
                     vinculo,
-                    null,
                     diasTrabalhados, jornada,
                     repSupervisor, repCodigo, repNome,
                     cod

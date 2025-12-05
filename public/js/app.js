@@ -7,6 +7,8 @@ import { db } from './db.js';
 import { pages, pageTitles } from './pages.js';
 import { ACL_RECURSOS } from './acl-resources.js';
 
+const AUTH_STORAGE_KEY = 'GERMANI_AUTH_USER';
+
 class App {
     constructor() {
         this.currentPage = 'cadastro-repositor';
@@ -102,83 +104,64 @@ class App {
 
     async ensureUsuarioLogado() {
         try {
-            const armazenado = localStorage.getItem('ga_usuario');
-            if (armazenado) {
-                this.usuarioLogado = JSON.parse(armazenado);
+            const contexto = this.recuperarSessaoDashboard();
+
+            if (contexto) {
+                this.usuarioLogado = {
+                    user_id: contexto.id,
+                    username: contexto.username,
+                    loggedAt: contexto.loggedAt
+                };
                 return true;
             }
 
-            this.renderLoginScreen();
+            this.renderSessaoExpirada();
             return false;
         } catch (error) {
             console.error('Erro ao recuperar sessão do usuário:', error);
-            this.renderLoginScreen();
+            this.renderSessaoExpirada();
             return false;
         }
     }
 
-    renderLoginScreen() {
-        this.elements.pageTitle.textContent = 'Login';
+    recuperarSessaoDashboard() {
+        const armazenado = localStorage.getItem(AUTH_STORAGE_KEY);
+        if (!armazenado) return null;
+
+        try {
+            const contexto = JSON.parse(armazenado);
+            if (contexto?.id && contexto?.username) {
+                return contexto;
+            }
+            return null;
+        } catch (error) {
+            console.warn('Não foi possível interpretar o contexto de usuário salvo:', error);
+            return null;
+        }
+    }
+
+    renderSessaoExpirada() {
+        this.elements.pageTitle.textContent = 'Sessão expirada';
         this.elements.contentBody.innerHTML = `
             <div class="login-wrapper">
                 <div class="login-card">
                     <div class="login-header">
-                        <h3>Acessar Dashboard</h3>
-                        <p>Informe seu usuário do banco comercial para continuar.</p>
+                        <h3>Faça login no Dashboard</h3>
+                        <p>O módulo Repositores utiliza o usuário autenticado no Dashboard Germani Alimentos.</p>
                     </div>
-                    <form id="formLogin">
-                        <div class="form-group full-width">
-                            <label for="loginUsername">Usuário</label>
-                            <input type="text" id="loginUsername" placeholder="username" required />
-                        </div>
-                        <div class="login-actions">
-                            <button type="submit" class="btn btn-primary" id="btnLogin">Entrar</button>
-                        </div>
-                    </form>
-                    <small class="text-muted">A autenticação é realizada apenas pelo username cadastrado no sistema comercial.</small>
+                    <div class="login-actions" style="justify-content: flex-start;">
+                        <button type="button" class="btn btn-primary" id="btnVoltarDashboard">Ir para o Dashboard</button>
+                    </div>
+                    <small class="text-muted">Após autenticar-se no dashboard principal, retorne ao módulo para continuar.</small>
                 </div>
             </div>
         `;
 
-        const formLogin = document.getElementById('formLogin');
-        if (formLogin) {
-            formLogin.addEventListener('submit', (e) => this.autenticarUsuario(e));
-        }
-    }
-
-    async autenticarUsuario(event) {
-        event.preventDefault();
-
-        const username = document.getElementById('loginUsername')?.value?.trim();
-        if (!username) {
-            this.showNotification('Informe o usuário para continuar.', 'warning');
-            return;
-        }
-
-        try {
-            const usuario = await db.getUsuarioComercialPorUsername(username);
-
-            if (!usuario) {
-                this.showNotification('Usuário não cadastrado no sistema comercial.', 'error');
-                return;
-            }
-
-            this.usuarioLogado = { user_id: usuario.id, username: usuario.username };
-            localStorage.setItem('ga_usuario', JSON.stringify(this.usuarioLogado));
-
-            await this.carregarPermissoesUsuario();
-            this.aplicarInformacoesUsuario();
-            this.configurarVisibilidadeConfiguracoes();
-
-            if (!this.usuarioTemPermissao('mod_repositores')) {
-                this.renderAcessoNegado('mod_repositores');
-                return;
-            }
-
-            await this.navigateTo(this.currentPage);
-        } catch (error) {
-            console.error('Erro ao autenticar usuário:', error);
-            this.showNotification('Erro ao autenticar usuário. Verifique a conexão com o banco comercial.', 'error');
+        const btnVoltar = document.getElementById('btnVoltarDashboard');
+        if (btnVoltar) {
+            btnVoltar.addEventListener('click', () => {
+                window.location.href = '/';
+            });
         }
     }
 
@@ -380,7 +363,13 @@ class App {
 
         // Carrega página
         try {
-            const pageContent = await pages[pageName]();
+            const pageRenderer = pages[pageName];
+
+            if (typeof pageRenderer !== 'function') {
+                throw new Error(`Página "${pageName}" não está registrada corretamente.`);
+            }
+
+            const pageContent = await pageRenderer();
             this.elements.contentBody.innerHTML = pageContent;
             this.currentPage = pageName;
 
@@ -407,6 +396,15 @@ class App {
         if (!dataString) return '-';
         const [ano, mes, dia] = dataString.split('T')[0].split('-');
         return `${dia}/${mes}/${ano}`;
+    }
+
+    async aguardarElemento(selector, tentativas = 15, intervalo = 100) {
+        for (let i = 0; i < tentativas; i++) {
+            const elemento = document.querySelector(selector);
+            if (elemento) return elemento;
+            await new Promise(resolve => setTimeout(resolve, intervalo));
+        }
+        throw new Error(`Elemento ${selector} não encontrado após aguardar o carregamento.`);
     }
 
     showModalRepositor(modo = 'create', repositor = null) {
@@ -581,7 +579,8 @@ class App {
         modal.querySelector('#repEstado').textContent = representante.rep_estado || '-';
         modal.querySelector('#repFone').textContent = representante.rep_fone || '-';
         modal.querySelector('#repEmail').textContent = representante.rep_email || '-';
-        modal.querySelector('#repSupervisor').textContent = representante.rep_supervisor || '-';
+        const supervisorModal = registro?.rep_supervisor || representante.rep_supervisor || '-';
+        modal.querySelector('#repSupervisor').textContent = supervisorModal;
 
         modal.classList.add('active');
     }
@@ -684,10 +683,7 @@ class App {
                 return;
             }
 
-            const formulario = document.getElementById('formRepositor');
-            if (!formulario) {
-                throw new Error('Formulário de repositor não encontrado na tela.');
-            }
+            const formulario = await this.aguardarElemento('#formRepositor');
 
             const setValor = (id, valor = '') => {
                 const elemento = document.getElementById(id);

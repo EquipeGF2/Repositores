@@ -509,16 +509,22 @@ tbody td {
 
 .modal-representante .modal-content {
     max-width: 1100px;
+    width: 96%;
 }
 
 .modal-repositor .modal-content {
     max-width: 1200px;
     width: 98%;
     max-height: 98vh;
+    height: 96vh;
+    display: flex;
+    flex-direction: column;
 }
 
 .modal-repositor .modal-body {
-    padding: var(--spacing-xl);
+    padding: var(--spacing-lg);
+    overflow-y: auto;
+    flex: 1;
 }
 
 .modal-repositor #formRepositor {
@@ -712,6 +718,7 @@ tbody td {
     border: 1px solid var(--gray-200);
     border-radius: var(--radius);
     padding: var(--spacing-sm);
+    word-break: break-word;
 }
 
 .info-grid small {
@@ -719,6 +726,30 @@ tbody td {
     color: var(--gray-600);
     margin-bottom: 4px;
     font-size: 0.8rem;
+}
+
+.modal-body-representante {
+    background: var(--gray-100);
+    padding: var(--spacing-lg);
+}
+
+.representante-detalhes {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing);
+}
+
+.representante-info-grid {
+    gap: var(--spacing);
+}
+
+.representante-info-grid > div {
+    background: var(--white);
+    box-shadow: var(--shadow-sm);
+}
+
+.rep-nome {
+    margin-bottom: var(--spacing-xs);
 }
 
 /* ==================== ESTADOS VAZIOS ==================== */
