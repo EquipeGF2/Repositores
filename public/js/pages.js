@@ -236,6 +236,51 @@ export const pages = {
                     </div>
                 </div>
             </div>
+
+            <!-- Modal Detalhes do Representante -->
+            <div class="modal modal-representante" id="modalRepresentanteDetalhes">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Detalhes do Representante</h3>
+                        <button class="modal-close" onclick="window.app.fecharDetalhesRepresentante()">&times;</button>
+                    </div>
+                    <div class="modal-body modal-body-representante">
+                        <div class="representante-detalhes">
+                            <p class="rep-nome"><strong id="repNomeLabel">-</strong></p>
+                            <div class="info-grid representante-info-grid">
+                                <div>
+                                    <small>Supervisor</small>
+                                    <div id="repSupervisor">-</div>
+                                </div>
+                                <div>
+                                    <small>Endereço</small>
+                                    <div id="repEndereco">-</div>
+                                </div>
+                                <div>
+                                    <small>Bairro</small>
+                                    <div id="repBairro">-</div>
+                                </div>
+                                <div>
+                                    <small>Cidade</small>
+                                    <div id="repCidade">-</div>
+                                </div>
+                                <div>
+                                    <small>Estado</small>
+                                    <div id="repEstado">-</div>
+                                </div>
+                                <div>
+                                    <small>Telefone</small>
+                                    <div id="repFone">-</div>
+                                </div>
+                                <div>
+                                    <small>E-mail</small>
+                                    <div id="repEmail">-</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         `;
     },
 
@@ -325,6 +370,51 @@ export const pages = {
                             <div class="empty-state">
                                 <div class="empty-state-icon">🗺️</div>
                                 <p>Use os filtros para encontrar o repositor e configurar o roteiro.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal Detalhes do Representante -->
+                <div class="modal modal-representante" id="modalRepresentanteDetalhes">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3>Detalhes do Representante</h3>
+                            <button class="modal-close" onclick="window.app.fecharDetalhesRepresentante()">&times;</button>
+                        </div>
+                        <div class="modal-body modal-body-representante">
+                            <div class="representante-detalhes">
+                                <p class="rep-nome"><strong id="repNomeLabel">-</strong></p>
+                                <div class="info-grid representante-info-grid">
+                                    <div>
+                                        <small>Supervisor</small>
+                                        <div id="repSupervisor">-</div>
+                                    </div>
+                                    <div>
+                                        <small>Endereço</small>
+                                        <div id="repEndereco">-</div>
+                                    </div>
+                                    <div>
+                                        <small>Bairro</small>
+                                        <div id="repBairro">-</div>
+                                    </div>
+                                    <div>
+                                        <small>Cidade</small>
+                                        <div id="repCidade">-</div>
+                                    </div>
+                                    <div>
+                                        <small>Estado</small>
+                                        <div id="repEstado">-</div>
+                                    </div>
+                                    <div>
+                                        <small>Telefone</small>
+                                        <div id="repFone">-</div>
+                                    </div>
+                                    <div>
+                                        <small>E-mail</small>
+                                        <div id="repEmail">-</div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
