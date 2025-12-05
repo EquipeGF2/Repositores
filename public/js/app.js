@@ -115,12 +115,20 @@ class App {
                 return true;
             }
 
-            this.renderSessaoExpirada();
-            return false;
+            this.usuarioLogado = {
+                user_id: null,
+                username: 'Modo livre',
+                loggedAt: new Date().toISOString()
+            };
+            return true;
         } catch (error) {
             console.error('Erro ao recuperar sessão do usuário:', error);
-            this.renderSessaoExpirada();
-            return false;
+            this.usuarioLogado = {
+                user_id: null,
+                username: 'Modo livre',
+                loggedAt: new Date().toISOString()
+            };
+            return true;
         }
     }
 
@@ -141,26 +149,26 @@ class App {
     }
 
     renderSessaoExpirada() {
-        this.elements.pageTitle.textContent = 'Sessão expirada';
+        this.elements.pageTitle.textContent = 'Acesso liberado';
         this.elements.contentBody.innerHTML = `
             <div class="login-wrapper">
                 <div class="login-card">
                     <div class="login-header">
-                        <h3>Faça login no Dashboard</h3>
-                        <p>O módulo Repositores utiliza o usuário autenticado no Dashboard Germani Alimentos.</p>
+                        <h3>Autenticação desativada</h3>
+                        <p>O acesso ao módulo está liberado temporariamente sem login.</p>
                     </div>
                     <div class="login-actions" style="justify-content: flex-start;">
-                        <button type="button" class="btn btn-primary" id="btnVoltarDashboard">Ir para o Dashboard</button>
+                        <button type="button" class="btn btn-primary" id="btnProsseguirSemLogin">Abrir o sistema</button>
                     </div>
-                    <small class="text-muted">Após autenticar-se no dashboard principal, retorne ao módulo para continuar.</small>
+                    <small class="text-muted">O controle de acesso será reativado em uma implementação futura.</small>
                 </div>
             </div>
         `;
 
-        const btnVoltar = document.getElementById('btnVoltarDashboard');
-        if (btnVoltar) {
-            btnVoltar.addEventListener('click', () => {
-                window.location.href = '/';
+        const btnProsseguir = document.getElementById('btnProsseguirSemLogin');
+        if (btnProsseguir) {
+            btnProsseguir.addEventListener('click', () => {
+                this.navigateTo(this.currentPage);
             });
         }
     }
@@ -179,7 +187,7 @@ class App {
     async carregarPermissoesUsuario() {
         const mapa = {};
         ACL_RECURSOS.forEach(recurso => {
-            mapa[recurso.codigo] = false;
+            mapa[recurso.codigo] = true;
         });
 
         if (this.usuarioLogado?.user_id) {
@@ -192,9 +200,8 @@ class App {
         this.permissoes = mapa;
     }
 
-    usuarioTemPermissao(recurso) {
-        if (!recurso) return true;
-        return !!this.permissoes[recurso];
+    usuarioTemPermissao() {
+        return true;
     }
 
     configurarVisibilidadeConfiguracoes() {
