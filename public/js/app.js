@@ -6,6 +6,7 @@
 import { db } from './db.js';
 import { pages, pageTitles } from './pages.js';
 import { ACL_RECURSOS } from './acl-resources.js';
+import { normalizarTextoCadastro } from './utils.js';
 
 const AUTH_STORAGE_KEY = 'GERMANI_AUTH_USER';
 
@@ -18,9 +19,15 @@ class App {
         this.permissoes = {};
         this.permissoesEdicaoUsuario = {};
         this.usuarioSelecionadoAcl = null;
+        this.contextoRoteiro = null;
+        this.estadoRoteiro = {
+            diaSelecionado: null,
+            cidadeSelecionada: null,
+            buscaClientes: ''
+        };
+        this.roteiroBuscaTimeout = null;
         this.recursosPorPagina = {
             'cadastro-repositor': 'mod_repositores',
-            'consulta-repositores': 'mod_repositores',
             'validacao-dados': 'mod_repositores',
             'resumo-periodo': 'mod_repositores',
             'resumo-mensal': 'mod_repositores',
@@ -29,7 +36,8 @@ class App {
             'alteracoes-rota': 'mod_repositores',
             'consulta-alteracoes': 'mod_repositores',
             'estrutura-banco-comercial': 'mod_repositores',
-            'controle-acessos': 'mod_configuracoes'
+            'controle-acessos': 'mod_configuracoes',
+            'roteiro-repositor': 'mod_repositores'
         };
         this.init();
     }
@@ -380,10 +388,14 @@ class App {
             this.elements.contentBody.innerHTML = pageContent;
             this.currentPage = pageName;
 
-            if (pageName === 'consulta-repositores') {
-                this.aplicarFiltrosConsultaRepositores();
+            if (pageName === 'cadastro-repositor') {
+                await this.aplicarFiltrosCadastroRepositores();
             } else if (pageName === 'controle-acessos') {
                 await this.inicializarControleAcessos();
+            } else if (pageName === 'roteiro-repositor') {
+                await this.inicializarRoteiroRepositor();
+            } else if (pageName === 'consulta-alteracoes') {
+                await this.inicializarConsultaAlteracoes();
             }
         } catch (error) {
             console.error('Erro ao carregar página:', error);
@@ -453,6 +465,7 @@ class App {
         }
 
         this.configurarEventosRepositor();
+        this.aplicarNormalizacaoCadastroRepositor();
         this.atualizarDadosRepresentante({ forcarSupervisor: modo === 'create' });
         modal.classList.add('active');
     }
@@ -465,10 +478,10 @@ class App {
         event.preventDefault();
 
         const cod = document.getElementById('repo_cod').value;
-        const nome = document.getElementById('repo_nome').value;
+        const nome = normalizarTextoCadastro(document.getElementById('repo_nome').value);
         const dataInicio = document.getElementById('repo_data_inicio').value;
         const dataFim = document.getElementById('repo_data_fim').value || null;
-        const cidadeRef = document.getElementById('repo_cidade_ref').value;
+        const cidadeRef = normalizarTextoCadastro(document.getElementById('repo_cidade_ref').value);
         const repCodigo = document.getElementById('repo_representante').value;
         const repNome = document.getElementById('repo_representante').selectedOptions[0]?.dataset?.nome || '';
         const vinculo = document.getElementById('repo_vinculo_agencia').checked ? 'agencia' : 'repositor';
@@ -510,6 +523,26 @@ class App {
         }
     }
 
+    aplicarNormalizacaoCadastroRepositor() {
+        const camposTexto = ['repo_nome', 'repo_cidade_ref'];
+
+        camposTexto.forEach(id => {
+            const campo = document.getElementById(id);
+            if (!campo) return;
+
+            const handler = () => {
+                campo.value = normalizarTextoCadastro(campo.value);
+            };
+
+            campo.removeEventListener('blur', campo._normalizacaoListener || (() => {}));
+            campo._normalizacaoListener = handler;
+            campo.addEventListener('blur', handler);
+
+            // Normaliza imediatamente para evitar salvar valores divergentes
+            campo.value = normalizarTextoCadastro(campo.value);
+        });
+    }
+
     atualizarDadosRepresentante({ forcarSupervisor = false } = {}) {
         const representanteSelect = document.getElementById('repo_representante');
         const telefoneCampo = document.getElementById('repo_contato_telefone');
@@ -535,24 +568,50 @@ class App {
         await this.editRepositor(repoCod);
     }
 
+    async abrirRoteiroRepositor(repoCod) {
+        try {
+            const repositor = await db.getRepositorDetalhadoPorId(repoCod);
+            if (!repositor) {
+                this.showNotification('Repositor não encontrado.', 'error');
+                return;
+            }
+
+            this.contextoRoteiro = repositor;
+            this.estadoRoteiro = {
+                diaSelecionado: null,
+                cidadeSelecionada: null,
+                buscaClientes: ''
+            };
+
+            await this.navigateTo('roteiro-repositor');
+        } catch (error) {
+            console.error('Erro ao abrir roteiro:', error);
+            this.showNotification('Não foi possível abrir o roteiro do repositor.', 'error');
+        }
+    }
+
     // ==================== CONSULTA GERAL DE REPOSITORES ====================
 
-    async aplicarFiltrosConsultaRepositores() {
-        const supervisor = document.getElementById('filtro_supervisor_consulta')?.value || '';
-        const representante = document.getElementById('filtro_representante_consulta')?.value || '';
-        const repositor = document.getElementById('filtro_repositor_consulta')?.value || '';
+    async aplicarFiltrosCadastroRepositores() {
+        const supervisor = document.getElementById('filtro_supervisor_cadastro')?.value || '';
+        const representante = document.getElementById('filtro_representante_cadastro')?.value || '';
+        const repositor = document.getElementById('filtro_nome_repositor')?.value || '';
+        const vinculo = document.getElementById('filtro_vinculo_cadastro')?.value || '';
+        const cidadeRef = document.getElementById('filtro_cidade_ref_cadastro')?.value || '';
+        const incluirInativos = document.getElementById('filtro_incluir_inativos')?.checked || false;
 
         try {
-            const repositores = await db.getRepositoresDetalhados({ supervisor, representante, repositor });
+            const filtros = { supervisor, representante, repositor, vinculo, cidadeRef, incluirInativos };
+            const repositores = await db.getRepositoresDetalhados(filtros);
             this.ultimaConsultaRepositores = repositores;
-            this.renderConsultaRepositores(repositores);
+            this.renderCadastroRepositores(repositores);
         } catch (error) {
             this.showNotification('Erro ao consultar repositores: ' + error.message, 'error');
         }
     }
 
-    renderConsultaRepositores(repositores) {
-        const container = document.getElementById('consultaRepositoresResultado');
+    renderCadastroRepositores(repositores) {
+        const container = document.getElementById('cadastroRepositoresResultado');
         if (!container) return;
 
         if (!repositores || repositores.length === 0) {
@@ -565,6 +624,8 @@ class App {
             return;
         }
 
+        const hoje = new Date();
+
         container.innerHTML = `
             <div class="table-container">
                 <table>
@@ -574,11 +635,11 @@ class App {
                             <th>Repositor</th>
                             <th>Supervisor</th>
                             <th>Representante</th>
+                            <th class="col-contato">Contato (Telefone)</th>
                             <th>Vínculo</th>
+                            <th>Status</th>
                             <th>Data Início</th>
-                            <th>Data Fim</th>
                             <th>Cidade Ref.</th>
-                            <th>Contato (Telefone)</th>
                             <th>Ações</th>
                         </tr>
                     </thead>
@@ -586,6 +647,8 @@ class App {
                         ${repositores.map((repo, index) => {
                             const representante = repo.representante;
                             const repLabel = representante ? `${representante.representante} - ${representante.desc_representante}` : `${repo.rep_representante_codigo || '-'}${repo.rep_representante_nome ? ' - ' + repo.rep_representante_nome : ''}`;
+                            const repositorAtivo = db.isRepositorAtivo(repo, hoje);
+                            const badgeStatus = repositorAtivo ? '<span class="badge badge-success">Ativo</span>' : '<span class="badge badge-gray">Inativo</span>';
 
                             return `
                                 <tr>
@@ -593,14 +656,16 @@ class App {
                                     <td>${repo.repo_nome}</td>
                                     <td>${repo.rep_supervisor || '-'}</td>
                                     <td>${repLabel || '-'}</td>
+                                    <td class="col-contato">${repo.rep_contato_telefone || '-'}</td>
                                     <td><span class="badge ${repo.repo_vinculo === 'agencia' ? 'badge-warning' : 'badge-info'}">${repo.repo_vinculo === 'agencia' ? 'Agência' : 'Repositor'}</span></td>
+                                    <td>${badgeStatus}</td>
                                     <td>${this.formatarDataSimples(repo.repo_data_inicio)}</td>
-                                    <td>${this.formatarDataSimples(repo.repo_data_fim)}</td>
                                     <td>${repo.repo_cidade_ref || '-'}</td>
-                                    <td>${repo.rep_contato_telefone || '-'}</td>
                                     <td class="table-actions">
                                         <button class="btn-icon" onclick="window.app.abrirDetalhesRepresentante(${index}, 'consulta')" title="Detalhes do Representante">👁️</button>
+                                        <button class="btn-icon" onclick="window.app.abrirRoteiroRepositor(${repo.repo_cod})" title="Roteiro">🗺️</button>
                                         <button class="btn-icon" onclick="window.app.abrirCadastroRepositor(${repo.repo_cod})" title="Editar">✏️</button>
+                                        <button class="btn-icon" onclick="window.app.deleteRepositor(${repo.repo_cod})" title="Deletar">🗑️</button>
                                     </td>
                                 </tr>
                             `;
@@ -639,6 +704,311 @@ class App {
         const modal = document.getElementById('modalRepresentanteDetalhes');
         if (modal) {
             modal.classList.remove('active');
+        }
+    }
+
+    // ==================== ROTEIRO DO REPOSITOR ====================
+
+    async inicializarRoteiroRepositor() {
+        const repositor = this.contextoRoteiro;
+
+        if (!repositor) {
+            this.showNotification('Selecione um repositor pela consulta para abrir o roteiro.', 'warning');
+            return;
+        }
+
+        this.diasRoteiroDisponiveis = db.obterDiasTrabalho(repositor);
+        if (!this.estadoRoteiro.diaSelecionado && this.diasRoteiroDisponiveis.length > 0) {
+            this.estadoRoteiro.diaSelecionado = this.diasRoteiroDisponiveis[0];
+        }
+
+        await this.preencherSelectCidadesRoteiro();
+        this.renderDiasRoteiro();
+        await this.carregarCidadesRoteiro();
+
+        const buscaInput = document.getElementById('roteiroBuscaCliente');
+        if (buscaInput) {
+            buscaInput.value = this.estadoRoteiro.buscaClientes || '';
+            buscaInput.addEventListener('input', (e) => {
+                clearTimeout(this.roteiroBuscaTimeout);
+                this.roteiroBuscaTimeout = setTimeout(() => {
+                    this.estadoRoteiro.buscaClientes = e.target.value;
+                    this.carregarClientesRoteiro();
+                }, 300);
+            });
+        }
+
+        const btnAddCidade = document.getElementById('btnAdicionarCidade');
+        if (btnAddCidade) {
+            btnAddCidade.onclick = () => this.adicionarCidadeRoteiro();
+        }
+    }
+
+    renderDiasRoteiro() {
+        const container = document.getElementById('roteiroDiasContainer');
+        const mensagem = document.getElementById('roteiroDiaMensagem');
+
+        if (!container) return;
+
+        if (!this.diasRoteiroDisponiveis || this.diasRoteiroDisponiveis.length === 0) {
+            container.innerHTML = '';
+            if (mensagem) mensagem.textContent = 'Selecione um dia de trabalho para configurar o roteiro.';
+            return;
+        }
+
+        const nomes = {
+            seg: 'Segunda',
+            ter: 'Terça',
+            qua: 'Quarta',
+            qui: 'Quinta',
+            sex: 'Sexta',
+            sab: 'Sábado',
+            dom: 'Domingo'
+        };
+
+        container.innerHTML = this.diasRoteiroDisponiveis.map(dia => `
+            <button class="chip-dia ${this.estadoRoteiro.diaSelecionado === dia ? 'active' : ''}" data-dia="${dia}">
+                ${nomes[dia] || dia}
+            </button>
+        `).join('');
+
+        container.querySelectorAll('.chip-dia').forEach(btn => {
+            btn.addEventListener('click', () => this.selecionarDiaRoteiro(btn.dataset.dia));
+        });
+
+        if (mensagem) mensagem.textContent = '';
+    }
+
+    async selecionarDiaRoteiro(dia) {
+        this.estadoRoteiro.diaSelecionado = dia;
+        this.estadoRoteiro.cidadeSelecionada = null;
+        this.renderDiasRoteiro();
+        await this.carregarCidadesRoteiro();
+    }
+
+    async preencherSelectCidadesRoteiro() {
+        const select = document.getElementById('roteiroCidadeSelect');
+        if (!select) return;
+
+        const cidades = await db.getCidadesPotenciais();
+        select.innerHTML = `
+            <option value="">Selecione</option>
+            ${cidades.map(c => `<option value="${c}">${c}</option>`).join('')}
+        `;
+    }
+
+    async adicionarCidadeRoteiro() {
+        const select = document.getElementById('roteiroCidadeSelect');
+        const mensagem = document.getElementById('roteiroCidadesMensagem');
+        const dia = this.estadoRoteiro.diaSelecionado;
+        const cidade = select?.value;
+
+        if (!dia) {
+            if (mensagem) mensagem.textContent = 'Selecione um dia trabalhado para adicionar cidades.';
+            return;
+        }
+
+        if (!cidade) {
+            if (mensagem) mensagem.textContent = 'Escolha uma cidade antes de adicionar.';
+            return;
+        }
+
+        try {
+            const usuario = this.usuarioLogado?.username || 'desconhecido';
+            const novoId = await db.adicionarCidadeRoteiro(this.contextoRoteiro.repo_cod, dia, cidade, usuario);
+            this.estadoRoteiro.cidadeSelecionada = novoId;
+            if (mensagem) mensagem.textContent = '';
+            await this.carregarCidadesRoteiro();
+            this.showNotification('Cidade adicionada ao roteiro.', 'success');
+        } catch (error) {
+            if (mensagem) mensagem.textContent = error.message;
+        }
+    }
+
+    async carregarCidadesRoteiro() {
+        const mensagem = document.getElementById('roteiroCidadesMensagem');
+        const tabela = document.getElementById('roteiroCidadesTabela');
+        const dia = this.estadoRoteiro.diaSelecionado;
+
+        if (!tabela) return;
+
+        if (!dia) {
+            tabela.innerHTML = '';
+            if (mensagem) mensagem.textContent = 'Selecione um dia de trabalho para configurar o roteiro.';
+            await this.carregarClientesRoteiro();
+            return;
+        }
+
+        const cidades = await db.getRoteiroCidades(this.contextoRoteiro.repo_cod, dia);
+        this.cidadesRoteiroCache = cidades;
+
+        if (!this.estadoRoteiro.cidadeSelecionada && cidades.length > 0) {
+            this.estadoRoteiro.cidadeSelecionada = cidades[0].rot_cid_id;
+        }
+
+        if (cidades.length === 0) {
+            tabela.innerHTML = '';
+            if (mensagem) mensagem.textContent = 'Cadastre uma cidade para este dia para visualizar os clientes.';
+            await this.carregarClientesRoteiro();
+            return;
+        }
+
+        tabela.innerHTML = `
+            <table>
+                <thead>
+                    <tr>
+                        <th>Cidade</th>
+                        <th>Ordem</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${cidades.map(cidade => `
+                        <tr class="${this.estadoRoteiro.cidadeSelecionada === cidade.rot_cid_id ? 'cidade-ativa' : ''}">
+                            <td>${cidade.rot_cidade}</td>
+                            <td><input type="number" class="input-ordem-cidade" data-id="${cidade.rot_cid_id}" value="${cidade.rot_ordem_cidade || ''}" placeholder="-" min="1" style="width: 80px;"></td>
+                            <td class="table-actions">
+                                <button class="btn-text" data-acao="selecionar-cidade" data-id="${cidade.rot_cid_id}">Selecionar</button>
+                                <button class="btn-icon" data-acao="remover-cidade" data-id="${cidade.rot_cid_id}" title="Remover">🗑️</button>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+
+        tabela.querySelectorAll('[data-acao="selecionar-cidade"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.estadoRoteiro.cidadeSelecionada = Number(btn.dataset.id);
+                this.carregarCidadesRoteiro();
+                this.carregarClientesRoteiro();
+            });
+        });
+
+        tabela.querySelectorAll('[data-acao="remover-cidade"]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const id = Number(btn.dataset.id);
+                await this.removerCidadeRoteiro(id);
+            });
+        });
+
+        tabela.querySelectorAll('.input-ordem-cidade').forEach(input => {
+            input.addEventListener('change', () => {
+                const valor = input.value ? Number(input.value) : null;
+                this.atualizarOrdemCidade(Number(input.dataset.id), valor);
+            });
+        });
+
+        if (mensagem) mensagem.textContent = '';
+        await this.carregarClientesRoteiro();
+    }
+
+    async removerCidadeRoteiro(rotCidId) {
+        const cidadeAtual = this.cidadesRoteiroCache?.find(c => c.rot_cid_id === rotCidId);
+        if (cidadeAtual && !confirm(`Remover ${cidadeAtual.rot_cidade} e todos os clientes vinculados?`)) {
+            return;
+        }
+
+        try {
+            const usuario = this.usuarioLogado?.username || 'desconhecido';
+            await db.removerCidadeRoteiro(rotCidId, usuario);
+            if (this.estadoRoteiro.cidadeSelecionada === rotCidId) {
+                this.estadoRoteiro.cidadeSelecionada = null;
+            }
+            await this.carregarCidadesRoteiro();
+            this.showNotification('Cidade removida do roteiro.', 'success');
+        } catch (error) {
+            this.showNotification(error.message || 'Erro ao remover cidade.', 'error');
+        }
+    }
+
+    async atualizarOrdemCidade(rotCidId, ordem) {
+        const usuario = this.usuarioLogado?.username || 'desconhecido';
+        await db.atualizarOrdemCidade(rotCidId, ordem, usuario);
+    }
+
+    async carregarClientesRoteiro() {
+        const mensagem = document.getElementById('roteiroClientesMensagem');
+        const tabela = document.getElementById('roteiroClientesTabela');
+
+        if (!tabela) return;
+
+        const dia = this.estadoRoteiro.diaSelecionado;
+        if (!dia) {
+            tabela.innerHTML = '';
+            if (mensagem) mensagem.textContent = 'Selecione um dia de trabalho para configurar o roteiro.';
+            return;
+        }
+
+        const cidadeAtiva = this.cidadesRoteiroCache?.find(c => c.rot_cid_id === this.estadoRoteiro.cidadeSelecionada);
+        if (!cidadeAtiva) {
+            tabela.innerHTML = '';
+            if (mensagem) mensagem.textContent = 'Cadastre uma cidade para este dia para visualizar os clientes.';
+            return;
+        }
+
+        const clientes = await db.getClientesPorCidade(cidadeAtiva.rot_cidade, this.estadoRoteiro.buscaClientes);
+        const selecionados = await db.getRoteiroClientes(cidadeAtiva.rot_cid_id);
+        const selecionadosSet = new Set(selecionados.map(c => String(c.rot_cliente_codigo)));
+
+        if (!clientes || clientes.length === 0) {
+            tabela.innerHTML = '';
+            if (mensagem) mensagem.textContent = 'Nenhum cliente encontrado para esta cidade.';
+            return;
+        }
+
+        tabela.innerHTML = `
+            <table>
+                <thead>
+                    <tr>
+                        <th>Selecionar</th>
+                        <th>Código</th>
+                        <th>Nome</th>
+                        <th>Fantasia</th>
+                        <th>CNPJ/CPF</th>
+                        <th>Endereço</th>
+                        <th>Bairro</th>
+                        <th>Grupo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${clientes.map(cliente => `
+                        <tr>
+                            <td><input type="checkbox" class="roteiro-cliente-checkbox" data-id="${cliente.cliente}" ${selecionadosSet.has(String(cliente.cliente)) ? 'checked' : ''}></td>
+                            <td>${cliente.cliente}</td>
+                            <td>${cliente.nome}</td>
+                            <td>${cliente.fantasia || '-'}</td>
+                            <td>${cliente.cnpj_cpf || '-'}</td>
+                            <td>${cliente.endereco || ''} ${cliente.num_endereco || ''}</td>
+                            <td>${cliente.bairro || '-'}</td>
+                            <td>${cliente.grupo_desc || '-'}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+
+        tabela.querySelectorAll('.roteiro-cliente-checkbox').forEach(chk => {
+            chk.addEventListener('change', () => {
+                const codigo = chk.dataset.id;
+                this.alternarClienteRoteiro(cidadeAtiva.rot_cid_id, codigo, chk.checked);
+            });
+        });
+
+        if (mensagem) mensagem.textContent = '';
+    }
+
+    async alternarClienteRoteiro(rotCidId, clienteCodigo, selecionado) {
+        try {
+            const usuario = this.usuarioLogado?.username || 'desconhecido';
+            if (selecionado) {
+                await db.adicionarClienteRoteiro(rotCidId, clienteCodigo, usuario);
+            } else {
+                await db.removerClienteRoteiro(rotCidId, clienteCodigo, usuario);
+            }
+        } catch (error) {
+            this.showNotification(error.message || 'Erro ao atualizar cliente no roteiro.', 'error');
+            await this.carregarClientesRoteiro();
         }
     }
 
@@ -789,9 +1159,9 @@ class App {
     // ==================== CONSULTA DE ALTERAÇÕES ====================
 
     async aplicarFiltrosHistorico() {
-        const motivo = document.getElementById('filtro_motivo').value || null;
-        const dataInicio = document.getElementById('filtro_data_inicio').value || null;
-        const dataFim = document.getElementById('filtro_data_fim').value || null;
+        const motivo = document.getElementById('filtro_motivo_cadastro')?.value || null;
+        const dataInicio = document.getElementById('filtro_data_inicio_cadastro')?.value || null;
+        const dataFim = document.getElementById('filtro_data_fim_cadastro')?.value || null;
 
         try {
             const historico = await db.getHistoricoComFiltros(motivo, dataInicio, dataFim);
@@ -843,6 +1213,102 @@ class App {
         } catch (error) {
             this.showNotification('Erro ao buscar histórico: ' + error.message, 'error');
         }
+    }
+
+    async aplicarFiltrosAuditoriaRoteiro() {
+        const repositorId = document.getElementById('filtro_repositor_roteiro')?.value || null;
+        const diaSemana = document.getElementById('filtro_dia_roteiro')?.value || '';
+        const cidade = document.getElementById('filtro_cidade_roteiro')?.value || '';
+        const dataInicioRaw = document.getElementById('filtro_data_inicio_roteiro')?.value || '';
+        const dataFimRaw = document.getElementById('filtro_data_fim_roteiro')?.value || '';
+
+        const dataInicio = dataInicioRaw ? dataInicioRaw.replace('T', ' ') : null;
+        const dataFim = dataFimRaw ? dataFimRaw.replace('T', ' ') : null;
+
+        try {
+            const auditoria = await db.getAuditoriaRoteiro({
+                repositorId: repositorId ? Number(repositorId) : null,
+                diaSemana,
+                cidade,
+                dataInicio,
+                dataFim
+            });
+            this.renderAuditoriaRoteiro(auditoria);
+        } catch (error) {
+            this.showNotification('Erro ao consultar alterações de roteiro: ' + error.message, 'error');
+        }
+    }
+
+    renderAuditoriaRoteiro(registros) {
+        const container = document.getElementById('resultadosAuditoriaRoteiro');
+        if (!container) return;
+
+        if (!registros || registros.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">🔍</div>
+                    <p>Nenhuma alteração de roteiro encontrada com os filtros selecionados</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Data/Hora</th>
+                            <th>Usuário</th>
+                            <th>Repositor</th>
+                            <th>Dia</th>
+                            <th>Cidade</th>
+                            <th>Cliente</th>
+                            <th>Ação</th>
+                            <th>Detalhes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${registros.map(item => {
+                            const dataFormatada = item.rot_aud_data_hora ? new Date(item.rot_aud_data_hora).toLocaleString('pt-BR') : '-';
+                            return `
+                                <tr>
+                                    <td>${dataFormatada}</td>
+                                    <td>${item.rot_aud_usuario || '-'}</td>
+                                    <td>${item.repo_nome ? `${item.rot_aud_repositor_id} - ${item.repo_nome}` : item.rot_aud_repositor_id}</td>
+                                    <td>${item.rot_aud_dia_semana || '-'}</td>
+                                    <td>${item.rot_aud_cidade || '-'}</td>
+                                    <td>${item.rot_aud_cliente_codigo || '-'}</td>
+                                    <td><span class="badge badge-info">${item.rot_aud_acao}</span></td>
+                                    <td>${item.rot_aud_detalhes || '-'}</td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+                <p style="margin-top: 1rem; color: var(--gray-600); font-size: 0.9rem;">
+                    Total de alterações: ${registros.length}
+                </p>
+            </div>
+        `;
+    }
+
+    inicializarConsultaAlteracoes() {
+        const botoes = document.querySelectorAll('.tab-button');
+        botoes.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const alvo = btn.dataset.target;
+                document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+
+                btn.classList.add('active');
+                const pane = document.getElementById(alvo);
+                if (pane) pane.classList.add('active');
+            });
+        });
+
+        this.aplicarFiltrosHistorico();
+        this.aplicarFiltrosAuditoriaRoteiro();
     }
 
     // ==================== ESTRUTURA DO BANCO ====================

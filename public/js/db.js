@@ -63,6 +63,9 @@ class TursoDatabase {
                 )
             `);
 
+            // Configurar tabelas de roteiro
+            await this.ensureRoteiroTables();
+
             // Adicionar colunas novas se não existirem (migração)
             await this.migrateDatabase();
 
@@ -199,6 +202,23 @@ class TursoDatabase {
                 console.warn('Aviso ao normalizar rep_jornada_tipo:', e?.message || e);
             }
 
+            // Garantir colunas de ordenação para as tabelas de roteiro
+            try {
+                await this.mainClient.execute(`
+                    ALTER TABLE rot_roteiro_cidade ADD COLUMN rot_ordem_cidade INTEGER
+                `);
+            } catch (e) {
+                // Coluna já existe
+            }
+
+            try {
+                await this.mainClient.execute(`
+                    ALTER TABLE rot_roteiro_cliente ADD COLUMN rot_ordem_visita INTEGER
+                `);
+            } catch (e) {
+                // Coluna já existe
+            }
+
             // Migrar tabela de histórico para nova estrutura com prefixo hist_
             try {
                 // Verificar se existe a tabela antiga (sem prefixo completo)
@@ -297,6 +317,53 @@ class TursoDatabase {
         } catch (error) {
             console.error('❌ Erro na migração:', error);
             // Não lançar erro, apenas logar
+        }
+    }
+
+    async ensureRoteiroTables() {
+        try {
+            await this.mainClient.execute(`
+                CREATE TABLE IF NOT EXISTS rot_roteiro_cidade (
+                    rot_cid_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    rot_repositor_id INTEGER NOT NULL,
+                    rot_dia_semana TEXT NOT NULL,
+                    rot_cidade TEXT NOT NULL,
+                    rot_ordem_cidade INTEGER,
+                    rot_criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    rot_atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT uniq_rot_cidade UNIQUE (rot_repositor_id, rot_dia_semana, rot_cidade)
+                )
+            `);
+
+            await this.mainClient.execute(`
+                CREATE TABLE IF NOT EXISTS rot_roteiro_cliente (
+                    rot_cli_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    rot_cid_id INTEGER NOT NULL,
+                    rot_cliente_codigo TEXT NOT NULL,
+                    rot_ordem_visita INTEGER,
+                    rot_criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    rot_atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT fk_rot_cidade FOREIGN KEY (rot_cid_id) REFERENCES rot_roteiro_cidade(rot_cid_id),
+                CONSTRAINT uniq_rot_cliente UNIQUE (rot_cid_id, rot_cliente_codigo)
+            )
+        `);
+
+            await this.mainClient.execute(`
+                CREATE TABLE IF NOT EXISTS rot_roteiro_auditoria (
+                    rot_aud_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    rot_aud_data_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    rot_aud_usuario TEXT,
+                    rot_aud_repositor_id INTEGER NOT NULL,
+                    rot_aud_dia_semana TEXT,
+                    rot_aud_cidade TEXT,
+                    rot_aud_cliente_codigo TEXT,
+                    rot_aud_acao TEXT NOT NULL,
+                    rot_aud_detalhes TEXT
+                )
+            `);
+        } catch (error) {
+            console.error('Erro ao garantir tabelas de roteiro:', error);
+            throw error;
         }
     }
 
@@ -449,6 +516,51 @@ class TursoDatabase {
         }
     }
 
+    async getAuditoriaRoteiro({ repositorId = null, diaSemana = '', cidade = '', dataInicio = null, dataFim = null } = {}) {
+        try {
+            let sql = `
+                SELECT a.*, r.repo_nome
+                FROM rot_roteiro_auditoria a
+                LEFT JOIN cad_repositor r ON r.repo_cod = a.rot_aud_repositor_id
+                WHERE 1=1
+            `;
+            const args = [];
+
+            if (repositorId) {
+                sql += ' AND a.rot_aud_repositor_id = ?';
+                args.push(repositorId);
+            }
+
+            if (diaSemana) {
+                sql += ' AND a.rot_aud_dia_semana = ?';
+                args.push(diaSemana);
+            }
+
+            if (cidade) {
+                sql += ' AND a.rot_aud_cidade LIKE ?';
+                args.push(`%${cidade}%`);
+            }
+
+            if (dataInicio) {
+                sql += ' AND datetime(a.rot_aud_data_hora) >= datetime(?)';
+                args.push(dataInicio);
+            }
+
+            if (dataFim) {
+                sql += ' AND datetime(a.rot_aud_data_hora) <= datetime(?)';
+                args.push(dataFim);
+            }
+
+            sql += ' ORDER BY a.rot_aud_data_hora DESC';
+
+            const resultado = await this.mainClient.execute({ sql, args });
+            return resultado.rows;
+        } catch (error) {
+            console.error('Erro ao consultar auditoria de roteiro:', error);
+            return [];
+        }
+    }
+
     // ==================== REPOSITOR ====================
     async createRepositor(nome, dataInicio, dataFim, cidadeRef, repCodigo, repNome, vinculo = 'repositor', repSupervisor = null, diasTrabalhados = 'seg,ter,qua,qui,sex', repJornadaTipo = 'INTEGRAL') {
         try {
@@ -491,6 +603,21 @@ class TursoDatabase {
         } catch (error) {
             console.error('Erro ao buscar repositores:', error);
             throw new Error(error.message || 'Erro ao buscar repositores');
+        }
+    }
+
+    async getCidadesReferencia() {
+        try {
+            const result = await this.mainClient.execute(`
+                SELECT DISTINCT repo_cidade_ref
+                FROM cad_repositor
+                WHERE repo_cidade_ref IS NOT NULL AND repo_cidade_ref <> ''
+                ORDER BY repo_cidade_ref
+            `);
+            return result.rows.map(row => row.repo_cidade_ref);
+        } catch (error) {
+            console.error('Erro ao buscar cidades de referência:', error);
+            return [];
         }
     }
 
@@ -594,6 +721,314 @@ class TursoDatabase {
         }
     }
 
+    // ==================== ROTEIRO DO REPOSITOR ====================
+    async getRepositorDetalhadoPorId(repoId) {
+        const repositor = await this.getRepositor(repoId);
+        if (!repositor) return null;
+
+        if (repositor.rep_representante_codigo) {
+            const representantes = await this.getRepresentantesPorCodigo([repositor.rep_representante_codigo]);
+            repositor.representante = representantes[repositor.rep_representante_codigo] || null;
+        }
+
+        return repositor;
+    }
+
+    obterDiasTrabalho(repo) {
+        const dias = (repo?.dias_trabalhados || '')
+            .split(',')
+            .map(d => d.trim())
+            .filter(Boolean);
+        if (dias.length === 0) return ['seg', 'ter', 'qua', 'qui', 'sex'];
+        return dias;
+    }
+
+    async getCidadesPotenciais() {
+        await this.connectComercial();
+        if (!this.comercialClient) return [];
+
+        try {
+            const result = await this.comercialClient.execute(`
+                SELECT DISTINCT cidade
+                FROM potencial_cidade
+                WHERE cidade IS NOT NULL AND cidade <> ''
+                ORDER BY cidade
+            `);
+            return result.rows.map(row => row.cidade);
+        } catch (error) {
+            console.error('Erro ao buscar cidades potenciais:', error);
+            return [];
+        }
+    }
+
+    async getCidadesRoteiroDistintas() {
+        try {
+            const resultado = await this.mainClient.execute(`
+                SELECT DISTINCT rot_cidade
+                FROM rot_roteiro_cidade
+                WHERE rot_cidade IS NOT NULL AND rot_cidade <> ''
+                ORDER BY rot_cidade
+            `);
+            return resultado.rows.map(row => row.rot_cidade);
+        } catch (error) {
+            console.error('Erro ao buscar cidades distintas do roteiro:', error);
+            return [];
+        }
+    }
+
+    async getClientesPorCidade(cidade, busca = '') {
+        await this.connectComercial();
+        if (!this.comercialClient || !cidade) return [];
+
+        let sql = `
+            SELECT cliente, nome, fantasia, cnpj_cpf, endereco, num_endereco, bairro, cidade, estado, grupo_desc
+            FROM tab_cliente
+            WHERE cidade = ?
+        `;
+        const args = [cidade];
+
+        if (busca) {
+            sql += ` AND (nome LIKE ? OR fantasia LIKE ? OR CAST(cliente AS TEXT) LIKE ?)`;
+            args.push(`%${busca}%`, `%${busca}%`, `%${busca}%`);
+        }
+
+        sql += ' ORDER BY nome';
+
+        try {
+            const result = await this.comercialClient.execute({ sql, args });
+            return result.rows;
+        } catch (error) {
+            console.error('Erro ao buscar clientes por cidade:', error);
+            return [];
+        }
+    }
+
+    async getRoteiroCidadePorId(rotCidId) {
+        try {
+            const resultado = await this.mainClient.execute({
+                sql: 'SELECT * FROM rot_roteiro_cidade WHERE rot_cid_id = ?',
+                args: [rotCidId]
+            });
+            return resultado.rows[0] || null;
+        } catch (error) {
+            console.error('Erro ao buscar cidade do roteiro pelo ID:', error);
+            return null;
+        }
+    }
+
+    async registrarAuditoriaRoteiro({ usuario = '', repositorId, diaSemana = null, cidade = null, clienteCodigo = null, acao, detalhes = '' }) {
+        if (!repositorId || !acao) return;
+
+        try {
+            await this.mainClient.execute({
+                sql: `
+                    INSERT INTO rot_roteiro_auditoria (
+                        rot_aud_usuario, rot_aud_repositor_id, rot_aud_dia_semana,
+                        rot_aud_cidade, rot_aud_cliente_codigo, rot_aud_acao, rot_aud_detalhes
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                `,
+                args: [usuario || 'desconhecido', repositorId, diaSemana, cidade, clienteCodigo, acao, detalhes]
+            });
+        } catch (error) {
+            console.error('Erro ao registrar auditoria de roteiro:', error);
+        }
+    }
+
+    async getRoteiroCidades(repositorId, diaSemana) {
+        if (!repositorId || !diaSemana) return [];
+        try {
+            const result = await this.mainClient.execute({
+                sql: `
+                    SELECT *
+                    FROM rot_roteiro_cidade
+                    WHERE rot_repositor_id = ? AND rot_dia_semana = ?
+                    ORDER BY COALESCE(rot_ordem_cidade, rot_cid_id)
+                `,
+                args: [repositorId, diaSemana]
+            });
+            return result.rows;
+        } catch (error) {
+            console.error('Erro ao buscar cidades do roteiro:', error);
+            return [];
+        }
+    }
+
+    async adicionarCidadeRoteiro(repositorId, diaSemana, cidade, usuario = '') {
+        try {
+            const result = await this.mainClient.execute({
+                sql: `
+                    INSERT INTO rot_roteiro_cidade (rot_repositor_id, rot_dia_semana, rot_cidade)
+                    VALUES (?, ?, ?)
+                `,
+                args: [repositorId, diaSemana, cidade]
+            });
+
+            await this.registrarAuditoriaRoteiro({
+                usuario,
+                repositorId,
+                diaSemana,
+                cidade,
+                acao: 'INCLUIR_CIDADE',
+                detalhes: 'Cidade incluída no roteiro'
+            });
+
+            return Number(result.lastInsertRowid);
+        } catch (error) {
+            if (String(error?.message || '').includes('uniq_rot_cidade')) {
+                throw new Error('Cidade já cadastrada para este dia.');
+            }
+            console.error('Erro ao adicionar cidade ao roteiro:', error);
+            throw new Error('Não foi possível adicionar a cidade.');
+        }
+    }
+
+    async atualizarOrdemCidade(rotCidId, ordem, usuario = '') {
+        try {
+            const cidadeAnterior = await this.getRoteiroCidadePorId(rotCidId);
+
+            await this.mainClient.execute({
+                sql: `
+                    UPDATE rot_roteiro_cidade
+                    SET rot_ordem_cidade = ?, rot_atualizado_em = CURRENT_TIMESTAMP
+                    WHERE rot_cid_id = ?
+                `,
+                args: [ordem, rotCidId]
+            });
+
+            if (cidadeAnterior) {
+                await this.registrarAuditoriaRoteiro({
+                    usuario,
+                    repositorId: cidadeAnterior.rot_repositor_id,
+                    diaSemana: cidadeAnterior.rot_dia_semana,
+                    cidade: cidadeAnterior.rot_cidade,
+                    acao: 'ALTERAR_ORDEM',
+                    detalhes: `Ordem ${cidadeAnterior.rot_ordem_cidade ?? '-'} -> ${ordem ?? '-'}`
+                });
+            }
+        } catch (error) {
+            console.error('Erro ao atualizar ordem da cidade:', error);
+        }
+    }
+
+    async removerCidadeRoteiro(rotCidId, usuario = '') {
+        try {
+            const cidade = await this.getRoteiroCidadePorId(rotCidId);
+            let totalClientes = 0;
+
+            try {
+                const contagem = await this.mainClient.execute({
+                    sql: 'SELECT COUNT(*) as total FROM rot_roteiro_cliente WHERE rot_cid_id = ?',
+                    args: [rotCidId]
+                });
+                totalClientes = contagem.rows?.[0]?.total || 0;
+            } catch (e) {
+                console.warn('Não foi possível contar clientes antes da exclusão:', e?.message || e);
+            }
+
+            await this.mainClient.execute({
+                sql: 'DELETE FROM rot_roteiro_cliente WHERE rot_cid_id = ?',
+                args: [rotCidId]
+            });
+
+            await this.mainClient.execute({
+                sql: 'DELETE FROM rot_roteiro_cidade WHERE rot_cid_id = ?',
+                args: [rotCidId]
+            });
+
+            if (cidade) {
+                await this.registrarAuditoriaRoteiro({
+                    usuario,
+                    repositorId: cidade.rot_repositor_id,
+                    diaSemana: cidade.rot_dia_semana,
+                    cidade: cidade.rot_cidade,
+                    acao: 'EXCLUIR_CIDADE',
+                    detalhes: totalClientes ? `Cidade removida com ${totalClientes} clientes vinculados` : 'Cidade removida do roteiro'
+                });
+            }
+        } catch (error) {
+            console.error('Erro ao remover cidade do roteiro:', error);
+            throw new Error('Não foi possível remover a cidade do roteiro.');
+        }
+    }
+
+    async getRoteiroClientes(rotCidId) {
+        try {
+            const result = await this.mainClient.execute({
+                sql: `
+                    SELECT *
+                    FROM rot_roteiro_cliente
+                    WHERE rot_cid_id = ?
+                    ORDER BY COALESCE(rot_ordem_visita, rot_cli_id)
+                `,
+                args: [rotCidId]
+            });
+            return result.rows;
+        } catch (error) {
+            console.error('Erro ao buscar clientes do roteiro:', error);
+            return [];
+        }
+    }
+
+    async adicionarClienteRoteiro(rotCidId, clienteCodigo, usuario = '') {
+        try {
+            const cidade = await this.getRoteiroCidadePorId(rotCidId);
+
+            await this.mainClient.execute({
+                sql: `
+                    INSERT INTO rot_roteiro_cliente (rot_cid_id, rot_cliente_codigo)
+                    VALUES (?, ?)
+                    ON CONFLICT(rot_cid_id, rot_cliente_codigo)
+                    DO UPDATE SET rot_atualizado_em = CURRENT_TIMESTAMP
+                `,
+                args: [rotCidId, clienteCodigo]
+            });
+
+            if (cidade) {
+                await this.registrarAuditoriaRoteiro({
+                    usuario,
+                    repositorId: cidade.rot_repositor_id,
+                    diaSemana: cidade.rot_dia_semana,
+                    cidade: cidade.rot_cidade,
+                    clienteCodigo,
+                    acao: 'INCLUIR_CLIENTE',
+                    detalhes: 'Cliente incluído na rota'
+                });
+            }
+        } catch (error) {
+            console.error('Erro ao adicionar cliente no roteiro:', error);
+            throw new Error('Não foi possível adicionar o cliente ao roteiro.');
+        }
+    }
+
+    async removerClienteRoteiro(rotCidId, clienteCodigo, usuario = '') {
+        try {
+            const cidade = await this.getRoteiroCidadePorId(rotCidId);
+
+            await this.mainClient.execute({
+                sql: `
+                    DELETE FROM rot_roteiro_cliente
+                    WHERE rot_cid_id = ? AND rot_cliente_codigo = ?
+                `,
+                args: [rotCidId, clienteCodigo]
+            });
+
+            if (cidade) {
+                await this.registrarAuditoriaRoteiro({
+                    usuario,
+                    repositorId: cidade.rot_repositor_id,
+                    diaSemana: cidade.rot_dia_semana,
+                    cidade: cidade.rot_cidade,
+                    clienteCodigo,
+                    acao: 'EXCLUIR_CLIENTE',
+                    detalhes: 'Cliente removido do roteiro'
+                });
+            }
+        } catch (error) {
+            console.error('Erro ao remover cliente do roteiro:', error);
+            throw new Error('Não foi possível remover o cliente do roteiro.');
+        }
+    }
+
     // ==================== DADOS DO BANCO COMERCIAL ====================
     async getSupervisoresComercial() {
         try {
@@ -670,7 +1105,7 @@ class TursoDatabase {
         }
     }
 
-    async getRepositoresDetalhados({ supervisor = '', representante = '', repositor = '' } = {}) {
+    async getRepositoresDetalhados({ supervisor = '', representante = '', repositor = '', vinculo = '', cidadeRef = '', incluirInativos = false } = {}) {
         const args = [];
         let sql = `SELECT * FROM cad_repositor WHERE 1=1`;
 
@@ -687,6 +1122,21 @@ class TursoDatabase {
         if (repositor) {
             sql += ' AND (repo_nome LIKE ? OR CAST(repo_cod AS TEXT) LIKE ?)';
             args.push(`%${repositor}%`, `%${repositor}%`);
+        }
+
+        if (vinculo) {
+            sql += ' AND repo_vinculo = ?';
+            args.push(vinculo);
+        }
+
+        if (cidadeRef) {
+            sql += ' AND repo_cidade_ref LIKE ?';
+            args.push(`%${cidadeRef}%`);
+        }
+
+        if (!incluirInativos) {
+            sql += ` AND (repo_data_inicio IS NULL OR DATE(repo_data_inicio) <= DATE('now'))`;
+            sql += ` AND (repo_data_fim IS NULL OR DATE(repo_data_fim) >= DATE('now'))`;
         }
 
         sql += ' ORDER BY repo_nome';
