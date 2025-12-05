@@ -497,23 +497,28 @@ export const pages = {
                             <p class="form-card-eyebrow">Cidades atendidas</p>
                             <h4>Cidades no dia selecionado</h4>
                         </div>
+                        <button class="btn btn-secondary btn-sm" id="btnSelecionarTodasCidades" style="display:none;">
+                            <span id="textoSelecionarTodas">✓ Selecionar Todas</span>
+                        </button>
                     </div>
                     <div class="card-body">
-                        <div class="form-row cidade-busca-row">
-                            <div class="form-group" style="flex: 1;">
-                                <label for="roteiroCidadeBusca">Cidade</label>
-                                <div class="autocomplete-input">
-                                    <input type="text" id="roteiroCidadeBusca" placeholder="Digite parte do nome da cidade">
-                                    <div id="roteiroCidadeSugestoes" class="autocomplete-list"></div>
-                                </div>
+                        <div class="cidades-busca-container">
+                            <div class="autocomplete-input" style="flex: 1;">
+                                <input type="text" id="roteiroCidadeBusca" placeholder="Digite para buscar e adicionar cidade...">
+                                <div id="roteiroCidadeSugestoes" class="autocomplete-list"></div>
                             </div>
-                            <div class="form-group compact-checkbox" style="align-self: flex-end;">
-                                <button class="btn btn-primary" id="btnAdicionarCidade">+ Adicionar cidade</button>
-                            </div>
+                            <button class="btn btn-primary btn-sm" id="btnAdicionarCidade">+ Adicionar</button>
                         </div>
 
                         <div id="roteiroCidadesMensagem" class="roteiro-hint"></div>
-                        <div class="table-container" id="roteiroCidadesTabela"></div>
+
+                        <div id="roteiroCidadesContainer" class="cidades-lista-container"></div>
+
+                        <div class="cidades-acoes" id="cidadesAcoesContainer" style="display:none;">
+                            <button class="btn btn-danger btn-sm" id="btnRemoverSelecionadas">
+                                🗑️ Remover Selecionadas
+                            </button>
+                        </div>
                     </div>
                 </section>
 

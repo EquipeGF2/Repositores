@@ -1309,15 +1309,105 @@ tbody td {
     font-size: 0.875rem;
 }
 
-.cidade-busca-row {
-    align-items: flex-end;
-    gap: 1rem;
+/* Novo design de Cidades Atendidas */
+.cidades-busca-container {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    margin-bottom: 1rem;
 }
 
-.cidade-busca-row .btn-primary {
-    padding: var(--spacing-xs) var(--spacing-md);
-    font-size: 0.875rem;
-    white-space: nowrap;
+.cidades-lista-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.cidade-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius);
+    background: #fff;
+    transition: all 0.2s ease;
+}
+
+.cidade-item:hover {
+    background: var(--gray-50);
+    border-color: var(--gray-300);
+}
+
+.cidade-item.selecionada {
+    background: var(--primary-red-light);
+    border-color: var(--primary-red);
+}
+
+.cidade-item.cidade-ativa {
+    border-color: var(--primary-red);
+    border-width: 2px;
+    background: var(--primary-red-light);
+}
+
+.cidade-item input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+.cidade-item-info {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    cursor: pointer;
+}
+
+.cidade-item-nome {
+    font-weight: 500;
+    min-width: 150px;
+}
+
+.cidade-item-ordem {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.cidade-item-ordem label {
+    font-size: 0.85rem;
+    color: var(--gray-600);
+    margin: 0;
+}
+
+.cidade-item-ordem input {
+    width: 60px;
+    padding: 0.25rem 0.5rem;
+    text-align: center;
+    border: 1px solid var(--gray-300);
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.cidade-item-acoes {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.cidade-item-acoes .btn-icon {
+    padding: 0.4rem 0.6rem;
+}
+
+.cidades-acoes {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--gray-200);
+    display: flex;
+    justify-content: flex-end;
 }
 
 .autocomplete-input {
