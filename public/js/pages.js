@@ -942,8 +942,14 @@ export const pages = {
                             <button class="btn btn-secondary" id="btnBuscarConsultaRoteiro">
                                 🔍 Buscar
                             </button>
-                            <button class="btn btn-primary" id="btnExportarConsultaRoteiro">
-                                📄 Exportar planilha
+                            <button class="btn btn-success" id="btnExportarPDF">
+                                📄 Exportar PDF
+                            </button>
+                            <button class="btn btn-success" id="btnExportarXLS">
+                                📊 Exportar Excel
+                            </button>
+                            <button class="btn btn-secondary" id="btnExportarCSV">
+                                📋 Exportar CSV
                             </button>
                             <span class="text-muted">A exportação seguirá o layout da planilha “Roteiro de Visitas”.</span>
                         </div>

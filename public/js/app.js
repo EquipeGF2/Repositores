@@ -2162,21 +2162,38 @@ class App {
     }
 
     atualizarEstadoBotoesConsultaRoteiro() {
-        const btnExportar = document.getElementById('btnExportarConsultaRoteiro');
+        const btnExportarPDF = document.getElementById('btnExportarPDF');
+        const btnExportarXLS = document.getElementById('btnExportarXLS');
+        const btnExportarCSV = document.getElementById('btnExportarCSV');
         const { repositorId } = this.coletarFiltrosConsultaRoteiro();
 
-        if (btnExportar) {
-            btnExportar.disabled = !repositorId;
-            btnExportar.title = repositorId ? '' : 'Selecione um repositor para exportar';
+        const disabled = !repositorId;
+        const title = repositorId ? '' : 'Selecione um repositor para exportar';
+
+        if (btnExportarPDF) {
+            btnExportarPDF.disabled = disabled;
+            btnExportarPDF.title = title;
+        }
+        if (btnExportarXLS) {
+            btnExportarXLS.disabled = disabled;
+            btnExportarXLS.title = title;
+        }
+        if (btnExportarCSV) {
+            btnExportarCSV.disabled = disabled;
+            btnExportarCSV.title = title;
         }
     }
 
     async inicializarConsultaRoteiro() {
         const btnBuscar = document.getElementById('btnBuscarConsultaRoteiro');
-        const btnExportar = document.getElementById('btnExportarConsultaRoteiro');
+        const btnExportarPDF = document.getElementById('btnExportarPDF');
+        const btnExportarXLS = document.getElementById('btnExportarXLS');
+        const btnExportarCSV = document.getElementById('btnExportarCSV');
 
         if (btnBuscar) btnBuscar.onclick = () => this.buscarConsultaRoteiro();
-        if (btnExportar) btnExportar.onclick = () => this.exportarConsultaRoteiro();
+        if (btnExportarPDF) btnExportarPDF.onclick = () => this.exportarConsultaRoteiroPDF();
+        if (btnExportarXLS) btnExportarXLS.onclick = () => this.exportarConsultaRoteiroXLS();
+        if (btnExportarCSV) btnExportarCSV.onclick = () => this.exportarConsultaRoteiro();
 
         ['filtro_repositor_consulta_roteiro', 'filtro_dia_consulta_roteiro', 'filtro_cidade_consulta_roteiro'].forEach(id => {
             const elemento = document.getElementById(id);
@@ -2380,6 +2397,204 @@ class App {
         URL.revokeObjectURL(url);
 
         this.showNotification('Roteiro exportado com sucesso!', 'success');
+    }
+
+    // ==================== EXPORTAÇÃO PDF ====================
+
+    exportarConsultaRoteiroPDF() {
+        const { repositorId } = this.coletarFiltrosConsultaRoteiro();
+        if (!repositorId) {
+            this.showNotification('Selecione um repositor para exportar.', 'warning');
+            return;
+        }
+
+        if (!this.resultadosConsultaRoteiro || this.resultadosConsultaRoteiro.length === 0) {
+            this.showNotification('Nenhum dado para exportar. Realize uma busca primeiro.', 'warning');
+            return;
+        }
+
+        const primeiroItem = this.resultadosConsultaRoteiro[0];
+        const nomeRepositor = `${primeiroItem.repo_cod} - ${primeiroItem.repo_nome}`;
+        const dataAtual = new Date().toLocaleDateString('pt-BR');
+
+        // Organizar por dia da semana
+        const diasSemana = ['segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
+        const dadosPorDia = {};
+
+        diasSemana.forEach(dia => {
+            dadosPorDia[dia] = this.resultadosConsultaRoteiro
+                .filter(item => item.rot_dia_semana === dia)
+                .sort((a, b) => {
+                    const ordemCidadeA = a.rot_ordem_cidade || 999;
+                    const ordemCidadeB = b.rot_ordem_cidade || 999;
+                    if (ordemCidadeA !== ordemCidadeB) return ordemCidadeA - ordemCidadeB;
+
+                    const ordemVisitaA = a.rot_ordem_visita || 999;
+                    const ordemVisitaB = b.rot_ordem_visita || 999;
+                    return ordemVisitaA - ordemVisitaB;
+                });
+        });
+
+        // Criar PDF
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('landscape');
+
+        // Cabeçalho
+        doc.setFontSize(18);
+        doc.setFont(undefined, 'bold');
+        doc.text('ROTEIRO DE VISITAS - RS', 14, 20);
+
+        doc.setFontSize(10);
+        doc.setFont(undefined, 'normal');
+        doc.text(`Atualizado em ${dataAtual}`, 14, 27);
+
+        doc.setFontSize(12);
+        doc.setFont(undefined, 'bold');
+        doc.text(`REPOSITOR: ${nomeRepositor}`, 14, 35);
+
+        // Tabela por dias da semana
+        let y = 45;
+
+        diasSemana.forEach(dia => {
+            const items = dadosPorDia[dia];
+            if (items.length === 0) return;
+
+            const diaLabel = this.formatarDiaSemanaLabel(dia).toUpperCase();
+
+            doc.setFontSize(11);
+            doc.setFont(undefined, 'bold');
+            doc.text(diaLabel, 14, y);
+            y += 7;
+
+            // Agrupar por cidade
+            const cidadesUnicas = [...new Set(items.map(i => i.rot_cidade))];
+
+            cidadesUnicas.forEach(cidade => {
+                const clientesCidade = items.filter(i => i.rot_cidade === cidade);
+
+                doc.setFontSize(10);
+                doc.setFont(undefined, 'bold');
+                doc.text(`  ${cidade}`, 14, y);
+                y += 5;
+
+                clientesCidade.forEach(item => {
+                    const cliente = item.cliente_dados || {};
+                    const fantasia = cliente.fantasia || cliente.nome || '-';
+                    const linha = `    ${item.rot_cliente_codigo} - ${fantasia}`;
+
+                    doc.setFont(undefined, 'normal');
+                    doc.text(linha, 14, y);
+                    y += 5;
+
+                    if (y > 180) {
+                        doc.addPage();
+                        y = 20;
+                    }
+                });
+
+                y += 3;
+            });
+
+            y += 5;
+        });
+
+        // Salvar
+        doc.save(`roteiro-${primeiroItem.repo_cod}.pdf`);
+        this.showNotification('PDF gerado com sucesso!', 'success');
+    }
+
+    // ==================== EXPORTAÇÃO EXCEL ====================
+
+    exportarConsultaRoteiroXLS() {
+        const { repositorId } = this.coletarFiltrosConsultaRoteiro();
+        if (!repositorId) {
+            this.showNotification('Selecione um repositor para exportar.', 'warning');
+            return;
+        }
+
+        if (!this.resultadosConsultaRoteiro || this.resultadosConsultaRoteiro.length === 0) {
+            this.showNotification('Nenhum dado para exportar. Realize uma busca primeiro.', 'warning');
+            return;
+        }
+
+        const primeiroItem = this.resultadosConsultaRoteiro[0];
+        const nomeRepositor = `${primeiroItem.repo_cod} - ${primeiroItem.repo_nome}`;
+        const dataAtual = new Date().toLocaleDateString('pt-BR');
+
+        // Organizar dados
+        const diasSemana = ['segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
+        const dadosPorDia = {};
+
+        diasSemana.forEach(dia => {
+            dadosPorDia[dia] = this.resultadosConsultaRoteiro
+                .filter(item => item.rot_dia_semana === dia)
+                .sort((a, b) => {
+                    const ordemCidadeA = a.rot_ordem_cidade || 999;
+                    const ordemCidadeB = b.rot_ordem_cidade || 999;
+                    if (ordemCidadeA !== ordemCidadeB) return ordemCidadeA - ordemCidadeB;
+
+                    const ordemVisitaA = a.rot_ordem_visita || 999;
+                    const ordemVisitaB = b.rot_ordem_visita || 999;
+                    return ordemVisitaA - ordemVisitaB;
+                });
+        });
+
+        // Criar estrutura do Excel
+        const ws_data = [];
+
+        // Cabeçalho
+        ws_data.push(['ROTEIRO DE VISITAS - RS']);
+        ws_data.push([`Atualizado em ${dataAtual}`]);
+        ws_data.push([`REPOSITOR: ${nomeRepositor}`]);
+        ws_data.push([]);
+
+        // Dados por dia
+        diasSemana.forEach(dia => {
+            const items = dadosPorDia[dia];
+            if (items.length === 0) return;
+
+            ws_data.push([this.formatarDiaSemanaLabel(dia).toUpperCase()]);
+
+            const cidadesUnicas = [...new Set(items.map(i => i.rot_cidade))];
+
+            cidadesUnicas.forEach(cidade => {
+                const clientesCidade = items.filter(i => i.rot_cidade === cidade);
+
+                ws_data.push([`  ${cidade}`]);
+
+                clientesCidade.forEach(item => {
+                    const cliente = item.cliente_dados || {};
+                    const fantasia = cliente.fantasia || cliente.nome || '-';
+                    ws_data.push([`    ${item.rot_cliente_codigo} - ${fantasia}`]);
+                });
+
+                ws_data.push([]);
+            });
+
+            ws_data.push([]);
+        });
+
+        // Criar workbook
+        const ws = XLSX.utils.aoa_to_sheet(ws_data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Roteiro");
+
+        // Salvar
+        XLSX.writeFile(wb, `roteiro-${primeiroItem.repo_cod}.xlsx`);
+        this.showNotification('Excel gerado com sucesso!', 'success');
+    }
+
+    // Helper para formatar dia da semana
+    formatarDiaSemanaLabel(dia) {
+        const labels = {
+            'segunda': 'Segunda-Feira',
+            'terca': 'Terça-Feira',
+            'quarta': 'Quarta-Feira',
+            'quinta': 'Quinta-Feira',
+            'sexta': 'Sexta-Feira',
+            'sabado': 'Sábado'
+        };
+        return labels[dia] || dia;
     }
 
     // ==================== SELEÇÃO MÚLTIPLA DE CIDADES ====================
