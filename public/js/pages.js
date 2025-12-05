@@ -18,10 +18,15 @@ export const pages = {
 
         const supervisorOptions = supervisores.map(sup => `<option value="${sup}">${sup}</option>`).join('');
         const representanteOptions = representantes.map(rep => `
-            <option value="${rep.representante}" data-nome="${rep.desc_representante}" data-supervisor="${rep.rep_supervisor}">
+            <option value="${rep.representante}" data-nome="${rep.desc_representante}" data-supervisor="${rep.rep_supervisor}" data-telefone="${rep.rep_fone || ''}">
                 ${rep.representante} - ${rep.desc_representante}
             </option>
         `).join('');
+
+        const telefonePorRepresentante = representantes.reduce((mapa, rep) => {
+            mapa[rep.representante] = rep.rep_fone || '';
+            return mapa;
+        }, {});
 
         return `
             <div class="card">
@@ -62,7 +67,7 @@ export const pages = {
                                             <td>${repo.repo_nome}</td>
                                             <td>${repo.rep_supervisor || '-'}</td>
                                             <td>${repo.rep_representante_codigo ? repo.rep_representante_codigo + ' - ' + (repo.rep_representante_nome || '') : '-'}</td>
-                                            <td>${repo.rep_contato_telefone || '-'}</td>
+                                            <td>${telefonePorRepresentante[repo.rep_representante_codigo] || repo.rep_contato_telefone || '-'}</td>
                                             <td><span class="badge ${repo.repo_vinculo === 'agencia' ? 'badge-warning' : 'badge-info'}">${repo.repo_vinculo === 'agencia' ? 'Agência' : 'Repositor'}</span></td>
                                             <td>${formatarData(repo.repo_data_inicio)}</td>
                                             <td>${formatarData(repo.repo_data_fim)}</td>
@@ -91,98 +96,136 @@ export const pages = {
                         <form id="formRepositor" onsubmit="window.app.saveRepositor(event)">
                             <input type="hidden" id="repo_cod" value="">
 
-                            <div class="form-group full-width">
-                                <label for="repo_nome">Nome do Repositor:</label>
-                                <input type="text" id="repo_nome" required>
-                            </div>
+                            <div class="repositor-grid">
+                                <section class="form-card card-span-2">
+                                    <div class="form-card-header">
+                                        <div>
+                                            <p class="form-card-eyebrow">Dados principais</p>
+                                            <h4>Repositor</h4>
+                                        </div>
+                                    </div>
+                                    <div class="form-card-body">
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="repo_nome">Nome do Repositor</label>
+                                                <input type="text" id="repo_nome" required>
+                                            </div>
+                                            <div class="form-group compact-checkbox">
+                                                <label for="repo_vinculo_agencia">Vínculo</label>
+                                                <label class="checkbox-inline">
+                                                    <input type="checkbox" id="repo_vinculo_agencia" style="width: auto;">
+                                                    <span>É uma Agência?</span>
+                                                </label>
+                                            </div>
+                                        </div>
 
-                            <div class="form-group">
-                                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                                    <input type="checkbox" id="repo_vinculo_agencia" style="width: auto;">
-                                    <span>É uma Agência (marque se for agência, deixe desmarcado se for repositor)</span>
-                                </label>
-                            </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="repo_data_inicio">Data Início</label>
+                                                <input type="date" id="repo_data_inicio" required>
+                                            </div>
 
-                            <div class="form-row full-width">
-                                <div class="form-group">
-                                    <label for="repo_data_inicio">Data Início:</label>
-                                    <input type="date" id="repo_data_inicio" required>
-                                </div>
+                                            <div class="form-group">
+                                                <label for="repo_data_fim">Data Fim</label>
+                                                <input type="date" id="repo_data_fim">
+                                                <small>Deixe em branco se ainda estiver ativo</small>
+                                            </div>
+                                        </div>
 
-                                <div class="form-group">
-                                    <label for="repo_data_fim">Data Fim:</label>
-                                    <input type="date" id="repo_data_fim">
-                                    <small>Deixe em branco se ainda estiver ativo</small>
-                                </div>
-                            </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="repo_cidade_ref">Cidade Referência</label>
+                                                <input type="text" id="repo_cidade_ref" placeholder="Ex: São Paulo" required>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </section>
 
-                            <div class="form-row full-width">
-                                <div class="form-group">
-                                    <label for="repo_cidade_ref">Cidade Referência:</label>
-                                    <input type="text" id="repo_cidade_ref" placeholder="Ex: São Paulo" required>
-                                </div>
+                                <section class="form-card">
+                                    <div class="form-card-header">
+                                        <p class="form-card-eyebrow">Rotina</p>
+                                        <h4>Jornada de Trabalho</h4>
+                                    </div>
+                                    <div class="form-card-body">
+                                        <div class="form-group full-width">
+                                            <label>Dias Trabalhados</label>
+                                            <div class="dias-trabalho-grid">
+                                                <label class="checkbox-inline">
+                                                    <input type="checkbox" class="dia-trabalho" value="seg" style="width: auto;" checked> Segunda
+                                                </label>
+                                                <label class="checkbox-inline">
+                                                    <input type="checkbox" class="dia-trabalho" value="ter" style="width: auto;" checked> Terça
+                                                </label>
+                                                <label class="checkbox-inline">
+                                                    <input type="checkbox" class="dia-trabalho" value="qua" style="width: auto;" checked> Quarta
+                                                </label>
+                                                <label class="checkbox-inline">
+                                                    <input type="checkbox" class="dia-trabalho" value="qui" style="width: auto;" checked> Quinta
+                                                </label>
+                                                <label class="checkbox-inline">
+                                                    <input type="checkbox" class="dia-trabalho" value="sex" style="width: auto;" checked> Sexta
+                                                </label>
+                                                <label class="checkbox-inline">
+                                                    <input type="checkbox" class="dia-trabalho" value="sab" style="width: auto;"> Sábado
+                                                </label>
+                                                <label class="checkbox-inline">
+                                                    <input type="checkbox" class="dia-trabalho" value="dom" style="width: auto;"> Domingo
+                                                </label>
+                                            </div>
+                                            <small>Marque os dias que o repositor trabalha (padrão: Seg a Sex)</small>
+                                        </div>
 
-                                <div class="form-group">
-                                    <label for="repo_representante">Representante:</label>
-                                    <select id="repo_representante" required>
-                                        <option value="">Selecione</option>
-                                        ${representanteOptions}
-                                    </select>
-                                </div>
-                            </div>
+                                        <div class="form-group full-width">
+                                            <label>Jornada</label>
+                                            <div class="radio-group">
+                                                <label class="checkbox-inline">
+                                                    <input type="radio" name="rep_jornada_tipo" value="INTEGRAL" style="width: auto;" checked> Integral
+                                                </label>
+                                                <label class="checkbox-inline">
+                                                    <input type="radio" name="rep_jornada_tipo" value="MEIO_TURNO" style="width: auto;"> Meio turno
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </section>
 
-                            <div class="form-group">
-                                <label for="repo_supervisor">Supervisor:</label>
-                                <select id="repo_supervisor">
-                                    <option value="">Selecione</option>
-                                    ${supervisorOptions}
-                                </select>
-                            </div>
+                                <section class="form-card">
+                                    <div class="form-card-header">
+                                        <p class="form-card-eyebrow">Alinhamento Comercial</p>
+                                        <h4>Representante</h4>
+                                    </div>
+                                    <div class="form-card-body">
+                                        <div class="form-group">
+                                            <label for="repo_representante">Representante</label>
+                                            <select id="repo_representante" required>
+                                                <option value="">Selecione</option>
+                                                ${representanteOptions}
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="repo_contato_telefone">Contato (Telefone)</label>
+                                            <input type="text" id="repo_contato_telefone" placeholder="Selecione um representante" readonly>
+                                            <small>Telefone exibido a partir do cadastro comercial</small>
+                                        </div>
+                                    </div>
+                                </section>
 
-                            <div class="form-group">
-                                <label for="repo_contato_telefone">Contato (Telefone):</label>
-                                <input type="text" id="repo_contato_telefone" placeholder="(99) 99999-9999">
-                                <small>Opcional</small>
-                            </div>
-
-                            <div class="form-group full-width">
-                                <label>Dias Trabalhados:</label>
-                                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                                        <input type="checkbox" class="dia-trabalho" value="seg" style="width: auto;" checked> Segunda
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                                        <input type="checkbox" class="dia-trabalho" value="ter" style="width: auto;" checked> Terça
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                                        <input type="checkbox" class="dia-trabalho" value="qua" style="width: auto;" checked> Quarta
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                                        <input type="checkbox" class="dia-trabalho" value="qui" style="width: auto;" checked> Quinta
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                                        <input type="checkbox" class="dia-trabalho" value="sex" style="width: auto;" checked> Sexta
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                                        <input type="checkbox" class="dia-trabalho" value="sab" style="width: auto;"> Sábado
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                                        <input type="checkbox" class="dia-trabalho" value="dom" style="width: auto;"> Domingo
-                                    </label>
-                                </div>
-                                <small>Marque os dias que o repositor trabalha (padrão: Seg a Sex)</small>
-                            </div>
-
-                            <div class="form-group full-width">
-                                <label>Jornada de Trabalho:</label>
-                                <div style="display: flex; gap: 20px;">
-                                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                                        <input type="radio" name="jornada" value="integral" style="width: auto;" checked> Turno Integral
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                                        <input type="radio" name="jornada" value="meio_turno" style="width: auto;"> Meio Turno
-                                    </label>
-                                </div>
+                                <section class="form-card">
+                                    <div class="form-card-header">
+                                        <p class="form-card-eyebrow">Gestão</p>
+                                        <h4>Supervisor</h4>
+                                    </div>
+                                    <div class="form-card-body">
+                                        <div class="form-group">
+                                            <label for="repo_supervisor">Supervisor</label>
+                                            <select id="repo_supervisor">
+                                                <option value="">Selecione</option>
+                                                ${supervisorOptions}
+                                            </select>
+                                            <small>Preenchido automaticamente pelo representante selecionado</small>
+                                        </div>
+                                    </div>
+                                </section>
                             </div>
 
                             <div class="modal-footer">

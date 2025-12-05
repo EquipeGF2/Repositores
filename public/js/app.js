@@ -429,11 +429,20 @@ class App {
             document.getElementById('repo_cod').value = '';
             document.getElementById('repo_vinculo_agencia').checked = false;
 
+            const telefoneCampo = document.getElementById('repo_contato_telefone');
+            if (telefoneCampo) telefoneCampo.value = '';
+
+            const representanteSelect = document.getElementById('repo_representante');
+            if (representanteSelect) representanteSelect.value = '';
+
+            const supervisorSelect = document.getElementById('repo_supervisor');
+            if (supervisorSelect) supervisorSelect.value = '';
+
             document.querySelectorAll('.dia-trabalho').forEach(checkbox => {
                 checkbox.checked = diasPadrao.includes(checkbox.value);
             });
 
-            const jornadaPadrao = document.querySelector('input[name="jornada"][value="integral"]');
+            const jornadaPadrao = document.querySelector('input[name="rep_jornada_tipo"][value="INTEGRAL"]');
             if (jornadaPadrao) jornadaPadrao.checked = true;
 
             if (titulo) titulo.textContent = 'Novo Repositor';
@@ -443,6 +452,8 @@ class App {
             if (botao) botao.textContent = 'Salvar alterações';
         }
 
+        this.configurarEventosRepositor();
+        this.atualizarDadosRepresentante({ forcarSupervisor: modo === 'create' });
         modal.classList.add('active');
     }
 
@@ -460,7 +471,6 @@ class App {
         const cidadeRef = document.getElementById('repo_cidade_ref').value;
         const repCodigo = document.getElementById('repo_representante').value;
         const repNome = document.getElementById('repo_representante').selectedOptions[0]?.dataset?.nome || '';
-        const contatoTelefone = document.getElementById('repo_contato_telefone').value || null;
         const vinculo = document.getElementById('repo_vinculo_agencia').checked ? 'agencia' : 'repositor';
         const supervisor = document.getElementById('repo_supervisor').value || null;
 
@@ -469,14 +479,15 @@ class App {
         const diasTrabalhados = Array.from(diasCheckboxes).map(cb => cb.value).join(',') || 'seg,ter,qua,qui,sex';
 
         // Pegar jornada
-        const jornada = document.querySelector('input[name="jornada"]:checked').value;
+        const campoJornada = document.querySelector('input[name="rep_jornada_tipo"]:checked');
+        const jornada = campoJornada?.value || 'INTEGRAL';
 
         try {
             if (cod) {
-                await db.updateRepositor(cod, nome, dataInicio, dataFim, cidadeRef, repCodigo, repNome, contatoTelefone, vinculo, supervisor, diasTrabalhados, jornada);
+                await db.updateRepositor(cod, nome, dataInicio, dataFim, cidadeRef, repCodigo, repNome, vinculo, supervisor, diasTrabalhados, jornada);
                 this.showNotification(`${vinculo === 'agencia' ? 'Agência' : 'Repositor'} atualizado com sucesso!`, 'success');
             } else {
-                await db.createRepositor(nome, dataInicio, dataFim, cidadeRef, repCodigo, repNome, contatoTelefone, vinculo, supervisor, diasTrabalhados, jornada);
+                await db.createRepositor(nome, dataInicio, dataFim, cidadeRef, repCodigo, repNome, vinculo, supervisor, diasTrabalhados, jornada);
                 this.showNotification(`${vinculo === 'agencia' ? 'Agência' : 'Repositor'} cadastrado com sucesso!`, 'success');
             }
 
@@ -484,6 +495,38 @@ class App {
             await this.navigateTo('cadastro-repositor');
         } catch (error) {
             this.showNotification('Erro ao salvar: ' + error.message, 'error');
+        }
+    }
+
+    configurarEventosRepositor() {
+        const selectRepresentante = document.getElementById('repo_representante');
+        if (selectRepresentante) {
+            if (this._onRepresentanteChange) {
+                selectRepresentante.removeEventListener('change', this._onRepresentanteChange);
+            }
+
+            this._onRepresentanteChange = () => this.atualizarDadosRepresentante({ forcarSupervisor: true });
+            selectRepresentante.addEventListener('change', this._onRepresentanteChange);
+        }
+    }
+
+    atualizarDadosRepresentante({ forcarSupervisor = false } = {}) {
+        const representanteSelect = document.getElementById('repo_representante');
+        const telefoneCampo = document.getElementById('repo_contato_telefone');
+        const supervisorSelect = document.getElementById('repo_supervisor');
+        const opcao = representanteSelect?.selectedOptions?.[0];
+
+        const telefone = opcao?.dataset?.telefone || '';
+        const supervisor = opcao?.dataset?.supervisor || '';
+
+        if (telefoneCampo) {
+            telefoneCampo.value = telefone || '';
+        }
+
+        const supervisorExiste = supervisorSelect ? Array.from(supervisorSelect.options).some(opt => opt.value === supervisor) : false;
+
+        if (supervisorSelect && supervisor && supervisorExiste && (forcarSupervisor || !supervisorSelect.value)) {
+            supervisorSelect.value = supervisor;
         }
     }
 
@@ -703,7 +746,6 @@ class App {
             setValor('repo_data_fim', repositor.repo_data_fim || '');
             setValor('repo_cidade_ref', repositor.repo_cidade_ref || '');
             setValor('repo_representante', repositor.rep_representante_codigo || '');
-            setValor('repo_contato_telefone', repositor.rep_contato_telefone || '');
             setValor('repo_supervisor', repositor.rep_supervisor || '');
 
             const campoVinculo = document.getElementById('repo_vinculo_agencia');
@@ -718,10 +760,12 @@ class App {
             });
 
             // Marcar jornada
-            const jornada = repositor.jornada || 'integral';
-            const campoJornada = document.querySelector(`input[name="jornada"][value="${jornada}"]`) || document.querySelector('input[name="jornada"][value="integral"]');
+            const jornada = repositor.rep_jornada_tipo || repositor.jornada?.toUpperCase() || 'INTEGRAL';
+            const campoJornada = document.querySelector(`input[name="rep_jornada_tipo"][value="${jornada}"]`) || document.querySelector('input[name="rep_jornada_tipo"][value="INTEGRAL"]');
             if (campoJornada) campoJornada.checked = true;
 
+            this.configurarEventosRepositor();
+            this.atualizarDadosRepresentante();
             this.showModalRepositor('edit', repositor);
         } catch (error) {
             this.showNotification('Erro ao carregar repositor: ' + error.message, 'error');

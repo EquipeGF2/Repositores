@@ -528,19 +528,88 @@ tbody td {
 }
 
 .modal-repositor #formRepositor {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    display: flex;
+    flex-direction: column;
     gap: var(--spacing-lg);
-}
-
-.modal-repositor #formRepositor .form-group.full-width,
-.modal-repositor #formRepositor .form-row.full-width,
-.modal-repositor #formRepositor .modal-footer {
-    grid-column: 1 / -1;
 }
 
 .modal-repositor #formRepositor .modal-footer {
     padding-top: var(--spacing-sm);
+}
+
+.repositor-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+    gap: var(--spacing-lg);
+}
+
+.card-span-2 {
+    grid-column: 1 / -1;
+}
+
+.form-card {
+    background: var(--gray-100);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing);
+    box-shadow: var(--shadow-sm);
+}
+
+.form-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: var(--spacing-sm);
+}
+
+.form-card-header h4 {
+    margin: 0;
+    font-size: 1.05rem;
+}
+
+.form-card-eyebrow {
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.75rem;
+    color: var(--gray-500);
+}
+
+.form-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing);
+}
+
+.modal-repositor .form-card .form-group {
+    margin-bottom: var(--spacing);
+}
+
+.checkbox-inline {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    cursor: pointer;
+    color: var(--gray-700);
+}
+
+.compact-checkbox {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: var(--spacing-xs);
+}
+
+.dias-trabalho-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: var(--spacing-sm);
+}
+
+.radio-group {
+    display: flex;
+    gap: var(--spacing);
+    flex-wrap: wrap;
 }
 
 @keyframes modalSlideIn {

@@ -54,6 +54,7 @@ class TursoDatabase {
                     repo_vinculo TEXT DEFAULT 'repositor',
                     dias_trabalhados TEXT DEFAULT 'seg,ter,qua,qui,sex',
                     jornada TEXT DEFAULT 'integral',
+                    rep_jornada_tipo TEXT DEFAULT 'INTEGRAL',
                     rep_supervisor TEXT,
                     rep_representante_codigo TEXT,
                     rep_representante_nome TEXT,
@@ -165,6 +166,37 @@ class TursoDatabase {
                 console.log('✅ Coluna jornada adicionada');
             } catch (e) {
                 // Coluna já existe, ignorar
+            }
+
+            // Adicionar coluna rep_jornada_tipo se não existir
+            try {
+                await this.mainClient.execute(`
+                    ALTER TABLE cad_repositor ADD COLUMN rep_jornada_tipo TEXT DEFAULT 'INTEGRAL'
+                `);
+                console.log('✅ Coluna rep_jornada_tipo adicionada');
+
+                try {
+                    await this.mainClient.execute(`
+                        UPDATE cad_repositor
+                        SET rep_jornada_tipo = UPPER(jornada)
+                        WHERE rep_jornada_tipo IS NULL OR rep_jornada_tipo = ''
+                    `);
+                    console.log('🔄 Jornada migrada para rep_jornada_tipo');
+                } catch (e) {
+                    console.warn('Aviso ao migrar jornada para rep_jornada_tipo:', e?.message || e);
+                }
+            } catch (e) {
+                // Coluna já existe, ignorar
+            }
+
+            try {
+                await this.mainClient.execute(`
+                    UPDATE cad_repositor
+                    SET rep_jornada_tipo = COALESCE(rep_jornada_tipo, 'INTEGRAL')
+                    WHERE rep_jornada_tipo IS NULL OR rep_jornada_tipo = ''
+                `);
+            } catch (e) {
+                console.warn('Aviso ao normalizar rep_jornada_tipo:', e?.message || e);
             }
 
             // Migrar tabela de histórico para nova estrutura com prefixo hist_
@@ -418,22 +450,25 @@ class TursoDatabase {
     }
 
     // ==================== REPOSITOR ====================
-    async createRepositor(nome, dataInicio, dataFim, cidadeRef, repCodigo, repNome, repContatoTelefone = null, vinculo = 'repositor', repSupervisor = null, diasTrabalhados = 'seg,ter,qua,qui,sex', jornada = 'integral') {
+    async createRepositor(nome, dataInicio, dataFim, cidadeRef, repCodigo, repNome, vinculo = 'repositor', repSupervisor = null, diasTrabalhados = 'seg,ter,qua,qui,sex', repJornadaTipo = 'INTEGRAL') {
         try {
+            const jornadaNormalizada = repJornadaTipo || 'INTEGRAL';
+            const jornadaLegada = jornadaNormalizada.toLowerCase();
+
             const result = await this.mainClient.execute({
                 sql: `INSERT INTO cad_repositor (
                         repo_nome, repo_data_inicio, repo_data_fim,
                         repo_cidade_ref, repo_representante, rep_contato_telefone, repo_vinculo,
-                        dias_trabalhados, jornada,
+                        dias_trabalhados, jornada, rep_jornada_tipo,
                         rep_supervisor, rep_representante_codigo, rep_representante_nome
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
                 args: [
                     nome, dataInicio, dataFim,
                     cidadeRef,
                     `${repCodigo || ''}${repNome ? ' - ' + repNome : ''}`.trim(),
-                    repContatoTelefone,
+                    null,
                     vinculo,
-                    diasTrabalhados, jornada,
+                    diasTrabalhados, jornadaLegada, jornadaNormalizada,
                     repSupervisor, repCodigo, repNome
                 ]
             });
@@ -472,17 +507,20 @@ class TursoDatabase {
         }
     }
 
-    async updateRepositor(cod, nome, dataInicio, dataFim, cidadeRef, repCodigo, repNome, repContatoTelefone = null, vinculo = 'repositor', repSupervisor = null, diasTrabalhados = 'seg,ter,qua,qui,sex', jornada = 'integral') {
+    async updateRepositor(cod, nome, dataInicio, dataFim, cidadeRef, repCodigo, repNome, vinculo = 'repositor', repSupervisor = null, diasTrabalhados = 'seg,ter,qua,qui,sex', repJornadaTipo = 'INTEGRAL') {
         try {
             // Buscar dados antigos para comparação
             const dadosAntigos = await this.getRepositor(cod);
+
+            const jornadaNormalizada = repJornadaTipo || 'INTEGRAL';
+            const jornadaLegada = jornadaNormalizada.toLowerCase();
 
             // Atualizar o registro
             await this.mainClient.execute({
                 sql: `UPDATE cad_repositor
                       SET repo_nome = ?, repo_data_inicio = ?, repo_data_fim = ?,
                           repo_cidade_ref = ?, repo_representante = ?, rep_contato_telefone = ?, repo_vinculo = ?,
-                          dias_trabalhados = ?, jornada = ?,
+                          dias_trabalhados = ?, jornada = ?, rep_jornada_tipo = ?,
                           rep_supervisor = ?, rep_representante_codigo = ?, rep_representante_nome = ?,
                           updated_at = CURRENT_TIMESTAMP
                       WHERE repo_cod = ?`,
@@ -490,9 +528,9 @@ class TursoDatabase {
                     nome, dataInicio, dataFim,
                     cidadeRef,
                     `${repCodigo || ''}${repNome ? ' - ' + repNome : ''}`.trim(),
-                    repContatoTelefone,
+                    null,
                     vinculo,
-                    diasTrabalhados, jornada,
+                    diasTrabalhados, jornadaLegada, jornadaNormalizada,
                     repSupervisor, repCodigo, repNome,
                     cod
                 ]
@@ -504,9 +542,10 @@ class TursoDatabase {
                     await this.registrarHistorico(cod, 'dias_trabalhados',
                         dadosAntigos.dias_trabalhados, diasTrabalhados);
                 }
-                if (dadosAntigos.jornada !== jornada) {
+                const jornadaAnterior = dadosAntigos.rep_jornada_tipo || dadosAntigos.jornada || 'INTEGRAL';
+                if (jornadaAnterior !== jornadaNormalizada) {
                     await this.registrarHistorico(cod, 'jornada',
-                        dadosAntigos.jornada, jornada);
+                        jornadaAnterior, jornadaNormalizada);
                 }
                 if (dadosAntigos.repo_vinculo !== vinculo) {
                     await this.registrarHistorico(cod, 'vinculo',
