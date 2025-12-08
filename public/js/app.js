@@ -1132,19 +1132,19 @@ class App {
 
     async carregarCidadesRoteiro() {
         const mensagem = document.getElementById('roteiroCidadesMensagem');
-        const tabela = document.getElementById('roteiroCidadesTabela');
+        const container = document.getElementById('roteiroCidadesContainer');
         const dia = this.estadoRoteiro.diaSelecionado;
 
-        console.log(`[ROTEIRO] carregarCidadesRoteiro iniciado. Dia: ${dia}, Tabela existe: ${!!tabela}`);
+        console.log(`[ROTEIRO] carregarCidadesRoteiro iniciado. Dia: ${dia}, Container existe: ${!!container}`);
 
-        if (!tabela) {
-            console.warn('[ROTEIRO] Elemento roteiroCidadesTabela não encontrado! Abortando carregamento.');
+        if (!container) {
+            console.warn('[ROTEIRO] Elemento roteiroCidadesContainer não encontrado! Abortando carregamento.');
             return;
         }
 
         if (!dia) {
-            console.log('[ROTEIRO] Nenhum dia selecionado, limpando tabela');
-            tabela.innerHTML = '';
+            console.log('[ROTEIRO] Nenhum dia selecionado, limpando container');
+            container.innerHTML = '';
             if (mensagem) mensagem.textContent = 'Selecione um dia de trabalho para configurar o roteiro.';
             await this.carregarClientesRoteiro();
             return;
@@ -1165,17 +1165,9 @@ class App {
 
         if (cidades.length === 0) {
             console.log('[ROTEIRO] Nenhuma cidade encontrada, exibindo mensagem');
-            tabela.innerHTML = '';
+            container.innerHTML = '';
             if (mensagem) mensagem.textContent = 'Cadastre uma cidade para este dia para visualizar os clientes.';
             await this.carregarClientesRoteiro();
-            return;
-        }
-
-        // Novo design com checkboxes
-        const container = document.getElementById('roteiroCidadesContainer');
-        console.log(`[ROTEIRO] Container existe: ${!!container}`);
-        if (!container) {
-            console.error('[ROTEIRO] Elemento roteiroCidadesContainer não encontrado! As cidades não serão exibidas.');
             return;
         }
 
