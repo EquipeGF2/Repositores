@@ -7,6 +7,52 @@ import { db } from './db.js';
 import { formatarData } from './utils.js';
 
 export const pages = {
+    // ==================== HOME ====================
+
+    'home': async () => {
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Bem-vindo ao Sistema de Reposição</h3>
+                </div>
+                <div class="card-body">
+                    <div class="home-container">
+                        <div class="home-welcome">
+                            <h2>Sistema de Gestão de Repositores</h2>
+                            <p>Selecione uma opção no menu lateral para começar.</p>
+                        </div>
+
+                        <div class="home-sections">
+                            <div class="home-section-card" onclick="window.app.navigateTo('cadastro-repositor')">
+                                <div class="home-section-icon">📋</div>
+                                <h3>Cadastros</h3>
+                                <p>Gerencie repositores, roteiros e rateios</p>
+                            </div>
+
+                            <div class="home-section-card" onclick="window.app.navigateTo('consulta-roteiro')">
+                                <div class="home-section-icon">🔎</div>
+                                <h3>Consultas</h3>
+                                <p>Consulte alterações, estrutura e roteiros</p>
+                            </div>
+
+                            <div class="home-section-card" onclick="window.app.navigateTo('resumo-periodo')">
+                                <div class="home-section-icon">📊</div>
+                                <h3>Reposição</h3>
+                                <p>Relatórios e análises de reposição</p>
+                            </div>
+
+                            <div class="home-section-card" onclick="window.app.navigateTo('controle-acessos')">
+                                <div class="home-section-icon">⚙️</div>
+                                <h3>Configurações</h3>
+                                <p>Controle de acessos e permissões</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
     // ==================== CADASTROS ====================
 
     'cadastro-repositor': async () => {
@@ -1067,6 +1113,7 @@ export const pages = {
 
 // Mapeamento de títulos das páginas
 export const pageTitles = {
+    'home': 'Início',
     'cadastro-repositor': 'Cadastro de Repositores',
     'cadastro-rateio': 'Cadastro de Rateio',
     'validacao-dados': 'Validação de Dados',

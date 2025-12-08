@@ -12,7 +12,7 @@ const AUTH_STORAGE_KEY = 'GERMANI_AUTH_USER';
 
 class App {
     constructor() {
-        this.currentPage = 'cadastro-repositor';
+        this.currentPage = 'home';
         this.ultimaConsultaRepositores = [];
         this.resultadosValidacao = [];
         this.usuarioLogado = null;
@@ -1107,14 +1107,26 @@ class App {
 
         try {
             const usuario = this.usuarioLogado?.username || 'desconhecido';
+            console.log(`[ROTEIRO] Tentando adicionar cidade ${cidade} ao roteiro (repo: ${this.contextoRoteiro.repo_cod}, dia: ${dia})`);
+
             const novoId = await db.adicionarCidadeRoteiro(this.contextoRoteiro.repo_cod, dia, cidade, usuario);
+            console.log(`[ROTEIRO] Cidade adicionada com sucesso! ID: ${novoId}`);
+
             this.estadoRoteiro.cidadeSelecionada = novoId;
             if (inputCidade) inputCidade.value = '';
             if (mensagem) mensagem.textContent = '';
+
+            // Limpa cache antes de recarregar
+            this.cidadesRoteiroCache = [];
+            this.clientesCachePorCidade = {};
+
             await this.carregarCidadesRoteiro();
+            await this.carregarClientesRoteiro();
             this.showNotification('Cidade adicionada ao roteiro.', 'success');
         } catch (error) {
+            console.error('[ROTEIRO] Erro ao adicionar cidade:', error);
             if (mensagem) mensagem.textContent = error.message;
+            this.showNotification(error.message || 'Erro ao adicionar cidade.', 'error');
         }
     }
 
@@ -1132,7 +1144,13 @@ class App {
             return;
         }
 
+        // Força recarregamento do banco (ignora qualquer cache)
+        console.log(`[ROTEIRO] Carregando cidades do roteiro para repositor ${this.contextoRoteiro.repo_cod}, dia ${dia}`);
         const cidades = await db.getRoteiroCidades(this.contextoRoteiro.repo_cod, dia);
+        console.log(`[ROTEIRO] ${cidades.length} cidades encontradas no banco:`, cidades.map(c => `${c.rot_cidade} (ID: ${c.rot_cid_id})`).join(', '));
+
+        // Limpa cache de clientes ao recarregar cidades
+        this.clientesCachePorCidade = {};
         this.cidadesRoteiroCache = cidades;
 
         if (!this.estadoRoteiro.cidadeSelecionada && cidades.length > 0) {

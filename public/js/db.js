@@ -1078,8 +1078,12 @@ class TursoDatabase {
     }
 
     async getRoteiroCidades(repositorId, diaSemana) {
-        if (!repositorId || !diaSemana) return [];
+        if (!repositorId || !diaSemana) {
+            console.warn('[DB] getRoteiroCidades: repositorId ou diaSemana não fornecido');
+            return [];
+        }
         try {
+            console.log(`[DB] Buscando cidades no banco: repositorId=${repositorId}, diaSemana=${diaSemana}`);
             const result = await this.mainClient.execute({
                 sql: `
                     SELECT *
@@ -1089,9 +1093,13 @@ class TursoDatabase {
                 `,
                 args: [repositorId, diaSemana]
             });
+            console.log(`[DB] Resultado da query: ${result.rows.length} cidades encontradas`);
+            if (result.rows.length > 0) {
+                console.log('[DB] Cidades:', result.rows.map(c => `${c.rot_cidade} (rot_cid_id=${c.rot_cid_id}, rot_repositor_id=${c.rot_repositor_id}, rot_dia_semana=${c.rot_dia_semana})`));
+            }
             return result.rows;
         } catch (error) {
-            console.error('Erro ao buscar cidades do roteiro:', error);
+            console.error('[DB] Erro ao buscar cidades do roteiro:', error);
             return [];
         }
     }
