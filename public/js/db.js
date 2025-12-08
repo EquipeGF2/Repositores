@@ -1117,7 +1117,10 @@ class TursoDatabase {
 
             return Number(result.lastInsertRowid);
         } catch (error) {
-            if (String(error?.message || '').includes('uniq_rot_cidade')) {
+            const errorMessage = String(error?.message || '');
+            if (errorMessage.includes('UNIQUE constraint failed') ||
+                errorMessage.includes('uniq_rot_cidade') ||
+                errorMessage.includes('rot_roteiro_cidade.rot_repositor_id')) {
                 throw new Error('Cidade já cadastrada para este dia.');
             }
             console.error('Erro ao adicionar cidade ao roteiro:', error);
