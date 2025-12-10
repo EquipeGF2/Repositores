@@ -117,23 +117,25 @@ export function formatarCNPJCPF(valor) {
         }
     }
 
-    // Remove zeros à esquerda, mas mantém o tamanho mínimo
-    texto = texto.replace(/^0+/, '') || '0';
-
+    // NÃO remove zeros à esquerda - mantém o tamanho original
     const tamanho = texto.length;
 
-    // Se tem 14 dígitos ou mais, é CNPJ
+    // Prioriza CNPJ: se tem 14 dígitos ou mais, é CNPJ
     if (tamanho >= 14) {
+        // Garante exatamente 14 dígitos
+        texto = texto.padStart(14, '0').substring(0, 14);
+        // Formato CNPJ: XX.XXX.XXX/XXXX-XX
+        return texto.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+    }
+    // Se tem 11, 12 ou 13 dígitos, completa para 14 e formata como CNPJ
+    else if (tamanho >= 11 && tamanho < 14) {
         texto = texto.padStart(14, '0');
         return texto.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
     }
-    // Se tem 11 dígitos, é CPF
-    else if (tamanho === 11) {
-        return texto.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-    }
-    // Se tem menos de 11, tenta preencher com zeros para CPF
+    // Se tem menos de 11 dígitos, formata como CPF
     else if (tamanho > 0 && tamanho < 11) {
         texto = texto.padStart(11, '0');
+        // Formato CPF: XXX.XXX.XXX-XX
         return texto.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
     }
 
