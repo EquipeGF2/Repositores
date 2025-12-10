@@ -172,6 +172,25 @@ class TursoDatabase {
                 // Coluna já existe, ignorar
             }
 
+            // Adicionar colunas de flags no roteiro de clientes
+            try {
+                await this.mainClient.execute(`
+                    ALTER TABLE rot_roteiro_cliente ADD COLUMN rot_venda_centralizada INTEGER DEFAULT 0
+                `);
+                console.log('✅ Coluna rot_venda_centralizada adicionada');
+            } catch (e) {
+                // Coluna já existe, ignorar
+            }
+
+            try {
+                await this.mainClient.execute(`
+                    ALTER TABLE rot_roteiro_cliente ADD COLUMN rot_possui_rateio INTEGER DEFAULT 0
+                `);
+                console.log('✅ Coluna rot_possui_rateio adicionada');
+            } catch (e) {
+                // Coluna já existe, ignorar
+            }
+
             try {
                 const faltantes = await this.mainClient.execute(`
                     SELECT repo_cod, repo_representante

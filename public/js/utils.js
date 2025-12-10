@@ -96,33 +96,47 @@ export function validarCamposObrigatorios(campos) {
  * Converte números grandes em strings com zeros à esquerda
  */
 export function formatarCNPJCPF(valor) {
-    if (!valor) return '-';
+    if (!valor || valor === 'NaN' || String(valor).toLowerCase() === 'nan') return '-';
+
+    // Remove qualquer NaN do valor
+    let valorLimpo = String(valor).replace(/NaN/gi, '').trim();
+    if (!valorLimpo) return '-';
 
     // Converte para string e remove caracteres não numéricos
-    let texto = String(valor).replace(/\D/g, '');
+    let texto = valorLimpo.replace(/\D/g, '');
 
     // Se for número em notação científica, reconstrói o número completo
-    if (String(valor).includes('E') || String(valor).includes('e')) {
-        // Força conversão para bigint se possível
+    if (String(valorLimpo).includes('E') || String(valorLimpo).includes('e')) {
         try {
-            const numero = Math.round(Number(valor));
-            texto = String(numero);
+            const numero = Number(valorLimpo);
+            if (!isNaN(numero) && isFinite(numero)) {
+                texto = Math.floor(numero).toString();
+            }
         } catch (e) {
-            texto = String(valor).replace(/\D/g, '');
+            // Mantém o texto já extraído
         }
     }
 
-    // Remove zeros à esquerda mas mantém pelo menos 11 dígitos (CPF) ou 14 (CNPJ)
+    // Remove zeros à esquerda, mas mantém o tamanho mínimo
+    texto = texto.replace(/^0+/, '') || '0';
+
     const tamanho = texto.length;
 
-    if (tamanho === 11) {
-        // CPF: 000.000.000-00
-        return texto.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-    } else if (tamanho === 14) {
-        // CNPJ: 00.000.000/0000-00
+    // Se tem 14 dígitos ou mais, é CNPJ
+    if (tamanho >= 14) {
+        texto = texto.padStart(14, '0');
         return texto.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
-    } else {
-        // Retorna sem formatação se tamanho não bater
-        return texto.padStart(Math.max(11, tamanho), '0');
     }
+    // Se tem 11 dígitos, é CPF
+    else if (tamanho === 11) {
+        return texto.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    }
+    // Se tem menos de 11, tenta preencher com zeros para CPF
+    else if (tamanho > 0 && tamanho < 11) {
+        texto = texto.padStart(11, '0');
+        return texto.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    }
+
+    // Se não conseguiu formatar, retorna o texto sem formatação
+    return texto || '-';
 }
