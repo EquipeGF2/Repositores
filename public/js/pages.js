@@ -499,11 +499,13 @@ export const pages = {
                 <div>
                     <p class="form-card-eyebrow">Roteiro do Repositor</p>
                     <h3>${repositor.repo_nome}</h3>
-                    <p class="text-muted">Configure os dias, cidades e clientes atendidos.</p>
+                    <p class="text-muted">Configure os dias, cidades e clientes atendidos. As alterações serão salvas ao clicar no botão "Salvar Roteiro".</p>
                 </div>
                 <div class="roteiro-badges">
                     <span class="badge badge-info">Código ${repositor.repo_cod}</span>
                     <span class="badge">${repositor.repo_vinculo === 'agencia' ? 'Agência' : 'Repositor'}</span>
+                    <button class="btn btn-primary" id="btnSalvarRoteiroCompleto" style="margin-left: 1rem;">💾 Salvar Roteiro</button>
+                    <span id="roteiroPendentesIndicador" class="badge badge-warning" style="display: none; margin-left: 0.5rem;">Alterações pendentes</span>
                 </div>
             </div>
 

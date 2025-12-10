@@ -1353,7 +1353,16 @@ class TursoDatabase {
         sql += `
             ORDER BY
                 r.repo_nome,
-                rc.rot_dia_semana,
+                CASE rc.rot_dia_semana
+                    WHEN 'seg' THEN 1
+                    WHEN 'ter' THEN 2
+                    WHEN 'qua' THEN 3
+                    WHEN 'qui' THEN 4
+                    WHEN 'sex' THEN 5
+                    WHEN 'sab' THEN 6
+                    WHEN 'dom' THEN 7
+                    ELSE 8
+                END,
                 COALESCE(rc.rot_ordem_cidade, rc.rot_cid_id),
                 COALESCE(cli.rot_ordem_visita, cli.rot_cli_id)
         `;

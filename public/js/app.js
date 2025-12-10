@@ -25,6 +25,13 @@ class App {
             cidadeSelecionada: null,
             buscaClientes: ''
         };
+        this.mudancasPendentesRoteiro = {
+            cidadesAdicionar: [], // {repositorId, diaSemana, cidade, ordem}
+            cidadesRemover: [], // {rotCidId}
+            clientesAdicionar: [], // {rotCidId, clienteCodigo}
+            clientesRemover: [], // {rotCidId, clienteCodigo}
+            ordensAtualizar: [] // {rotCidId, rotCliId, tipo: 'cidade'|'cliente', ordem}
+        };
         this.ultimaConsultaRepositoresRoteiro = [];
         this.cidadesPotenciaisCache = [];
         this.clientesCachePorCidade = {};
@@ -883,6 +890,11 @@ class App {
             btnAddCliente.onclick = () => this.abrirModalAdicionarCliente();
         }
 
+        const btnSalvarRoteiro = document.getElementById('btnSalvarRoteiroCompleto');
+        if (btnSalvarRoteiro) {
+            btnSalvarRoteiro.onclick = () => this.salvarRoteiroCompleto();
+        }
+
         const buscaModal = document.getElementById('modalBuscaClientesCidade');
         if (buscaModal) {
             buscaModal.value = this.buscaClientesModal || '';
@@ -1127,6 +1139,7 @@ class App {
 
             await this.carregarCidadesRoteiro();
             await this.carregarClientesRoteiro();
+            this.marcarRoteiroPendente();
             this.showNotification('Cidade adicionada ao roteiro.', 'success');
         } catch (error) {
             console.error('[ROTEIRO] Erro ao adicionar cidade:', error);
@@ -1265,6 +1278,7 @@ class App {
                 delete this.clientesCachePorCidade[cidadeAtual.rot_cidade];
             }
             await this.carregarCidadesRoteiro();
+            this.marcarRoteiroPendente();
             this.showNotification('Cidade removida do roteiro.', 'success');
         } catch (error) {
             this.showNotification(error.message || 'Erro ao remover cidade.', 'error');
@@ -1435,9 +1449,37 @@ class App {
             }
 
             await this.carregarClientesRoteiro();
+            this.marcarRoteiroPendente();
         } catch (error) {
             this.showNotification(error.message || 'Erro ao atualizar cliente no roteiro.', 'error');
             await this.carregarClientesRoteiro();
+        }
+    }
+
+    marcarRoteiroPendente() {
+        const indicador = document.getElementById('roteiroPendentesIndicador');
+        if (indicador) {
+            indicador.style.display = 'inline-block';
+        }
+    }
+
+    limparRoteiroPendente() {
+        const indicador = document.getElementById('roteiroPendentesIndicador');
+        if (indicador) {
+            indicador.style.display = 'none';
+        }
+    }
+
+    async salvarRoteiroCompleto() {
+        try {
+            // Recarregar dados para sincronizar
+            await this.carregarCidadesRoteiro();
+            await this.carregarClientesRoteiro();
+
+            this.limparRoteiroPendente();
+            this.showNotification('Roteiro sincronizado com sucesso! Todas as alterações foram salvas.', 'success');
+        } catch (error) {
+            this.showNotification('Erro ao sincronizar roteiro: ' + error.message, 'error');
         }
     }
 
@@ -2276,7 +2318,7 @@ class App {
 
         container.innerHTML = `
             <div class="table-container">
-                <table>
+                <table style="font-size: 0.85rem;">
                     <thead>
                         <tr>
                             <th>Repositor</th>
@@ -2285,11 +2327,11 @@ class App {
                             <th>Ordem Cidade</th>
                             <th>Código</th>
                             <th>Nome</th>
+                            <th>Ordem Visita</th>
                             <th>Fantasia</th>
                             <th>Endereço</th>
                             <th>Bairro</th>
                             <th>Grupo</th>
-                            <th>Ordem Visita</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -2304,11 +2346,11 @@ class App {
                                     <td>${item.rot_ordem_cidade || '-'}</td>
                                     <td>${item.rot_cliente_codigo}</td>
                                     <td>${cliente.nome || '-'}</td>
+                                    <td>${item.rot_ordem_visita || '-'}</td>
                                     <td>${cliente.fantasia || '-'}</td>
                                     <td>${endereco || '-'}</td>
                                     <td>${cliente.bairro || '-'}</td>
                                     <td>${cliente.grupo_desc || '-'}</td>
-                                    <td>${item.rot_ordem_visita || '-'}</td>
                                 </tr>
                             `;
                         }).join('')}
