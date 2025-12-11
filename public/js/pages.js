@@ -151,8 +151,8 @@ export const pages = {
                                         </div>
                                     </div>
                                     <div class="form-card-body">
-                                        <div class="form-row">
-                                            <div class="form-group">
+                                        <div class="form-grid">
+                                            <div class="form-group span-2">
                                                 <label for="repo_nome">Nome do Repositor</label>
                                                 <input type="text" id="repo_nome" required>
                                             </div>
@@ -163,9 +163,22 @@ export const pages = {
                                                     <span>É uma Agência?</span>
                                                 </label>
                                             </div>
-                                        </div>
 
-                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="repo_telefone">Telefone do Repositor</label>
+                                                <input type="text" id="repo_telefone" placeholder="(DD) 99999-9999">
+                                            </div>
+
+                                            <div class="form-group">
+                                                <label for="repo_email">E-mail do Repositor</label>
+                                                <input type="email" id="repo_email" placeholder="nome@exemplo.com">
+                                            </div>
+
+                                            <div class="form-group">
+                                                <label for="repo_cidade_ref">Cidade Referência</label>
+                                                <input type="text" id="repo_cidade_ref" placeholder="Ex: São Paulo" required>
+                                            </div>
+
                                             <div class="form-group">
                                                 <label for="repo_data_inicio">Data Início</label>
                                                 <input type="date" id="repo_data_inicio" required>
@@ -175,13 +188,6 @@ export const pages = {
                                                 <label for="repo_data_fim">Data Fim</label>
                                                 <input type="date" id="repo_data_fim">
                                                 <small>Deixe em branco se ainda estiver ativo</small>
-                                            </div>
-                                        </div>
-
-                                        <div class="form-row">
-                                            <div class="form-group">
-                                                <label for="repo_cidade_ref">Cidade Referência</label>
-                                                <input type="text" id="repo_cidade_ref" placeholder="Ex: São Paulo" required>
                                             </div>
                                         </div>
                                     </div>
@@ -247,14 +253,6 @@ export const pages = {
                                                 <option value="">Selecione</option>
                                                 ${representanteOptions}
                                             </select>
-                                        </div>
-                                        <div class="form-group">
-                                            <label for="repo_contato_telefone">Telefone</label>
-                                            <input type="text" id="repo_contato_telefone" placeholder="Telefone">
-                                        </div>
-                                        <div class="form-group">
-                                            <label for="repo_email">E-mail</label>
-                                            <input type="email" id="repo_email" placeholder="E-mail">
                                         </div>
                                     </div>
                                 </section>

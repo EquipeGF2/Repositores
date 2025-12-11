@@ -63,8 +63,9 @@ class TursoDatabase {
                     repo_data_fim DATE,
                     repo_cidade_ref TEXT,
                     repo_representante TEXT,
-                    rep_contato_telefone TEXT,
+                    rep_telefone TEXT,
                     rep_email TEXT,
+                    rep_contato_telefone TEXT,
                     repo_vinculo TEXT DEFAULT 'repositor',
                     dias_trabalhados TEXT DEFAULT 'seg,ter,qua,qui,sex',
                     jornada TEXT DEFAULT 'integral',
@@ -170,6 +171,26 @@ class TursoDatabase {
                 console.log('✅ Coluna rep_email adicionada');
             } catch (e) {
                 // Coluna já existe, ignorar
+            }
+
+            // Adicionar coluna rep_telefone se não existir
+            try {
+                await this.mainClient.execute(`
+                    ALTER TABLE cad_repositor ADD COLUMN rep_telefone TEXT
+                `);
+                console.log('✅ Coluna rep_telefone adicionada');
+            } catch (e) {
+                // Coluna já existe, ignorar
+            }
+
+            try {
+                await this.mainClient.execute(`
+                    UPDATE cad_repositor
+                    SET rep_telefone = COALESCE(rep_telefone, rep_contato_telefone)
+                    WHERE (rep_telefone IS NULL OR rep_telefone = '') AND rep_contato_telefone IS NOT NULL
+                `);
+            } catch (e) {
+                console.warn('Aviso ao sincronizar telefones de repositor:', e?.message || e);
             }
 
             // Adicionar colunas de flags no roteiro de clientes
@@ -731,7 +752,7 @@ class TursoDatabase {
             const nomeNormalizado = normalizarTextoCadastro(nome);
             const cidadeNormalizada = normalizarTextoCadastro(cidadeRef);
             const jornadaNormalizada = vinculo === 'agencia' ? null : (repJornadaTipo || 'INTEGRAL');
-            const jornadaLegada = jornadaNormalizada ? jornadaNormalizada.toLowerCase() : null;
+                    const jornadaLegada = jornadaNormalizada ? jornadaNormalizada.toLowerCase() : null;
             const supervisorNormalizado = normalizarSupervisor(repSupervisor);
             const diasParaGravar = vinculo === 'agencia' ? null : (diasTrabalhados || 'seg,ter,qua,qui,sex');
 
@@ -747,19 +768,20 @@ class TursoDatabase {
                 }
             }
 
-            const result = await this.mainClient.execute({
-                sql: `INSERT INTO cad_repositor (
-                        repo_nome, repo_data_inicio, repo_data_fim,
-                        repo_cidade_ref, repo_representante, rep_contato_telefone, rep_email, repo_vinculo,
-                    dias_trabalhados, jornada, rep_jornada_tipo,
-                    rep_supervisor, rep_representante_codigo, rep_representante_nome
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
-                args: [
-                    nomeNormalizado, dataInicio, dataFim,
-                    cidadeNormalizada,
-                    `${repCodigo || ''}${repNome ? ' - ' + repNome : ''}`.trim(),
+                    const result = await this.mainClient.execute({
+                        sql: `INSERT INTO cad_repositor (
+                                repo_nome, repo_data_inicio, repo_data_fim,
+                                repo_cidade_ref, repo_representante, rep_telefone, rep_email, rep_contato_telefone, repo_vinculo,
+                            dias_trabalhados, jornada, rep_jornada_tipo,
+                            rep_supervisor, rep_representante_codigo, rep_representante_nome
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+                        args: [
+                            nomeNormalizado, dataInicio, dataFim,
+                            cidadeNormalizada,
+                            `${repCodigo || ''}${repNome ? ' - ' + repNome : ''}`.trim(),
                     telefone || null,
                     email || null,
+                    telefone || null,
                     vinculo,
                     diasParaGravar, jornadaLegada, jornadaNormalizada,
                     supervisorNormalizado, repCodigo, repNome
@@ -860,7 +882,7 @@ class TursoDatabase {
             await this.mainClient.execute({
                 sql: `UPDATE cad_repositor
                       SET repo_nome = ?, repo_data_inicio = ?, repo_data_fim = ?,
-                          repo_cidade_ref = ?, repo_representante = ?, rep_contato_telefone = ?, rep_email = ?, repo_vinculo = ?,
+                          repo_cidade_ref = ?, repo_representante = ?, rep_telefone = ?, rep_email = ?, rep_contato_telefone = ?, repo_vinculo = ?,
                           dias_trabalhados = ?, jornada = ?, rep_jornada_tipo = ?,
                           rep_supervisor = ?, rep_representante_codigo = ?, rep_representante_nome = ?,
                           updated_at = CURRENT_TIMESTAMP
@@ -871,6 +893,7 @@ class TursoDatabase {
                     `${repCodigo || ''}${repNome ? ' - ' + repNome : ''}`.trim(),
                     telefone || null,
                     email || null,
+                    telefone || null,
                     vinculo,
                     diasParaGravar, jornadaLegada, jornadaNormalizada,
                     supervisorNormalizado, repCodigo, repNome,

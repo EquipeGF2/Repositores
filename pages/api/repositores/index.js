@@ -23,15 +23,19 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      const { nome, dataInicio, dataFim, cidadeRef, representante, contatoTelefone } = req.body || {};
+      const { nome, dataInicio, dataFim, cidadeRef, representante, telefone, email } = req.body || {};
 
       if (!nome || !dataInicio) {
         return res.status(400).json({ error: 'Nome e data de início são obrigatórios.' });
       }
 
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ error: 'E-mail inválido.' });
+      }
+
       const result = await client.execute({
-        sql: 'INSERT INTO cad_repositor (repo_nome, repo_data_inicio, repo_data_fim, repo_cidade_ref, repo_representante, rep_contato_telefone) VALUES (?, ?, ?, ?, ?, ?)',
-        args: [nome, dataInicio, dataFim || null, cidadeRef || null, representante || null, contatoTelefone || null],
+        sql: 'INSERT INTO cad_repositor (repo_nome, repo_data_inicio, repo_data_fim, repo_cidade_ref, repo_representante, rep_telefone, rep_email, rep_contato_telefone) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        args: [nome, dataInicio, dataFim || null, cidadeRef || null, representante || null, telefone || null, email || null, telefone || null],
       });
 
       const created = await client.execute({

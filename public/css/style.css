@@ -544,10 +544,10 @@ tbody td {
 }
 
 .modal-repositor .modal-content {
-    max-width: 1200px;
+    max-width: 1400px;
     width: 98%;
-    max-height: 98vh;
-    height: 96vh;
+    max-height: 94vh;
+    height: 92vh;
     display: flex;
     flex-direction: column;
 }
@@ -588,7 +588,7 @@ tbody td {
 
 .repositor-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
     gap: var(--spacing);
 }
 
@@ -628,6 +628,22 @@ tbody td {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-sm);
+}
+
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--spacing);
+}
+
+.form-grid .span-2 {
+    grid-column: span 2;
+}
+
+@media (max-width: 960px) {
+    .form-grid .span-2 {
+        grid-column: span 1;
+    }
 }
 
 .modal-repositor .form-card .form-group {

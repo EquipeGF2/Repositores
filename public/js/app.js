@@ -468,7 +468,7 @@ class App {
             document.getElementById('repo_cod').value = '';
             document.getElementById('repo_vinculo_agencia').checked = false;
 
-            const telefoneCampo = document.getElementById('repo_contato_telefone');
+            const telefoneCampo = document.getElementById('repo_telefone');
             if (telefoneCampo) telefoneCampo.value = '';
 
             const emailCampo = document.getElementById('repo_email');
@@ -516,14 +516,19 @@ class App {
         const repNome = document.getElementById('repo_representante').selectedOptions[0]?.dataset?.nome || '';
         const vinculo = document.getElementById('repo_vinculo_agencia').checked ? 'agencia' : 'repositor';
         const supervisor = document.getElementById('repo_supervisor').value || null;
-        const telefone = document.getElementById('repo_contato_telefone').value || null;
-        const email = document.getElementById('repo_email').value || null;
+        const telefone = (document.getElementById('repo_telefone').value || '').trim();
+        const email = (document.getElementById('repo_email').value || '').trim();
 
         const diasCheckboxes = document.querySelectorAll('.dia-trabalho:checked');
         const diasTrabalhados = Array.from(diasCheckboxes).map(cb => cb.value).join(',');
 
         const campoJornada = document.querySelector('input[name="rep_jornada_tipo"]:checked');
         const jornada = vinculo === 'agencia' ? null : (campoJornada?.value || 'INTEGRAL');
+
+        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            this.showNotification('Informe um e-mail válido ou deixe o campo em branco.', 'warning');
+            return;
+        }
 
         if (vinculo !== 'agencia' && !diasTrabalhados) {
             this.showNotification('Selecione ao menos um dia trabalhado para o repositor.', 'warning');
@@ -532,10 +537,10 @@ class App {
 
         try {
             if (cod) {
-                await db.updateRepositor(cod, nome, dataInicio, dataFim, cidadeRef, repCodigo, repNome, vinculo, supervisor, diasTrabalhados, jornada, telefone, email);
+                await db.updateRepositor(cod, nome, dataInicio, dataFim, cidadeRef, repCodigo, repNome, vinculo, supervisor, diasTrabalhados, jornada, telefone || null, email || null);
                 this.showNotification(`${vinculo === 'agencia' ? 'Agência' : 'Repositor'} atualizado com sucesso!`, 'success');
             } else {
-                await db.createRepositor(nome, dataInicio, dataFim, cidadeRef, repCodigo, repNome, vinculo, supervisor, diasTrabalhados, jornada, telefone, email);
+                await db.createRepositor(nome, dataInicio, dataFim, cidadeRef, repCodigo, repNome, vinculo, supervisor, diasTrabalhados, jornada, telefone || null, email || null);
                 this.showNotification(`${vinculo === 'agencia' ? 'Agência' : 'Repositor'} cadastrado com sucesso!`, 'success');
             }
 
@@ -625,16 +630,10 @@ class App {
 
     atualizarDadosRepresentante({ forcarSupervisor = false } = {}) {
         const representanteSelect = document.getElementById('repo_representante');
-        const telefoneCampo = document.getElementById('repo_contato_telefone');
         const supervisorSelect = document.getElementById('repo_supervisor');
         const opcao = representanteSelect?.selectedOptions?.[0];
 
-        const telefone = opcao?.dataset?.telefone || '';
         const supervisor = opcao?.dataset?.supervisor || '';
-
-        if (telefoneCampo) {
-            telefoneCampo.value = telefone || '';
-        }
 
         const supervisorExiste = supervisorSelect ? Array.from(supervisorSelect.options).some(opt => opt.value === supervisor) : false;
 
@@ -762,7 +761,7 @@ class App {
                                     <td>${repo.repo_nome}</td>
                                     <td>${supervisorLabel}</td>
                                     <td>${repLabel || '-'}</td>
-                                    <td class="col-contato">${repo.rep_contato_telefone || '-'}</td>
+                                    <td class="col-contato">${repo.rep_telefone || repo.rep_contato_telefone || '-'}</td>
                                     <td><span class="badge ${repo.repo_vinculo === 'agencia' ? 'badge-warning' : 'badge-info'}">${repo.repo_vinculo === 'agencia' ? 'Agência' : 'Repositor'}</span></td>
                                     <td>${badgeStatus}</td>
                                     <td>${this.formatarDataSimples(repo.repo_data_inicio)}</td>
@@ -2097,7 +2096,7 @@ class App {
             setValor('repo_cidade_ref', repositor.repo_cidade_ref || '');
             setValor('repo_representante', repositor.rep_representante_codigo || '');
             setValor('repo_supervisor', repositor.rep_supervisor || '');
-            setValor('repo_contato_telefone', repositor.rep_contato_telefone || '');
+            setValor('repo_telefone', repositor.rep_telefone || repositor.rep_contato_telefone || '');
             setValor('repo_email', repositor.rep_email || '');
 
             const campoVinculo = document.getElementById('repo_vinculo_agencia');
@@ -2460,7 +2459,7 @@ class App {
         // Agrupar dados por repositor e dia da semana
         const primeiroItem = this.resultadosConsultaRoteiro[0];
         const nomeRepositor = `${primeiroItem.repo_cod} - ${primeiroItem.repo_nome}`;
-        const telefone = primeiroItem.rep_contato_telefone || '';
+        const telefone = primeiroItem.rep_telefone || primeiroItem.rep_contato_telefone || '';
         const supervisor = normalizarSupervisor(primeiroItem.rep_supervisor) || '';
         const representante = primeiroItem.repo_representante || '';
 
