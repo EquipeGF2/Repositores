@@ -103,6 +103,23 @@ export function normalizarDocumento(valor) {
         .trim();
 }
 
+/**
+ * Retorna o documento exatamente como veio do banco
+ * sem aplicar máscaras ou remoções de caracteres.
+ */
+export function documentoParaExibicao(valor) {
+    if (valor === null || valor === undefined) return '';
+    return String(valor).trim();
+}
+
+/**
+ * Remove caracteres não numéricos apenas para fins de busca,
+ * preservando o valor original para exibição.
+ */
+export function documentoParaBusca(valor) {
+    return documentoParaExibicao(valor).replace(/\D/g, '');
+}
+
 export function formatarCNPJCPF(valor) {
     const doc = normalizarDocumento(valor);
     if (!doc) return '';

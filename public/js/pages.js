@@ -698,10 +698,17 @@ export const pages = {
                     <div class="modal-body">
                         <p id="rateioRapidoClienteInfo" class="text-muted"></p>
                         <p id="rateioRapidoRepositorInfo" class="text-muted"></p>
-                        <div class="form-group">
-                            <label for="rateioRapidoPercentual">% de rateio deste cliente para este repositor</label>
-                            <input type="number" id="rateioRapidoPercentual" min="0" max="100" step="0.01" required>
-                            <small class="helper-compact">Valores entre 0 e 100. Nada será salvo até clicar em "Salvar Roteiro".</small>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="rateioRapidoPercentual">% de rateio deste cliente para este repositor</label>
+                                <input type="number" id="rateioRapidoPercentual" min="0" max="100" step="0.01" required>
+                                <small class="helper-compact">Valores entre 0 e 100. Nada será salvo até clicar em "Salvar Roteiro".</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="rateioRapidoVigenciaInicio">Data início do rateio</label>
+                                <input type="date" id="rateioRapidoVigenciaInicio" required>
+                                <small class="helper-compact">Obrigatória para novos rateios. Pode ser ajustada antes de salvar.</small>
+                            </div>
                         </div>
                     </div>
                     <div class="modal-footer">

@@ -10,7 +10,7 @@
 
 import { TURSO_CONFIG } from './turso-config.js';
 import { createClient } from 'https://esm.sh/@libsql/client@0.6.0/web';
-import { normalizarDataISO, normalizarSupervisor, normalizarTextoCadastro, normalizarDocumento } from './utils.js';
+import { normalizarDataISO, normalizarSupervisor, normalizarTextoCadastro, documentoParaExibicao } from './utils.js';
 
 class TursoDatabase {
     constructor() {
@@ -1098,7 +1098,7 @@ class TursoDatabase {
             const result = await this.comercialClient.execute({ sql, args });
             return result.rows.map(row => ({
                 ...row,
-                cnpj_cpf: normalizarDocumento(row.cnpj_cpf)
+                cnpj_cpf: documentoParaExibicao(row.cnpj_cpf)
             }));
         } catch (error) {
             console.error('Erro ao buscar clientes por cidade:', error);
@@ -1129,7 +1129,7 @@ class TursoDatabase {
 
             return resultado.rows.map(row => ({
                 ...row,
-                cnpj_cpf: normalizarDocumento(row.cnpj_cpf)
+                cnpj_cpf: documentoParaExibicao(row.cnpj_cpf)
             }));
         } catch (error) {
             console.error('Erro ao buscar clientes no comercial:', error);
@@ -1158,7 +1158,7 @@ class TursoDatabase {
             resultado.rows.forEach(cli => {
                 mapa[cli.cliente] = {
                     ...cli,
-                    cnpj_cpf: normalizarDocumento(cli.cnpj_cpf)
+                    cnpj_cpf: documentoParaExibicao(cli.cnpj_cpf)
                 };
             });
 
@@ -1690,14 +1690,16 @@ class TursoDatabase {
 
             if (existe.rows?.length) return;
 
+            const vigenciaInicial = normalizarDataISO(new Date());
+
             await this.mainClient.execute({
                 sql: `
                     INSERT INTO rat_cliente_repositor (
                         rat_cliente_codigo, rat_repositor_id, rat_percentual,
-                        rat_criado_em, rat_atualizado_em
-                    ) VALUES (?, ?, 100, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        rat_vigencia_inicio, rat_criado_em, rat_atualizado_em
+                    ) VALUES (?, ?, 100, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 `,
-                args: [clienteCodigo, repositorId]
+                args: [clienteCodigo, repositorId, vigenciaInicial]
             });
 
             await this.registrarAuditoriaRoteiro({
@@ -1736,7 +1738,7 @@ class TursoDatabase {
         }
     }
 
-    async sincronizarRateioClienteRoteiro({ rotCliId, repositorId, clienteCodigo, ativo, percentual = 0, usuario = '' }) {
+    async sincronizarRateioClienteRoteiro({ rotCliId, repositorId, clienteCodigo, ativo, percentual = 0, vigenciaInicio = null, usuario = '' }) {
         let dados = { rot_repositor_id: repositorId, rot_cliente_codigo: clienteCodigo };
 
         if (!dados.rot_repositor_id || !dados.rot_cliente_codigo) {
@@ -1758,18 +1760,37 @@ class TursoDatabase {
         }
 
         const percentFormatado = Math.max(0, Math.min(100, Number(percentual) || 0));
+        let vigenciaNormalizada = normalizarDataISO(vigenciaInicio);
+
+        if (ativo && !vigenciaNormalizada) {
+            const vigenciaAtual = await this.mainClient.execute({
+                sql: `
+                    SELECT rat_vigencia_inicio
+                    FROM rat_cliente_repositor
+                    WHERE rat_cliente_codigo = ? AND rat_repositor_id = ?
+                    ORDER BY rat_atualizado_em DESC
+                    LIMIT 1
+                `,
+                args: [dados.rot_cliente_codigo, dados.rot_repositor_id]
+            });
+
+            vigenciaNormalizada = normalizarDataISO(vigenciaAtual.rows?.[0]?.rat_vigencia_inicio) || normalizarDataISO(new Date());
+        }
 
         if (ativo) {
             await this.mainClient.execute({
                 sql: `
                     INSERT INTO rat_cliente_repositor (
                         rat_cliente_codigo, rat_repositor_id, rat_percentual,
-                        rat_criado_em, rat_atualizado_em
-                    ) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        rat_vigencia_inicio, rat_criado_em, rat_atualizado_em
+                    ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                     ON CONFLICT(rat_cliente_codigo, rat_repositor_id, IFNULL(rat_vigencia_inicio, ''), IFNULL(rat_vigencia_fim, ''))
-                    DO UPDATE SET rat_percentual = excluded.rat_percentual, rat_atualizado_em = CURRENT_TIMESTAMP
+                    DO UPDATE SET
+                        rat_percentual = excluded.rat_percentual,
+                        rat_vigencia_inicio = excluded.rat_vigencia_inicio,
+                        rat_atualizado_em = CURRENT_TIMESTAMP
                 `,
-                args: [dados.rot_cliente_codigo, dados.rot_repositor_id, percentFormatado]
+                args: [dados.rot_cliente_codigo, dados.rot_repositor_id, percentFormatado, vigenciaNormalizada]
             });
         } else {
             await this.removerRateioClienteRepositor(dados.rot_cliente_codigo, dados.rot_repositor_id, usuario);
@@ -1870,9 +1891,12 @@ class TursoDatabase {
                 `
             });
 
-            return resultado.rows.map(row => ({
+            const linhas = resultado?.rows || [];
+
+            return linhas.map(row => ({
                 ...row,
-                cnpj_cpf: normalizarDocumento(row.cnpj_cpf)
+                cnpj_cpf: documentoParaExibicao(row.cnpj_cpf),
+                rat_vigencia_inicio: normalizarDataISO(row.rat_vigencia_inicio)
             }));
         } catch (error) {
             console.error('Erro ao buscar rateios para manutenção:', error);
@@ -1903,7 +1927,12 @@ class TursoDatabase {
                 `
             });
 
-            return resultado.rows;
+            const linhas = resultado?.rows || [];
+
+            return linhas.map(linha => ({
+                ...linha,
+                total_percentual: Number(linha.total_percentual || 0)
+            }));
         } catch (error) {
             console.error('Erro ao buscar clientes com rateio incompleto:', error);
             return [];

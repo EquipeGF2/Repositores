@@ -659,6 +659,16 @@ tbody td {
     width: 80px;
 }
 
+#modalRateioRapido .form-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--spacing);
+}
+
+#modalRateioRapido .modal-footer {
+    padding: var(--spacing-md) var(--spacing-lg);
+}
+
 .modal-repositor .modal-body {
     padding: var(--spacing);
     overflow-y: auto;

@@ -6,7 +6,7 @@
 import { db } from './db.js';
 import { pages, pageTitles } from './pages.js';
 import { ACL_RECURSOS } from './acl-resources.js';
-import { formatarDataISO, normalizarSupervisor, normalizarTextoCadastro, formatarDocumento, formatarGrupo, normalizarDocumento } from './utils.js';
+import { formatarDataISO, normalizarDataISO, normalizarSupervisor, normalizarTextoCadastro, formatarGrupo, documentoParaBusca, documentoParaExibicao } from './utils.js';
 
 const AUTH_STORAGE_KEY = 'GERMANI_AUTH_USER';
 
@@ -1520,7 +1520,8 @@ class App {
         const clientes = termoBusca
             ? ajustados.filter(item => {
                 const dados = item.cliente_dados || {};
-                const docNormalizado = normalizarDocumento(dados.cnpj_cpf);
+                const documentoBruto = documentoParaExibicao(dados.cnpj_cpf).toLowerCase();
+                const documentoBusca = documentoParaBusca(dados.cnpj_cpf);
                 const campos = [
                     dados.nome,
                     dados.fantasia,
@@ -1528,11 +1529,12 @@ class App {
                     dados.grupo_desc
                 ].map(c => (c || '').toString().toLowerCase());
                 const codigoTexto = String(item.rot_cliente_codigo || '').toLowerCase();
-                const termoDocumento = normalizarDocumento(termoBusca);
+                const termoDocumento = documentoParaBusca(termoBusca);
 
                 return campos.some(c => c.includes(termoBusca))
                     || codigoTexto.includes(termoBusca)
-                    || (termoDocumento && docNormalizado.includes(termoDocumento));
+                    || documentoBruto.includes(termoBusca)
+                    || (termoDocumento && documentoBusca.includes(termoDocumento));
             })
             : selecionados;
 
@@ -1609,7 +1611,7 @@ class App {
                                     </label>
                                 </div>
                             </td>
-                            <td class="col-cnpj">${formatarDocumento(dados.cnpj_cpf)}</td>
+                            <td class="col-cnpj">${documentoParaExibicao(dados.cnpj_cpf) || '-'}</td>
                             <td>${enderecoCompleto || '-'}</td>
                             <td>${dados.bairro || '-'}</td>
                             <td>${formatarGrupo(dados.grupo_desc)}</td>
@@ -1770,6 +1772,7 @@ class App {
                 clienteCodigo: item.clienteCodigo,
                 ativo: item.ativo,
                 percentual: item.percentual ?? 0,
+                vigenciaInicio: item.vigenciaInicio,
                 usuario
             });
 
@@ -1879,13 +1882,14 @@ class App {
                     cliente.fantasia,
                     cliente.bairro,
                     cliente.grupo_desc,
-                    normalizarDocumento(cliente.cnpj_cpf)
+                    documentoParaExibicao(cliente.cnpj_cpf)
                 ].map(c => (c || '').toString().toLowerCase());
                 const codigoTexto = String(cliente.cliente || '').toLowerCase();
-                const termoDocumento = normalizarDocumento(termo);
+                const termoDocumento = documentoParaBusca(termo);
+                const docBusca = documentoParaBusca(cliente.cnpj_cpf);
                 return campos.some(c => c.includes(termo))
                     || codigoTexto.includes(termo)
-                    || (termoDocumento && normalizarDocumento(cliente.cnpj_cpf).includes(termoDocumento));
+                    || (termoDocumento && docBusca.includes(termoDocumento));
             })
             : clientesBase;
 
@@ -1922,7 +1926,7 @@ class App {
                                 <td>${cliente.cliente}</td>
                                 <td>${cliente.nome || '-'}</td>
                                 <td>${cliente.fantasia || '-'}</td>
-                                <td class="col-cnpj">${formatarDocumento(cliente.cnpj_cpf)}</td>
+                                <td class="col-cnpj">${documentoParaExibicao(cliente.cnpj_cpf) || '-'}</td>
                                 <td>${enderecoCompleto || '-'}</td>
                                 <td>${cliente.bairro || '-'}</td>
                                 <td>${formatarGrupo(cliente.grupo_desc)}</td>
@@ -1946,7 +1950,7 @@ class App {
         });
     }
 
-    definirRateioPendente({ rotCliId, clienteCodigo, repositorId, ativo, percentual = null }) {
+    definirRateioPendente({ rotCliId, clienteCodigo, repositorId, ativo, percentual = null, vigenciaInicio = null }) {
         if (!rotCliId || !clienteCodigo || !repositorId) return;
 
         this.rateioPendentes[rotCliId] = {
@@ -1954,7 +1958,8 @@ class App {
             clienteCodigo,
             repositorId,
             ativo: !!ativo,
-            percentual: ativo ? Number(percentual ?? 0) : null
+            percentual: ativo ? Number(percentual ?? 0) : null,
+            vigenciaInicio: ativo ? vigenciaInicio : null
         };
 
         this.marcarRoteiroPendente();
@@ -1963,6 +1968,7 @@ class App {
     abrirModalRateioRapido(cliente) {
         const modal = document.getElementById('modalRateioRapido');
         const percentualInput = document.getElementById('rateioRapidoPercentual');
+        const vigenciaInput = document.getElementById('rateioRapidoVigenciaInicio');
         const clienteInfo = document.getElementById('rateioRapidoClienteInfo');
         const repositorInfo = document.getElementById('rateioRapidoRepositorInfo');
 
@@ -1988,6 +1994,11 @@ class App {
         }
 
         percentualInput.value = pendente?.percentual ?? 100;
+
+        if (vigenciaInput) {
+            const vigenciaPadrao = normalizarDataISO(pendente?.vigenciaInicio || new Date());
+            vigenciaInput.value = vigenciaPadrao || '';
+        }
         modal.classList.add('active');
     }
 
@@ -2009,17 +2020,25 @@ class App {
         }
 
         const campoPercentual = document.getElementById('rateioRapidoPercentual');
+        const campoVigencia = document.getElementById('rateioRapidoVigenciaInicio');
         const valor = Number(campoPercentual?.value ?? 0);
+        const vigenciaInformada = normalizarDataISO(campoVigencia?.value || '');
 
         if (Number.isNaN(valor) || valor < 0 || valor > 100) {
             this.showNotification('Informe um percentual entre 0 e 100.', 'warning');
             return;
         }
 
+        if (!vigenciaInformada) {
+            this.showNotification('Informe a data de início do rateio.', 'warning');
+            return;
+        }
+
         this.definirRateioPendente({
             ...this.rateioModalContexto,
             ativo: true,
-            percentual: valor
+            percentual: valor,
+            vigenciaInicio: vigenciaInformada
         });
 
         this.fecharModalRateioRapido();
@@ -2121,7 +2140,7 @@ class App {
         container.innerHTML = clientes.map(cliente => {
             const total = this.obterTotalRateioCliente(cliente.cliente);
             const ok = Math.abs(total - 100) <= 0.01;
-            const documento = formatarDocumento(cliente.cnpj_cpf);
+            const documento = documentoParaExibicao(cliente.cnpj_cpf);
             const cidadeEstado = cliente.cidade ? `${cliente.cidade}${cliente.estado ? ' - ' + cliente.estado : ''}` : '';
 
             return `
@@ -3034,7 +3053,7 @@ class App {
                 this.montarEnderecoCliente(cliente),
                 cliente.bairro || '-',
                 formatarGrupo(cliente.grupo_desc),
-                formatarDocumento(cliente.cnpj_cpf)
+                documentoParaExibicao(cliente.cnpj_cpf) || '-'
             ];
         });
 
@@ -3127,7 +3146,7 @@ class App {
                 this.montarEnderecoCliente(cliente),
                 cliente.bairro || '-',
                 formatarGrupo(cliente.grupo_desc),
-                formatarDocumento(cliente.cnpj_cpf)
+                documentoParaExibicao(cliente.cnpj_cpf) || '-'
             ];
         });
 
