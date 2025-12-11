@@ -577,8 +577,8 @@ tbody td {
 }
 
 #modalAdicionarCliente .modal-content {
-    max-width: 1400px;
-    width: 96%;
+    max-width: 1500px;
+    width: 98%;
 }
 
 #modalAdicionarCliente .roteiro-clientes-table th,
@@ -601,6 +601,34 @@ tbody td {
     word-wrap: break-word;
 }
 
+#modalAdicionarCliente .roteiro-clientes-table .col-codigo {
+    width: 72px;
+}
+
+#modalAdicionarCliente .roteiro-clientes-table .col-nome,
+#modalAdicionarCliente .roteiro-clientes-table .col-fantasia {
+    min-width: 200px;
+    max-width: 260px;
+}
+
+#modalAdicionarCliente .roteiro-clientes-table .col-fantasia {
+    min-width: 180px;
+    max-width: 240px;
+}
+
+#modalAdicionarCliente .roteiro-clientes-table .col-cnpj {
+    min-width: 190px;
+}
+
+#modalAdicionarCliente .roteiro-clientes-table .col-endereco {
+    min-width: 210px;
+    max-width: 280px;
+}
+
+#modalAdicionarCliente .roteiro-clientes-table .col-acao {
+    width: 80px;
+}
+
 .modal-repositor .modal-body {
     padding: var(--spacing);
     overflow-y: auto;
@@ -615,6 +643,33 @@ tbody td {
 
 .modal-repositor #formRepositor .modal-footer {
     padding-top: var(--spacing-sm);
+}
+
+.form-actions-inline {
+    display: flex;
+    justify-content: flex-end;
+    align-items: flex-end;
+    justify-self: end;
+}
+
+.modal-footer-inline {
+    margin-top: 0;
+    padding: 0;
+    gap: var(--spacing-sm);
+}
+
+.modal-footer-inline .btn {
+    min-width: 140px;
+}
+
+@media (max-width: 1024px) {
+    .form-actions-inline {
+        justify-content: flex-start;
+    }
+
+    .modal-footer-inline {
+        flex-wrap: wrap;
+    }
 }
 
 .repositor-grid {
@@ -646,6 +701,10 @@ tbody td {
     margin: 0;
     font-size: 1.05rem;
     white-space: nowrap;
+}
+
+.form-card-title-inline {
+    margin-left: auto;
 }
 
 .form-card-eyebrow {
