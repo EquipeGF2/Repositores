@@ -98,41 +98,21 @@ export function validarCamposObrigatorios(campos) {
 export function normalizarDocumento(valor) {
     if (valor === null || valor === undefined) return '';
 
-    const textoOriginal = String(valor).trim();
-    if (!textoOriginal) return '';
-
-    const textoAjustado = textoOriginal.replace(',', '.');
-
-    if (/e/i.test(textoAjustado) || /^\d+(\.\d+)?$/.test(textoAjustado)) {
-        const numero = Number(textoAjustado);
-        if (!Number.isNaN(numero) && Number.isFinite(numero)) {
-            return Math.trunc(numero).toString();
-        }
-    }
-
-    const somenteDigitos = textoOriginal.replace(/\D/g, '');
-    if (somenteDigitos) return somenteDigitos;
-
-    // Fallback seguro quando não há dígitos
-    return '';
+    return String(valor)
+        .replace(/\D/g, '')
+        .trim();
 }
 
 export function formatarCNPJCPF(valor) {
     const doc = normalizarDocumento(valor);
-    if (!doc) return '-';
-
-    if (doc.length >= 14) {
-        const completo = doc.padStart(14, '0').slice(0, 14);
-        return completo.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
-    }
+    if (!doc) return '';
 
     if (doc.length === 11) {
         return doc.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
     }
 
-    if (doc.length > 0 && doc.length < 11) {
-        const completo = doc.padStart(11, '0');
-        return completo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    if (doc.length === 14) {
+        return doc.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
     }
 
     return doc;
@@ -143,14 +123,14 @@ export function formatarCNPJCPF(valor) {
  */
 export function formatarCNPJ(valor) {
     const doc = normalizarDocumento(valor);
-    if (doc.length !== 14) return '-';
+    if (doc.length !== 14) return doc;
 
     return doc.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
 }
 
 export function formatarDocumento(valor) {
     const doc = normalizarDocumento(valor);
-    if (!doc) return '-';
+    if (!doc) return '';
 
     if (doc.length === 11) {
         return doc.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
