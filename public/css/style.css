@@ -488,6 +488,16 @@ tbody td {
     min-width: 200px;
 }
 
+.filter-bar-compact {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+}
+
+.filter-bar-compact .filter-group {
+    flex: 0 0 auto;
+    min-width: 170px;
+}
+
 .status-toggle-group {
     display: inline-flex;
     gap: var(--spacing-xs);
@@ -559,8 +569,15 @@ tbody td {
 
 #modalAdicionarCliente .roteiro-clientes-table th,
 #modalAdicionarCliente .roteiro-clientes-table td {
-    font-size: 0.85rem;
     padding: 0.5rem 0.6rem;
+}
+
+#modalAdicionarCliente .roteiro-clientes-table th {
+    font-size: 0.88rem;
+}
+
+#modalAdicionarCliente .roteiro-clientes-table td {
+    font-size: 0.8rem;
 }
 
 #modalAdicionarCliente .roteiro-clientes-table .col-grupo {
@@ -1131,14 +1148,22 @@ tbody td {
 
 .roteiro-clientes-table th,
 .roteiro-clientes-table td {
-    font-size: 0.85rem;
     padding: 0.5rem 0.6rem;
+}
+
+.roteiro-clientes-table th {
+    font-size: 0.9rem;
+}
+
+.roteiro-clientes-table tbody td {
+    font-size: 0.82rem;
 }
 
 .roteiro-clientes-table .col-acao,
 .roteiro-clientes-table .col-ordem-visita,
 .roteiro-clientes-table .col-grupo,
-.roteiro-clientes-table .col-codigo {
+.roteiro-clientes-table .col-codigo,
+.roteiro-clientes-table .col-cnpj {
     white-space: nowrap;
 }
 
@@ -1269,6 +1294,11 @@ tbody td {
 .roteiro-clientes-table .col-endereco {
     min-width: 150px;
     max-width: 220px;
+}
+
+.roteiro-clientes-table .col-cnpj {
+    min-width: 175px;
+    font-variant-numeric: tabular-nums;
 }
 
 .roteiro-clientes-table td:nth-child(6),

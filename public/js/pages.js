@@ -862,7 +862,7 @@ export const pages = {
                     </div>
 
                     <div id="aba-cadastro" class="tab-pane active">
-                        <div class="filter-bar">
+                        <div class="filter-bar filter-bar-compact">
                             <div class="filter-group">
                                 <label for="filtro_motivo_cadastro">Tipo de Alteração:</label>
                                 <select id="filtro_motivo_cadastro">
@@ -870,6 +870,14 @@ export const pages = {
                                     ${motivos.map(m => `
                                         <option value="${m.mot_descricao}">${m.mot_descricao}</option>
                                     `).join('')}
+                                </select>
+                            </div>
+
+                            <div class="filter-group">
+                                <label for="filtro_repositor_cadastro">Nome do Repositor:</label>
+                                <select id="filtro_repositor_cadastro">
+                                    <option value="">Todos</option>
+                                    ${repositorOptions}
                                 </select>
                             </div>
 

@@ -1367,7 +1367,7 @@ class App {
                         <th class="col-codigo">Código</th>
                         <th class="col-nome">Nome</th>
                         <th class="col-fantasia">Fantasia</th>
-                        <th>CNPJ/CPF</th>
+                        <th class="col-cnpj">CNPJ/CPF</th>
                         <th class="col-endereco">Endereço</th>
                         <th>Bairro</th>
                         <th class="col-grupo">Grupo</th>
@@ -1394,7 +1394,7 @@ class App {
                             <td>${cliente.rot_cliente_codigo}</td>
                             <td>${dados.nome || '-'}</td>
                             <td>${dados.fantasia || '-'}</td>
-                            <td>${formatarCNPJCPF(dados.cnpj_cpf)}</td>
+                            <td class="col-cnpj">${formatarCNPJCPF(dados.cnpj_cpf)}</td>
                             <td>${enderecoCompleto || '-'}</td>
                             <td>${dados.bairro || '-'}</td>
                             <td>${dados.grupo_desc || '-'}</td>
@@ -1567,7 +1567,7 @@ class App {
                         <th class="col-codigo">Código</th>
                         <th class="col-nome">Nome</th>
                         <th class="col-fantasia">Fantasia</th>
-                        <th>CNPJ/CPF</th>
+                        <th class="col-cnpj">CNPJ/CPF</th>
                         <th class="col-endereco">Endereço</th>
                         <th>Bairro</th>
                         <th class="col-grupo">Grupo</th>
@@ -1583,7 +1583,7 @@ class App {
                                 <td>${cliente.cliente}</td>
                                 <td>${cliente.nome || '-'}</td>
                                 <td>${cliente.fantasia || '-'}</td>
-                                <td>${formatarCNPJCPF(cliente.cnpj_cpf)}</td>
+                                <td class="col-cnpj">${formatarCNPJCPF(cliente.cnpj_cpf)}</td>
                                 <td>${enderecoCompleto || '-'}</td>
                                 <td>${cliente.bairro || '-'}</td>
                                 <td>${cliente.grupo_desc || '-'}</td>
@@ -2143,11 +2143,17 @@ class App {
 
     async aplicarFiltrosHistorico() {
         const motivo = document.getElementById('filtro_motivo_cadastro')?.value || null;
+        const repositorId = document.getElementById('filtro_repositor_cadastro')?.value || null;
         const dataInicio = document.getElementById('filtro_data_inicio_cadastro')?.value || null;
         const dataFim = document.getElementById('filtro_data_fim_cadastro')?.value || null;
 
         try {
-            const historico = await db.getHistoricoComFiltros(motivo, dataInicio, dataFim);
+            const historico = await db.getHistoricoComFiltros({
+                motivo,
+                repositorId: repositorId ? Number(repositorId) : null,
+                dataInicio,
+                dataFim
+            });
             const resultadosDiv = document.getElementById('resultadosHistorico');
 
             if (historico.length === 0) {

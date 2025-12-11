@@ -639,7 +639,7 @@ class TursoDatabase {
     }
 
     // Buscar histórico com filtros
-    async getHistoricoComFiltros(motivo = null, dataInicio = null, dataFim = null) {
+    async getHistoricoComFiltros({ motivo = null, repositorId = null, dataInicio = null, dataFim = null } = {}) {
         try {
             let sql = `
                 SELECT h.*, r.repo_nome
@@ -652,6 +652,11 @@ class TursoDatabase {
             if (motivo) {
                 sql += ` AND h.hist_campo_alterado = ?`;
                 args.push(motivo);
+            }
+
+            if (repositorId) {
+                sql += ` AND h.hist_repo_cod = ?`;
+                args.push(repositorId);
             }
 
             if (dataInicio) {
