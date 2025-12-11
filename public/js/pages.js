@@ -622,6 +622,20 @@ export const pages = {
                             <label for="modalBuscaClientesCidade">Buscar cliente</label>
                             <input type="text" id="modalBuscaClientesCidade" placeholder="Nome, fantasia, bairro ou código">
                         </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="modalOrdemCliente">Ordem de atendimento</label>
+                                <input type="number" id="modalOrdemCliente" min="1" step="1" placeholder="Informe a ordem" required>
+                                <small id="modalOrdemHelper" class="text-muted"></small>
+                            </div>
+                            <div class="form-group">
+                                <label class="checkbox-inline" for="modalFlagRateio">
+                                    <input type="checkbox" id="modalFlagRateio">
+                                    <span>Cliente com rateio entre repositores</span>
+                                </label>
+                                <small class="text-muted">Cria vínculo inicial de 100% para o repositor atual.</small>
+                            </div>
+                        </div>
                         <div class="table-container" id="modalTabelaClientesCidade"></div>
                     </div>
                     <div class="modal-footer">

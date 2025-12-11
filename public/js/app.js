@@ -37,6 +37,15 @@ class App {
         this.clientesCachePorCidade = {};
         this.clientesSelecionadosCidadeAtual = [];
         this.buscaClientesModal = '';
+        this.formClienteRoteiro = {
+            ordemSelecionada: 1,
+            sugestaoOrdem: 1,
+            ultimaOrdem: 0,
+            possuiHistorico: false,
+            ordemEditadaManualmente: false,
+            rateioMarcado: false,
+            cidadeId: null
+        };
         this.resultadosConsultaRoteiro = [];
         this.roteiroBuscaTimeout = null;
         this.rateioClienteSelecionado = null;
@@ -103,6 +112,7 @@ class App {
                     this.contextoRoteiro = null;
                     this.estadoRoteiro = { diaSelecionado: null, cidadeSelecionada: null, buscaClientes: '' };
                     this.clientesCachePorCidade = {};
+                    this.resetarFormularioClienteRoteiro();
                 }
                 this.navigateTo(page);
             });
@@ -668,6 +678,7 @@ class App {
             this.clientesCachePorCidade = {};
             this.clientesSelecionadosCidadeAtual = [];
             this.buscaClientesModal = '';
+            this.resetarFormularioClienteRoteiro();
 
             await this.navigateTo('roteiro-repositor');
         } catch (error) {
@@ -1129,6 +1140,7 @@ class App {
             console.log(`[ROTEIRO] Cidade adicionada com sucesso! ID: ${novoId}`);
 
             this.estadoRoteiro.cidadeSelecionada = novoId;
+            this.resetarFormularioClienteRoteiro(novoId);
             if (inputCidade) inputCidade.value = '';
             if (mensagem) mensagem.textContent = '';
 
@@ -1178,11 +1190,13 @@ class App {
 
         if (!this.estadoRoteiro.cidadeSelecionada && cidades.length > 0) {
             this.estadoRoteiro.cidadeSelecionada = cidades[0].rot_cid_id;
+            this.resetarFormularioClienteRoteiro(this.estadoRoteiro.cidadeSelecionada);
         }
 
         if (cidades.length === 0) {
             console.log('[ROTEIRO] Nenhuma cidade encontrada, exibindo mensagem');
             container.innerHTML = '';
+            this.resetarFormularioClienteRoteiro();
             if (mensagem) mensagem.textContent = 'Cadastre uma cidade para este dia para visualizar os clientes.';
             await this.carregarClientesRoteiro();
             return;
@@ -1215,7 +1229,11 @@ class App {
         // Event listeners
         container.querySelectorAll('[data-acao="selecionar-cidade"]').forEach(btn => {
             btn.addEventListener('click', () => {
-                this.estadoRoteiro.cidadeSelecionada = Number(btn.dataset.id);
+                const novaCidade = Number(btn.dataset.id);
+                if (this.estadoRoteiro.cidadeSelecionada !== novaCidade) {
+                    this.resetarFormularioClienteRoteiro(novaCidade);
+                }
+                this.estadoRoteiro.cidadeSelecionada = novaCidade;
                 this.carregarCidadesRoteiro();
                 this.carregarClientesRoteiro();
             });
@@ -1299,6 +1317,68 @@ class App {
         }
     }
 
+    resetarFormularioClienteRoteiro(cidadeId = null) {
+        this.formClienteRoteiro = {
+            ...this.formClienteRoteiro,
+            cidadeId,
+            ordemSelecionada: 1,
+            sugestaoOrdem: 1,
+            ultimaOrdem: 0,
+            possuiHistorico: false,
+            ordemEditadaManualmente: false,
+            rateioMarcado: false
+        };
+
+        this.atualizarCamposClienteModal();
+    }
+
+    async atualizarContextoOrdemCidade() {
+        const cidadeAtiva = this.cidadesRoteiroCache?.find(c => c.rot_cid_id === this.estadoRoteiro.cidadeSelecionada);
+        if (!cidadeAtiva) return;
+
+        const mudouCidade = this.formClienteRoteiro.cidadeId !== cidadeAtiva.rot_cid_id;
+        const resumo = await db.obterResumoOrdemCidade(cidadeAtiva.rot_cid_id);
+        const sugestao = resumo?.sugestao || 1;
+        const ultimaOrdem = Number(resumo?.ultimaOrdem || 0);
+        const possuiHistorico = !!resumo?.possuiHistorico;
+
+        this.formClienteRoteiro = {
+            ...this.formClienteRoteiro,
+            cidadeId: cidadeAtiva.rot_cid_id,
+            ultimaOrdem,
+            sugestaoOrdem: sugestao,
+            possuiHistorico,
+            ordemSelecionada: mudouCidade || !this.formClienteRoteiro.ordemEditadaManualmente
+                ? sugestao
+                : this.formClienteRoteiro.ordemSelecionada
+        };
+
+        this.atualizarCamposClienteModal();
+    }
+
+    atualizarCamposClienteModal() {
+        const inputOrdem = document.getElementById('modalOrdemCliente');
+        if (inputOrdem) {
+            inputOrdem.value = this.formClienteRoteiro.ordemSelecionada || '';
+        }
+
+        const helper = document.getElementById('modalOrdemHelper');
+        if (helper) {
+            if (this.formClienteRoteiro.possuiHistorico && this.formClienteRoteiro.ultimaOrdem > 0) {
+                helper.textContent = `Última ordem nesta cidade: ${this.formClienteRoteiro.ultimaOrdem}. Sugestão: ${this.formClienteRoteiro.sugestaoOrdem}.`;
+            } else if (this.formClienteRoteiro.possuiHistorico) {
+                helper.textContent = 'Clientes cadastrados ainda sem ordem definida. Sugestão inicial: 1.';
+            } else {
+                helper.textContent = 'Primeiro cliente nesta cidade.';
+            }
+        }
+
+        const flagRateio = document.getElementById('modalFlagRateio');
+        if (flagRateio) {
+            flagRateio.checked = !!this.formClienteRoteiro.rateioMarcado;
+        }
+    }
+
     async carregarClientesRoteiro() {
         const mensagem = document.getElementById('roteiroClientesMensagem');
         const tabela = document.getElementById('roteiroClientesTabela');
@@ -1308,6 +1388,7 @@ class App {
         const dia = this.estadoRoteiro.diaSelecionado;
         if (!dia) {
             tabela.innerHTML = '';
+            this.resetarFormularioClienteRoteiro();
             if (mensagem) mensagem.textContent = 'Selecione um dia de trabalho para configurar o roteiro.';
             return;
         }
@@ -1315,12 +1396,14 @@ class App {
         const cidadeAtiva = this.cidadesRoteiroCache?.find(c => c.rot_cid_id === this.estadoRoteiro.cidadeSelecionada);
         if (!cidadeAtiva) {
             tabela.innerHTML = '';
+            this.resetarFormularioClienteRoteiro();
             if (mensagem) mensagem.textContent = 'Cadastre uma cidade para este dia para visualizar os clientes.';
             return;
         }
 
         const selecionados = await db.getClientesRoteiroDetalhados(cidadeAtiva.rot_cid_id);
         this.clientesSelecionadosCidadeAtual = selecionados;
+        await this.atualizarContextoOrdemCidade();
         const termoBusca = (this.estadoRoteiro.buscaClientes || '').trim().toLowerCase();
         const clientes = termoBusca
             ? selecionados.filter(item => {
@@ -1367,6 +1450,7 @@ class App {
                         <th class="col-codigo">Código</th>
                         <th class="col-nome">Nome</th>
                         <th class="col-fantasia">Fantasia</th>
+                        <th class="col-rateio">Rateio</th>
                         <th class="col-cnpj">CNPJ/CPF</th>
                         <th class="col-endereco">Endereço</th>
                         <th>Bairro</th>
@@ -1394,6 +1478,21 @@ class App {
                             <td>${cliente.rot_cliente_codigo}</td>
                             <td>${dados.nome || '-'}</td>
                             <td>${dados.fantasia || '-'}</td>
+                            <td class="col-rateio">
+                                <div class="rateio-indicador">
+                                    <span class="badge ${cliente.rot_possui_rateio ? 'badge-info' : 'badge-gray'}">${cliente.rot_possui_rateio ? 'Rateio' : 'Único'}</span>
+                                    <label class="rateio-toggle-wrapper" title="Marcar cliente com rateio">
+                                        <input
+                                            type="checkbox"
+                                            class="rateio-toggle"
+                                            data-cli-id="${cliente.rot_cli_id}"
+                                            data-cliente="${cliente.rot_cliente_codigo}"
+                                            ${cliente.rot_possui_rateio ? 'checked' : ''}
+                                        >
+                                        <span class="rateio-toggle-slider"></span>
+                                    </label>
+                                </div>
+                            </td>
                             <td class="col-cnpj">${formatarCNPJCPF(dados.cnpj_cpf)}</td>
                             <td>${enderecoCompleto || '-'}</td>
                             <td>${dados.bairro || '-'}</td>
@@ -1435,14 +1534,26 @@ class App {
             });
         });
 
+        tabela.querySelectorAll('.rateio-toggle').forEach(toggle => {
+            toggle.addEventListener('change', async () => {
+                const rotCliId = Number(toggle.dataset.cliId);
+
+                try {
+                    await this.atualizarFlagRateioCliente(rotCliId, toggle.checked);
+                } catch (error) {
+                    // Erro já tratado em atualizarFlagRateioCliente
+                }
+            });
+        });
+
         if (mensagem) mensagem.textContent = '';
     }
 
-    async alternarClienteRoteiro(rotCidId, clienteCodigo, selecionado) {
+    async alternarClienteRoteiro(rotCidId, clienteCodigo, selecionado, opcoes = {}) {
         try {
             const usuario = this.usuarioLogado?.username || 'desconhecido';
             if (selecionado) {
-                await db.adicionarClienteRoteiro(rotCidId, clienteCodigo, usuario);
+                await db.adicionarClienteRoteiro(rotCidId, clienteCodigo, usuario, opcoes);
             } else {
                 await db.removerClienteRoteiro(rotCidId, clienteCodigo, usuario);
             }
@@ -1453,6 +1564,41 @@ class App {
             this.showNotification(error.message || 'Erro ao atualizar cliente no roteiro.', 'error');
             await this.carregarClientesRoteiro();
         }
+    }
+
+    async atualizarFlagRateioCliente(rotCliId, ativo) {
+        const usuario = this.usuarioLogado?.username || 'desconhecido';
+        const cliente = this.clientesSelecionadosCidadeAtual?.find(c => c.rot_cli_id === rotCliId);
+
+        try {
+            await db.atualizarRateioClienteRoteiro(rotCliId, ativo, usuario);
+            await this.carregarClientesRoteiro();
+            this.showNotification(ativo ? 'Flag de rateio ativada para o cliente.' : 'Rateio desativado para este cliente.', 'success');
+
+            if (ativo && cliente) {
+                await this.sugerirCadastroRateio(cliente.rot_cliente_codigo);
+            }
+        } catch (error) {
+            this.showNotification(error.message || 'Erro ao atualizar rateio do cliente.', 'error');
+            await this.carregarClientesRoteiro();
+        }
+    }
+
+    async sugerirCadastroRateio(clienteCodigo) {
+        const confirmar = confirm('Cliente marcado para rateio. Deseja abrir o cadastro de rateio já filtrado neste cliente?');
+        if (!confirmar) return;
+
+        const detalhes = await db.getClientesPorCodigo([clienteCodigo]);
+        const cliente = detalhes?.[clienteCodigo] || { cliente: clienteCodigo };
+
+        await this.navigateTo('cadastro-rateio');
+        await this.selecionarClienteRateio({
+            cliente: clienteCodigo,
+            nome: cliente.nome || cliente.fantasia || '',
+            fantasia: cliente.fantasia || '',
+            cidade: cliente.cidade || '',
+            estado: cliente.estado || ''
+        });
     }
 
     marcarRoteiroPendente() {
@@ -1494,6 +1640,8 @@ class App {
             this.clientesCachePorCidade[cidadeAtiva.rot_cidade] = clientesCidade;
         }
 
+        await this.atualizarContextoOrdemCidade();
+
         const modal = document.getElementById('modalAdicionarCliente');
         this.buscaClientesModal = '';
         if (modal) {
@@ -1505,6 +1653,23 @@ class App {
             inputBusca.value = '';
         }
 
+        const inputOrdem = document.getElementById('modalOrdemCliente');
+        if (inputOrdem) {
+            inputOrdem.value = this.formClienteRoteiro.ordemSelecionada || '';
+            inputOrdem.oninput = (event) => {
+                this.formClienteRoteiro.ordemSelecionada = Number(event.target.value);
+                this.formClienteRoteiro.ordemEditadaManualmente = true;
+            };
+        }
+
+        const flagRateio = document.getElementById('modalFlagRateio');
+        if (flagRateio) {
+            flagRateio.checked = this.formClienteRoteiro.rateioMarcado;
+            flagRateio.onchange = (event) => {
+                this.formClienteRoteiro.rateioMarcado = event.target.checked;
+            };
+        }
+
         this.renderModalClientesCidade();
     }
 
@@ -1514,13 +1679,36 @@ class App {
     }
 
     async incluirClienteNaCidade(clienteCodigo) {
+        return this.adicionarClienteRoteiroComDetalhes(clienteCodigo);
+    }
+
+    async adicionarClienteRoteiroComDetalhes(clienteCodigo) {
         const cidadeAtiva = this.cidadesRoteiroCache?.find(c => c.rot_cid_id === this.estadoRoteiro.cidadeSelecionada);
         if (!cidadeAtiva) return;
 
+        const ordemInformada = this.formClienteRoteiro.ordemSelecionada || Number(document.getElementById('modalOrdemCliente')?.value);
+        if (!ordemInformada || Number.isNaN(ordemInformada) || ordemInformada < 1) {
+            this.showNotification('Informe a ordem de atendimento antes de incluir o cliente.', 'warning');
+            return;
+        }
+
+        const possuiRateio = !!this.formClienteRoteiro.rateioMarcado;
+
         try {
-            await this.alternarClienteRoteiro(cidadeAtiva.rot_cid_id, clienteCodigo, true);
+            await this.alternarClienteRoteiro(cidadeAtiva.rot_cid_id, clienteCodigo, true, {
+                ordemVisita: ordemInformada,
+                possuiRateio
+            });
+
+            this.formClienteRoteiro.ordemEditadaManualmente = false;
+            this.formClienteRoteiro.ordemSelecionada = (ordemInformada || 0) + 1;
+            await this.atualizarContextoOrdemCidade();
             this.renderModalClientesCidade();
             this.showNotification('Cliente adicionado ao roteiro.', 'success');
+
+            if (possuiRateio) {
+                await this.sugerirCadastroRateio(clienteCodigo);
+            }
         } catch (error) {
             this.showNotification(error.message || 'Não foi possível adicionar o cliente.', 'error');
         }
@@ -1531,6 +1719,8 @@ class App {
         const cidadeAtiva = this.cidadesRoteiroCache?.find(c => c.rot_cid_id === this.estadoRoteiro.cidadeSelecionada);
 
         if (!tabela || !cidadeAtiva) return;
+
+        this.atualizarCamposClienteModal();
 
         const clientesBase = this.clientesCachePorCidade[cidadeAtiva.rot_cidade] || [];
         const selecionadosSet = new Set((this.clientesSelecionadosCidadeAtual || []).map(c => String(c.rot_cliente_codigo)));
@@ -1771,6 +1961,17 @@ class App {
     }
 
     async selecionarClienteRateio(cliente) {
+        const vinculado = await db.verificarClienteVinculadoARoteiro(cliente?.cliente);
+        if (!vinculado) {
+            this.rateioClienteSelecionado = null;
+            const input = document.getElementById('rateioBuscaCliente');
+            if (input) input.value = '';
+            this.renderRateioInfo();
+            this.renderRateioGrid();
+            this.showNotification('Cadastre o cliente em um roteiro antes de configurar o rateio.', 'warning');
+            return;
+        }
+
         this.rateioClienteSelecionado = cliente;
         this.rateioLinhas = [];
 

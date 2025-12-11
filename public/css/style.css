@@ -342,6 +342,18 @@ small {
     gap: var(--spacing);
 }
 
+.checkbox-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+}
+
+.checkbox-inline input {
+    width: 18px;
+    height: 18px;
+}
+
 /* ==================== BOTÕES ==================== */
 
 .btn {
@@ -1163,7 +1175,8 @@ tbody td {
 .roteiro-clientes-table .col-ordem-visita,
 .roteiro-clientes-table .col-grupo,
 .roteiro-clientes-table .col-codigo,
-.roteiro-clientes-table .col-cnpj {
+.roteiro-clientes-table .col-cnpj,
+.roteiro-clientes-table .col-rateio {
     white-space: nowrap;
 }
 
@@ -1178,6 +1191,66 @@ tbody td {
     text-align: center;
     border: 1px solid #d1d5db;
     border-radius: 6px;
+}
+
+.roteiro-clientes-table .col-rateio {
+    width: 150px;
+}
+
+.rateio-indicador {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.rateio-indicador .badge {
+    font-size: 0.75rem;
+}
+
+.rateio-toggle-wrapper {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 22px;
+}
+
+.rateio-toggle-wrapper input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.rateio-toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #d1d5db;
+    transition: 0.2s ease;
+    border-radius: 999px;
+}
+
+.rateio-toggle-slider::before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.2s ease;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.rateio-toggle-wrapper input:checked + .rateio-toggle-slider {
+    background: var(--primary-red);
+}
+
+.rateio-toggle-wrapper input:checked + .rateio-toggle-slider::before {
+    transform: translateX(18px);
 }
 
 .rateio-layout {

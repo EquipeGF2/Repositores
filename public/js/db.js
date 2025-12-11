@@ -213,6 +213,15 @@ class TursoDatabase {
             }
 
             try {
+                await this.mainClient.execute(`
+                    UPDATE rot_roteiro_cliente
+                    SET rot_possui_rateio = COALESCE(rot_possui_rateio, 0)
+                `);
+            } catch (e) {
+                console.warn('Aviso ao normalizar rot_possui_rateio:', e?.message || e);
+            }
+
+            try {
                 const faltantes = await this.mainClient.execute(`
                     SELECT repo_cod, repo_representante
                     FROM cad_repositor
@@ -453,12 +462,13 @@ class TursoDatabase {
                     rot_cid_id INTEGER NOT NULL,
                     rot_cliente_codigo TEXT NOT NULL,
                     rot_ordem_visita INTEGER,
+                    rot_possui_rateio INTEGER DEFAULT 0,
                     rot_criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
                     rot_atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
                     CONSTRAINT fk_rot_cidade FOREIGN KEY (rot_cid_id) REFERENCES rot_roteiro_cidade(rot_cid_id),
-                CONSTRAINT uniq_rot_cliente UNIQUE (rot_cid_id, rot_cliente_codigo)
-            )
-        `);
+                    CONSTRAINT uniq_rot_cliente UNIQUE (rot_cid_id, rot_cliente_codigo)
+                )
+            `);
 
             await this.mainClient.execute(`
                 CREATE TABLE IF NOT EXISTS rot_roteiro_auditoria (
@@ -1233,7 +1243,7 @@ class TursoDatabase {
         try {
             const detalhes = await this.mainClient.execute({
                 sql: `
-                    SELECT cli.rot_cliente_codigo, cid.rot_repositor_id, cid.rot_dia_semana, cid.rot_cidade, cli.rot_ordem_visita
+                    SELECT cli.rot_cliente_codigo, cid.rot_repositor_id, cid.rot_dia_semana, cid.rot_cidade, cid.rot_cid_id, cli.rot_ordem_visita
                     FROM rot_roteiro_cliente cli
                     JOIN rot_roteiro_cidade cid ON cid.rot_cid_id = cli.rot_cid_id
                     WHERE cli.rot_cli_id = ?
@@ -1242,25 +1252,30 @@ class TursoDatabase {
             });
 
             const registro = detalhes.rows?.[0];
+            const ordemNumero = Number(ordem);
+            const ordemInteira = Math.max(1, Math.floor(ordemNumero));
 
-            // Validar se já existe outro cliente com a mesma ordem no mesmo dia
-            if (ordem != null && registro) {
+            if (!ordemNumero || Number.isNaN(ordemNumero) || ordemNumero < 1) {
+                throw new Error('A ordem de atendimento é obrigatória e deve ser maior que zero.');
+            }
+
+            // Validar se já existe outro cliente com a mesma ordem na cidade
+            if (registro) {
                 const duplicados = await this.mainClient.execute({
                     sql: `
                         SELECT cli.rot_cli_id, cli.rot_cliente_codigo, cid.rot_cidade
                         FROM rot_roteiro_cliente cli
                         JOIN rot_roteiro_cidade cid ON cid.rot_cid_id = cli.rot_cid_id
-                        WHERE cid.rot_repositor_id = ?
-                        AND cid.rot_dia_semana = ?
+                        WHERE cid.rot_cid_id = ?
                         AND cli.rot_ordem_visita = ?
                         AND cli.rot_cli_id != ?
                     `,
-                    args: [registro.rot_repositor_id, registro.rot_dia_semana, ordem, rotCliId]
+                    args: [registro.rot_cid_id, ordemInteira, rotCliId]
                 });
 
                 if (duplicados.rows && duplicados.rows.length > 0) {
                     const clienteDuplicado = duplicados.rows[0];
-                    throw new Error(`Já existe o cliente ${clienteDuplicado.rot_cliente_codigo} (${clienteDuplicado.rot_cidade}) com a ordem ${ordem} neste dia. Por favor, escolha outra ordem.`);
+                    throw new Error(`Já existe o cliente ${clienteDuplicado.rot_cliente_codigo} (${clienteDuplicado.rot_cidade}) com a ordem ${ordemInteira} nesta cidade. Por favor, escolha outra ordem.`);
                 }
             }
 
@@ -1270,7 +1285,7 @@ class TursoDatabase {
                     SET rot_ordem_visita = ?, rot_atualizado_em = CURRENT_TIMESTAMP
                     WHERE rot_cli_id = ?
                 `,
-                args: [ordem || null, rotCliId]
+                args: [ordemInteira, rotCliId]
             });
 
             if (registro) {
@@ -1281,7 +1296,7 @@ class TursoDatabase {
                     cidade: registro.rot_cidade,
                     clienteCodigo: registro.rot_cliente_codigo,
                     acao: 'ALTERAR_ORDEM_VISITA',
-                    detalhes: `Ordem ${registro.rot_ordem_visita ?? '-'} -> ${ordem ?? '-'}`
+                    detalhes: `Ordem ${registro.rot_ordem_visita ?? '-'} -> ${ordemInteira}`
                 });
             }
         } catch (error) {
@@ -1349,6 +1364,34 @@ class TursoDatabase {
         }
     }
 
+    async obterResumoOrdemCidade(rotCidId) {
+        if (!rotCidId) return { ultimaOrdem: 0, sugestao: 1, possuiHistorico: false };
+
+        try {
+            const resultado = await this.mainClient.execute({
+                sql: `
+                    SELECT
+                        COALESCE(MAX(rot_ordem_visita), 0) AS ultima_ordem,
+                        COUNT(*) AS total_clientes,
+                        SUM(CASE WHEN rot_ordem_visita IS NOT NULL THEN 1 ELSE 0 END) AS total_com_ordem
+                    FROM rot_roteiro_cliente
+                    WHERE rot_cid_id = ?
+                `,
+                args: [rotCidId]
+            });
+
+            const linha = resultado.rows?.[0] || {};
+            const ultimaOrdem = Number(linha.ultima_ordem || 0);
+            const possuiHistorico = Number(linha.total_clientes || 0) > 0;
+            const sugestao = ultimaOrdem > 0 ? ultimaOrdem + 1 : 1;
+
+            return { ultimaOrdem, sugestao, possuiHistorico };
+        } catch (error) {
+            console.error('Erro ao obter resumo de ordem da cidade:', error);
+            return { ultimaOrdem: 0, sugestao: 1, possuiHistorico: false };
+        }
+    }
+
     async getClientesRoteiroDetalhados(rotCidId) {
         const clientesRoteiro = await this.getRoteiroClientes(rotCidId);
         if (!clientesRoteiro || clientesRoteiro.length === 0) return [];
@@ -1358,6 +1401,7 @@ class TursoDatabase {
 
         return clientesRoteiro.map(cliente => ({
             ...cliente,
+            rot_possui_rateio: cliente.rot_possui_rateio ? 1 : 0,
             cliente_dados: detalhes[cliente.rot_cliente_codigo] || null
         }));
     }
@@ -1430,18 +1474,43 @@ class TursoDatabase {
         }
     }
 
-    async adicionarClienteRoteiro(rotCidId, clienteCodigo, usuario = '') {
+    async adicionarClienteRoteiro(rotCidId, clienteCodigo, usuario = '', { ordemVisita = null, possuiRateio = false } = {}) {
         try {
             const cidade = await this.getRoteiroCidadePorId(rotCidId);
 
+            const ordemNumero = Number(ordemVisita);
+            if (!ordemNumero || Number.isNaN(ordemNumero) || ordemNumero < 1) {
+                throw new Error('Informe uma ordem de atendimento válida para o cliente.');
+            }
+
+            const ordemInteira = Math.max(1, Math.floor(ordemNumero));
+
+            if (cidade && ordemInteira) {
+                const conflito = await this.mainClient.execute({
+                    sql: `
+                        SELECT rot_cli_id, rot_cliente_codigo
+                        FROM rot_roteiro_cliente
+                        WHERE rot_cid_id = ? AND rot_ordem_visita = ? AND rot_cliente_codigo != ?
+                    `,
+                    args: [rotCidId, ordemInteira, clienteCodigo]
+                });
+
+                if (conflito.rows?.length) {
+                    throw new Error(`Já existe um cliente com a ordem ${ordemInteira} nesta cidade. Ajuste a ordem antes de incluir.`);
+                }
+            }
+
             await this.mainClient.execute({
                 sql: `
-                    INSERT INTO rot_roteiro_cliente (rot_cid_id, rot_cliente_codigo)
-                    VALUES (?, ?)
+                    INSERT INTO rot_roteiro_cliente (rot_cid_id, rot_cliente_codigo, rot_ordem_visita, rot_possui_rateio)
+                    VALUES (?, ?, ?, ?)
                     ON CONFLICT(rot_cid_id, rot_cliente_codigo)
-                    DO UPDATE SET rot_atualizado_em = CURRENT_TIMESTAMP
+                    DO UPDATE SET
+                        rot_ordem_visita = excluded.rot_ordem_visita,
+                        rot_possui_rateio = excluded.rot_possui_rateio,
+                        rot_atualizado_em = CURRENT_TIMESTAMP
                 `,
-                args: [rotCidId, clienteCodigo]
+                args: [rotCidId, clienteCodigo, ordemInteira, possuiRateio ? 1 : 0]
             });
 
             if (cidade) {
@@ -1452,12 +1521,16 @@ class TursoDatabase {
                     cidade: cidade.rot_cidade,
                     clienteCodigo,
                     acao: 'INCLUIR_CLIENTE',
-                    detalhes: 'Cliente incluído na rota'
+                    detalhes: `Cliente incluído na rota com ordem ${ordemInteira}${possuiRateio ? ' e flag de rateio' : ''}`
                 });
+
+                if (possuiRateio) {
+                    await this.garantirRateioClienteRepositor(clienteCodigo, cidade.rot_repositor_id, usuario);
+                }
             }
         } catch (error) {
             console.error('Erro ao adicionar cliente no roteiro:', error);
-            throw new Error('Não foi possível adicionar o cliente ao roteiro.');
+            throw new Error(error?.message || 'Não foi possível adicionar o cliente ao roteiro.');
         }
     }
 
@@ -1487,6 +1560,100 @@ class TursoDatabase {
         } catch (error) {
             console.error('Erro ao remover cliente do roteiro:', error);
             throw new Error('Não foi possível remover o cliente do roteiro.');
+        }
+    }
+
+    async verificarClienteVinculadoARoteiro(clienteCodigo) {
+        if (!clienteCodigo) return false;
+
+        try {
+            const resultado = await this.mainClient.execute({
+                sql: 'SELECT 1 FROM rot_roteiro_cliente WHERE rot_cliente_codigo = ? LIMIT 1',
+                args: [clienteCodigo]
+            });
+
+            return resultado.rows?.length > 0;
+        } catch (error) {
+            console.error('Erro ao validar vínculo de cliente no roteiro:', error);
+            return false;
+        }
+    }
+
+    async garantirRateioClienteRepositor(clienteCodigo, repositorId, usuario = '') {
+        if (!clienteCodigo || !repositorId) return;
+
+        try {
+            const existe = await this.mainClient.execute({
+                sql: `
+                    SELECT 1
+                    FROM rat_cliente_repositor
+                    WHERE rat_cliente_codigo = ? AND rat_repositor_id = ?
+                    LIMIT 1
+                `,
+                args: [clienteCodigo, repositorId]
+            });
+
+            if (existe.rows?.length) return;
+
+            await this.mainClient.execute({
+                sql: `
+                    INSERT INTO rat_cliente_repositor (
+                        rat_cliente_codigo, rat_repositor_id, rat_percentual,
+                        rat_criado_em, rat_atualizado_em
+                    ) VALUES (?, ?, 100, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                `,
+                args: [clienteCodigo, repositorId]
+            });
+
+            await this.registrarAuditoriaRoteiro({
+                usuario,
+                repositorId,
+                clienteCodigo,
+                acao: 'RATEIO_CLIENTE',
+                detalhes: 'Rateio iniciado automaticamente em 100% para o repositor atual'
+            });
+        } catch (error) {
+            console.error('Erro ao garantir vínculo de rateio:', error);
+        }
+    }
+
+    async atualizarRateioClienteRoteiro(rotCliId, possuiRateio, usuario = '') {
+        const registro = await this.mainClient.execute({
+            sql: `
+                SELECT cli.rot_cliente_codigo, cid.rot_repositor_id, cid.rot_dia_semana, cid.rot_cidade
+                FROM rot_roteiro_cliente cli
+                JOIN rot_roteiro_cidade cid ON cid.rot_cid_id = cli.rot_cid_id
+                WHERE cli.rot_cli_id = ?
+            `,
+            args: [rotCliId]
+        });
+
+        const dados = registro.rows?.[0];
+        if (!dados) {
+            throw new Error('Cliente do roteiro não encontrado para atualizar rateio.');
+        }
+
+        await this.mainClient.execute({
+            sql: `
+                UPDATE rot_roteiro_cliente
+                SET rot_possui_rateio = ?, rot_atualizado_em = CURRENT_TIMESTAMP
+                WHERE rot_cli_id = ?
+            `,
+            args: [possuiRateio ? 1 : 0, rotCliId]
+        });
+
+        await this.registrarAuditoriaRoteiro({
+            usuario,
+            repositorId: dados.rot_repositor_id,
+            diaSemana: dados.rot_dia_semana,
+            cidade: dados.rot_cidade,
+            clienteCodigo: dados.rot_cliente_codigo,
+            acao: 'ALTERAR_RATEIO',
+            detalhes: possuiRateio ? 'Rateio ativado' : 'Rateio desativado'
+        });
+
+        if (possuiRateio) {
+            await this.garantirRateioClienteRepositor(dados.rot_cliente_codigo, dados.rot_repositor_id, usuario);
         }
     }
 
@@ -1556,6 +1723,11 @@ class TursoDatabase {
     async salvarRateioCliente(clienteCodigo, linhas = [], usuario = '') {
         if (!clienteCodigo) throw new Error('Cliente não informado para salvar o rateio.');
         if (!linhas || linhas.length === 0) throw new Error('Inclua pelo menos um repositor no rateio.');
+
+        const vinculado = await this.verificarClienteVinculadoARoteiro(clienteCodigo);
+        if (!vinculado) {
+            throw new Error('Cadastre o cliente em um roteiro antes de configurar o rateio.');
+        }
 
         this.validarRateioLinhas(linhas);
 
