@@ -95,83 +95,72 @@ export function validarCamposObrigatorios(campos) {
  * Formata CNPJ/CPF evitando notação científica
  * Converte números grandes em strings com zeros à esquerda
  */
-export function formatarCNPJCPF(valor) {
-    if (!valor || valor === 'NaN' || String(valor).toLowerCase() === 'nan') return '-';
+export function normalizarDocumento(valor) {
+    if (valor === null || valor === undefined) return '';
 
-    // Remove qualquer NaN do valor
-    let valorLimpo = String(valor).replace(/NaN/gi, '').trim();
-    if (!valorLimpo) return '-';
+    const textoOriginal = String(valor).trim();
+    if (!textoOriginal) return '';
 
-    // Converte para string e remove caracteres não numéricos
-    let texto = valorLimpo.replace(/\D/g, '');
+    const textoAjustado = textoOriginal.replace(',', '.');
 
-    // Se for número em notação científica, reconstrói o número completo
-    if (String(valorLimpo).includes('E') || String(valorLimpo).includes('e')) {
-        try {
-            const numero = Number(valorLimpo);
-            if (!isNaN(numero) && isFinite(numero)) {
-                texto = Math.floor(numero).toString();
-            }
-        } catch (e) {
-            // Mantém o texto já extraído
+    if (/e/i.test(textoAjustado) || /^\d+(\.\d+)?$/.test(textoAjustado)) {
+        const numero = Number(textoAjustado);
+        if (!Number.isNaN(numero) && Number.isFinite(numero)) {
+            return Math.trunc(numero).toString();
         }
     }
 
-    // NÃO remove zeros à esquerda - mantém o tamanho original
-    const tamanho = texto.length;
+    const somenteDigitos = textoOriginal.replace(/\D/g, '');
+    if (somenteDigitos) return somenteDigitos;
 
-    // Prioriza CNPJ: se tem 14 dígitos ou mais, é CNPJ
-    if (tamanho >= 14) {
-        // Garante exatamente 14 dígitos
-        texto = texto.padStart(14, '0').substring(0, 14);
-        // Formato CNPJ: XX.XXX.XXX/XXXX-XX
-        return texto.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
-    }
-    // Se tem 11, 12 ou 13 dígitos, completa para 14 e formata como CNPJ
-    else if (tamanho >= 11 && tamanho < 14) {
-        texto = texto.padStart(14, '0');
-        return texto.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
-    }
-    // Se tem menos de 11 dígitos, formata como CPF
-    else if (tamanho > 0 && tamanho < 11) {
-        texto = texto.padStart(11, '0');
-        // Formato CPF: XXX.XXX.XXX-XX
-        return texto.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    // Fallback seguro quando não há dígitos
+    return '';
+}
+
+export function formatarCNPJCPF(valor) {
+    const doc = normalizarDocumento(valor);
+    if (!doc) return '-';
+
+    if (doc.length >= 14) {
+        const completo = doc.padStart(14, '0').slice(0, 14);
+        return completo.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
     }
 
-    // Se não conseguiu formatar, retorna o texto sem formatação
-    return texto || '-';
+    if (doc.length === 11) {
+        return doc.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    }
+
+    if (doc.length > 0 && doc.length < 11) {
+        const completo = doc.padStart(11, '0');
+        return completo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    }
+
+    return doc;
 }
 
 /**
  * Formata CNPJ garantindo 14 dígitos no padrão XX.XXX.XXX/XXXX-XX
  */
 export function formatarCNPJ(valor) {
-    if (!valor && valor !== 0) return '-';
+    const doc = normalizarDocumento(valor);
+    if (doc.length !== 14) return '-';
 
-    const apenasNumeros = String(valor).replace(/\D/g, '');
-    if (apenasNumeros.length !== 14) return '-';
-
-    return apenasNumeros.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+    return doc.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
 }
 
 export function formatarDocumento(valor) {
-    if (valor === null || valor === undefined) return '-';
+    const doc = normalizarDocumento(valor);
+    if (!doc) return '-';
 
-    const textoOriginal = String(valor);
-    const apenasNumeros = textoOriginal.replace(/\D/g, '');
-
-    if (apenasNumeros.length === 11) {
-        return apenasNumeros.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    if (doc.length === 11) {
+        return doc.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
     }
 
-    if (apenasNumeros.length === 14) {
-        return apenasNumeros.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+    if (doc.length === 14) {
+        return doc.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
     }
 
-    if (!apenasNumeros) return '-';
-
-    return textoOriginal;
+    return doc;
 }
 
 export function formatarGrupo(valor) {

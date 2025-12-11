@@ -6,7 +6,7 @@
 import { db } from './db.js';
 import { pages, pageTitles } from './pages.js';
 import { ACL_RECURSOS } from './acl-resources.js';
-import { formatarDataISO, normalizarSupervisor, normalizarTextoCadastro, formatarDocumento, formatarGrupo } from './utils.js';
+import { formatarDataISO, normalizarSupervisor, normalizarTextoCadastro, formatarDocumento, formatarGrupo, normalizarDocumento } from './utils.js';
 
 const AUTH_STORAGE_KEY = 'GERMANI_AUTH_USER';
 
@@ -37,6 +37,8 @@ class App {
         this.clientesCachePorCidade = {};
         this.clientesSelecionadosCidadeAtual = [];
         this.buscaClientesModal = '';
+        this.rateioPendentes = {};
+        this.rateioModalContexto = null;
         this.formClienteRoteiro = {
             ordemSelecionada: 1,
             sugestaoOrdem: 1,
@@ -677,6 +679,8 @@ class App {
             this.clientesCachePorCidade = {};
             this.clientesSelecionadosCidadeAtual = [];
             this.buscaClientesModal = '';
+            this.rateioPendentes = {};
+            this.rateioModalContexto = null;
             this.resetarFormularioClienteRoteiro();
 
             await this.navigateTo('roteiro-repositor');
@@ -945,6 +949,11 @@ class App {
         const btnSalvarRoteiro = document.getElementById('btnSalvarRoteiroCompleto');
         if (btnSalvarRoteiro) {
             btnSalvarRoteiro.onclick = () => this.salvarRoteiroCompleto();
+        }
+
+        const btnConfirmarRateio = document.getElementById('confirmarRateioRapido');
+        if (btnConfirmarRateio) {
+            btnConfirmarRateio.onclick = () => this.confirmarRateioRapido();
         }
 
         const buscaModal = document.getElementById('modalBuscaClientesCidade');
@@ -1468,21 +1477,35 @@ class App {
         }
 
         const selecionados = await db.getClientesRoteiroDetalhados(cidadeAtiva.rot_cid_id);
-        this.clientesSelecionadosCidadeAtual = selecionados;
+        const ajustados = selecionados.map(cliente => {
+            const pendente = this.rateioPendentes?.[cliente.rot_cli_id];
+            const ativo = pendente?.ativo ?? !!cliente.rot_possui_rateio;
+            return {
+                ...cliente,
+                rot_possui_rateio: ativo ? 1 : 0,
+                rateio_percentual: pendente?.percentual ?? cliente.rateio_percentual ?? null
+            };
+        });
+
+        this.clientesSelecionadosCidadeAtual = ajustados;
         await this.atualizarContextoOrdemCidade();
         const termoBusca = (this.estadoRoteiro.buscaClientes || '').trim().toLowerCase();
         const clientes = termoBusca
-            ? selecionados.filter(item => {
+            ? ajustados.filter(item => {
                 const dados = item.cliente_dados || {};
+                const docNormalizado = normalizarDocumento(dados.cnpj_cpf);
                 const campos = [
                     dados.nome,
                     dados.fantasia,
                     dados.bairro,
-                    dados.grupo_desc,
-                    dados.cnpj_cpf
+                    dados.grupo_desc
                 ].map(c => (c || '').toString().toLowerCase());
                 const codigoTexto = String(item.rot_cliente_codigo || '').toLowerCase();
-                return campos.some(c => c.includes(termoBusca)) || codigoTexto.includes(termoBusca);
+                const termoDocumento = normalizarDocumento(termoBusca);
+
+                return campos.some(c => c.includes(termoBusca))
+                    || codigoTexto.includes(termoBusca)
+                    || (termoDocumento && docNormalizado.includes(termoDocumento));
             })
             : selecionados;
 
@@ -1600,14 +1623,24 @@ class App {
             });
         });
 
-        tabela.querySelectorAll('.rateio-toggle').forEach(toggle => {
-            toggle.addEventListener('change', async () => {
-                const rotCliId = Number(toggle.dataset.cliId);
+        const clientesPorId = new Map(clientesOrdenados.map(cli => [String(cli.rot_cli_id), cli]));
 
-                try {
-                    await this.atualizarFlagRateioCliente(rotCliId, toggle.checked);
-                } catch (error) {
-                    // Erro já tratado em atualizarFlagRateioCliente
+        tabela.querySelectorAll('.rateio-toggle').forEach(toggle => {
+            toggle.addEventListener('change', () => {
+                const cliente = clientesPorId.get(String(toggle.dataset.cliId));
+                if (!cliente) return;
+
+                if (toggle.checked) {
+                    this.abrirModalRateioRapido(cliente);
+                } else {
+                    this.definirRateioPendente({
+                        rotCliId: cliente.rot_cli_id,
+                        clienteCodigo: cliente.rot_cliente_codigo,
+                        repositorId: this.contextoRoteiro?.repo_cod,
+                        ativo: false,
+                        percentual: null
+                    });
+                    this.carregarClientesRoteiro();
                 }
             });
         });
@@ -1683,6 +1716,8 @@ class App {
 
     async salvarRoteiroCompleto() {
         try {
+            await this.aplicarRateiosPendentes();
+
             // Recarregar dados para sincronizar
             await this.carregarCidadesRoteiro();
             await this.carregarClientesRoteiro();
@@ -1692,6 +1727,41 @@ class App {
         } catch (error) {
             this.showNotification('Erro ao sincronizar roteiro: ' + error.message, 'error');
         }
+    }
+
+    async aplicarRateiosPendentes() {
+        const pendentes = Object.values(this.rateioPendentes || {});
+        if (!pendentes.length) return;
+
+        const usuario = this.usuarioLogado?.username || 'desconhecido';
+        const clientesImpactados = new Set();
+
+        for (const item of pendentes) {
+            await db.sincronizarRateioClienteRoteiro({
+                rotCliId: item.rotCliId,
+                repositorId: item.repositorId || this.contextoRoteiro?.repo_cod,
+                clienteCodigo: item.clienteCodigo,
+                ativo: item.ativo,
+                percentual: item.percentual ?? 0,
+                usuario
+            });
+
+            if (item.clienteCodigo) {
+                clientesImpactados.add(item.clienteCodigo);
+            }
+        }
+
+        if (clientesImpactados.size) {
+            const totais = await db.calcularTotalRateioClientes([...clientesImpactados]);
+            const incompletos = Object.entries(totais || {})
+                .filter(([, soma]) => Math.abs(Number(soma || 0) - 100) > 0.01);
+
+            if (incompletos.length > 0) {
+                this.showNotification('Existem clientes com rateio incompleto. Ajuste os percentuais na tela de cadastro de rateio.', 'warning');
+            }
+        }
+
+        this.rateioPendentes = {};
     }
 
     async abrirModalAdicionarCliente() {
@@ -1788,10 +1858,13 @@ class App {
                     cliente.fantasia,
                     cliente.bairro,
                     cliente.grupo_desc,
-                    cliente.cnpj_cpf
+                    normalizarDocumento(cliente.cnpj_cpf)
                 ].map(c => (c || '').toString().toLowerCase());
                 const codigoTexto = String(cliente.cliente || '').toLowerCase();
-                return campos.some(c => c.includes(termo)) || codigoTexto.includes(termo);
+                const termoDocumento = normalizarDocumento(termo);
+                return campos.some(c => c.includes(termo))
+                    || codigoTexto.includes(termo)
+                    || (termoDocumento && normalizarDocumento(cliente.cnpj_cpf).includes(termoDocumento));
             })
             : clientesBase;
 
@@ -1850,6 +1923,86 @@ class App {
                 this.incluirClienteNaCidade(codigo);
             });
         });
+    }
+
+    definirRateioPendente({ rotCliId, clienteCodigo, repositorId, ativo, percentual = null }) {
+        if (!rotCliId || !clienteCodigo || !repositorId) return;
+
+        this.rateioPendentes[rotCliId] = {
+            rotCliId,
+            clienteCodigo,
+            repositorId,
+            ativo: !!ativo,
+            percentual: ativo ? Number(percentual ?? 0) : null
+        };
+
+        this.marcarRoteiroPendente();
+    }
+
+    abrirModalRateioRapido(cliente) {
+        const modal = document.getElementById('modalRateioRapido');
+        const percentualInput = document.getElementById('rateioRapidoPercentual');
+        const clienteInfo = document.getElementById('rateioRapidoClienteInfo');
+        const repositorInfo = document.getElementById('rateioRapidoRepositorInfo');
+
+        if (!modal || !percentualInput) return;
+
+        const pendente = this.rateioPendentes?.[cliente.rot_cli_id];
+        const nomeCliente = cliente.cliente_dados?.nome || cliente.cliente_dados?.fantasia || '';
+
+        this.rateioModalContexto = {
+            rotCliId: cliente.rot_cli_id,
+            clienteCodigo: cliente.rot_cliente_codigo,
+            clienteNome: nomeCliente,
+            repositorId: this.contextoRoteiro?.repo_cod,
+            repositorNome: this.contextoRoteiro?.repo_nome || ''
+        };
+
+        if (clienteInfo) {
+            clienteInfo.textContent = `${cliente.rot_cliente_codigo} - ${nomeCliente || 'Cliente sem nome'}`;
+        }
+
+        if (repositorInfo) {
+            repositorInfo.textContent = `Repositor: ${this.rateioModalContexto.repositorNome}`;
+        }
+
+        percentualInput.value = pendente?.percentual ?? 100;
+        modal.classList.add('active');
+    }
+
+    fecharModalRateioRapido() {
+        const modal = document.getElementById('modalRateioRapido');
+        if (modal) modal.classList.remove('active');
+        this.rateioModalContexto = null;
+    }
+
+    cancelarModalRateioRapido() {
+        this.fecharModalRateioRapido();
+        this.carregarClientesRoteiro();
+    }
+
+    confirmarRateioRapido() {
+        if (!this.rateioModalContexto) {
+            this.fecharModalRateioRapido();
+            return;
+        }
+
+        const campoPercentual = document.getElementById('rateioRapidoPercentual');
+        const valor = Number(campoPercentual?.value ?? 0);
+
+        if (Number.isNaN(valor) || valor < 0 || valor > 100) {
+            this.showNotification('Informe um percentual entre 0 e 100.', 'warning');
+            return;
+        }
+
+        this.definirRateioPendente({
+            ...this.rateioModalContexto,
+            ativo: true,
+            percentual: valor
+        });
+
+        this.fecharModalRateioRapido();
+        this.carregarClientesRoteiro();
     }
 
     // ==================== CADASTRO DE RATEIO ====================

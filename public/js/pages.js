@@ -719,6 +719,28 @@ export const pages = {
                     </div>
                 </div>
             </div>
+
+            <div class="modal" id="modalRateioRapido">
+                <div class="modal-content" style="max-width: 520px;">
+                    <div class="modal-header">
+                        <h3>Percentual de rateio</h3>
+                        <button class="modal-close" onclick="window.app.cancelarModalRateioRapido()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <p id="rateioRapidoClienteInfo" class="text-muted"></p>
+                        <p id="rateioRapidoRepositorInfo" class="text-muted"></p>
+                        <div class="form-group">
+                            <label for="rateioRapidoPercentual">% de rateio deste cliente para este repositor</label>
+                            <input type="number" id="rateioRapidoPercentual" min="0" max="100" step="0.01" required>
+                            <small class="helper-compact">Valores entre 0 e 100. Nada será salvo até clicar em "Salvar Roteiro".</small>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" type="button" onclick="window.app.cancelarModalRateioRapido()">Cancelar</button>
+                        <button class="btn btn-primary" type="button" id="confirmarRateioRapido">Confirmar</button>
+                    </div>
+                </div>
+            </div>
         `;
     },
 

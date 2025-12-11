@@ -10,7 +10,7 @@
 
 import { TURSO_CONFIG } from './turso-config.js';
 import { createClient } from 'https://esm.sh/@libsql/client@0.6.0/web';
-import { normalizarDataISO, normalizarSupervisor, normalizarTextoCadastro } from './utils.js';
+import { normalizarDataISO, normalizarSupervisor, normalizarTextoCadastro, normalizarDocumento } from './utils.js';
 
 class TursoDatabase {
     constructor() {
@@ -1042,7 +1042,7 @@ class TursoDatabase {
         if (!this.comercialClient || !cidade) return [];
 
         let sql = `
-            SELECT cliente, nome, fantasia, cnpj_cpf, endereco, num_endereco, bairro, cidade, estado, grupo_desc
+            SELECT cliente, nome, fantasia, CAST(cnpj_cpf AS TEXT) AS cnpj_cpf, endereco, num_endereco, bairro, cidade, estado, grupo_desc
             FROM tab_cliente
             WHERE cidade = ?
         `;
@@ -1057,7 +1057,10 @@ class TursoDatabase {
 
         try {
             const result = await this.comercialClient.execute({ sql, args });
-            return result.rows;
+            return result.rows.map(row => ({
+                ...row,
+                cnpj_cpf: normalizarDocumento(row.cnpj_cpf)
+            }));
         } catch (error) {
             console.error('Erro ao buscar clientes por cidade:', error);
             return [];
@@ -1073,7 +1076,7 @@ class TursoDatabase {
         try {
             const resultado = await this.comercialClient.execute({
                 sql: `
-                    SELECT cliente, nome, fantasia, cnpj_cpf, cidade, estado
+                    SELECT cliente, nome, fantasia, CAST(cnpj_cpf AS TEXT) AS cnpj_cpf, cidade, estado
                     FROM tab_cliente
                     WHERE nome LIKE ?
                         OR fantasia LIKE ?
@@ -1085,7 +1088,10 @@ class TursoDatabase {
                 args: [termoLike, termoLike, termoLike, termoLike, limite]
             });
 
-            return resultado.rows;
+            return resultado.rows.map(row => ({
+                ...row,
+                cnpj_cpf: normalizarDocumento(row.cnpj_cpf)
+            }));
         } catch (error) {
             console.error('Erro ao buscar clientes no comercial:', error);
             return [];
@@ -1101,7 +1107,7 @@ class TursoDatabase {
         try {
             const resultado = await this.comercialClient.execute({
                 sql: `
-                    SELECT cliente, nome, fantasia, cnpj_cpf, endereco, num_endereco,
+                    SELECT cliente, nome, fantasia, CAST(cnpj_cpf AS TEXT) AS cnpj_cpf, endereco, num_endereco,
                            bairro, cidade, estado, grupo_desc
                     FROM tab_cliente
                     WHERE cliente IN (${placeholders})
@@ -1111,7 +1117,10 @@ class TursoDatabase {
 
             const mapa = {};
             resultado.rows.forEach(cli => {
-                mapa[cli.cliente] = cli;
+                mapa[cli.cliente] = {
+                    ...cli,
+                    cnpj_cpf: normalizarDocumento(cli.cnpj_cpf)
+                };
             });
 
             return mapa;
@@ -1678,24 +1687,41 @@ class TursoDatabase {
         }
     }
 
-    async atualizarRateioClienteRoteiro(rotCliId, possuiRateio, usuario = '') {
-        const registro = await this.mainClient.execute({
-            sql: `
-                SELECT cli.rot_cliente_codigo, cid.rot_repositor_id, cid.rot_dia_semana, cid.rot_cidade
-                FROM rot_roteiro_cliente cli
-                JOIN rot_roteiro_cidade cid ON cid.rot_cid_id = cli.rot_cid_id
-                WHERE cli.rot_cli_id = ?
-            `,
-            args: [rotCliId]
-        });
+    async sincronizarRateioClienteRoteiro({ rotCliId, repositorId, clienteCodigo, ativo, percentual = 0, usuario = '' }) {
+        let dados = { rot_repositor_id: repositorId, rot_cliente_codigo: clienteCodigo };
 
-        const dados = registro.rows?.[0];
-        if (!dados) {
-            throw new Error('Cliente do roteiro não encontrado para atualizar rateio.');
+        if (!dados.rot_repositor_id || !dados.rot_cliente_codigo) {
+            const registro = await this.mainClient.execute({
+                sql: `
+                    SELECT cli.rot_cliente_codigo, cid.rot_repositor_id, cid.rot_dia_semana, cid.rot_cidade
+                    FROM rot_roteiro_cliente cli
+                    JOIN rot_roteiro_cidade cid ON cid.rot_cid_id = cli.rot_cid_id
+                    WHERE cli.rot_cli_id = ?
+                `,
+                args: [rotCliId]
+            });
+
+            if (!registro.rows?.[0]) {
+                throw new Error('Cliente do roteiro não encontrado para sincronizar rateio.');
+            }
+
+            dados = registro.rows[0];
         }
 
-        if (possuiRateio) {
-            await this.garantirRateioClienteRepositor(dados.rot_cliente_codigo, dados.rot_repositor_id, usuario);
+        const percentFormatado = Math.max(0, Math.min(100, Number(percentual) || 0));
+
+        if (ativo) {
+            await this.mainClient.execute({
+                sql: `
+                    INSERT INTO rat_cliente_repositor (
+                        rat_cliente_codigo, rat_repositor_id, rat_percentual,
+                        rat_criado_em, rat_atualizado_em
+                    ) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    ON CONFLICT(rat_cliente_codigo, rat_repositor_id, IFNULL(rat_vigencia_inicio, ''), IFNULL(rat_vigencia_fim, ''))
+                    DO UPDATE SET rat_percentual = excluded.rat_percentual, rat_atualizado_em = CURRENT_TIMESTAMP
+                `,
+                args: [dados.rot_cliente_codigo, dados.rot_repositor_id, percentFormatado]
+            });
         } else {
             await this.removerRateioClienteRepositor(dados.rot_cliente_codigo, dados.rot_repositor_id, usuario);
         }
@@ -1709,20 +1735,20 @@ class TursoDatabase {
                       SELECT rot_cid_id FROM rot_roteiro_cidade WHERE rot_repositor_id = ?
                   )
             `,
-            args: [possuiRateio ? 1 : 0, dados.rot_cliente_codigo, dados.rot_repositor_id]
+            args: [ativo ? 1 : 0, dados.rot_cliente_codigo, dados.rot_repositor_id]
         });
 
         await this.registrarAuditoriaRoteiro({
             usuario,
             repositorId: dados.rot_repositor_id,
-            diaSemana: dados.rot_dia_semana,
-            cidade: dados.rot_cidade,
             clienteCodigo: dados.rot_cliente_codigo,
             acao: 'ALTERAR_RATEIO',
-            detalhes: possuiRateio ? 'Rateio ativado' : 'Rateio desativado'
+            detalhes: ativo ? `Rateio definido em ${percentFormatado}%` : 'Rateio desativado'
         });
+    }
 
-        
+    async atualizarRateioClienteRoteiro(rotCliId, possuiRateio, usuario = '') {
+        await this.sincronizarRateioClienteRoteiro({ rotCliId, ativo: possuiRateio, percentual: 100, usuario });
     }
 
     // ==================== RATEIO ====================
@@ -1769,6 +1795,34 @@ class TursoDatabase {
         } catch (error) {
             console.error('Erro ao buscar clientes com rateio:', error);
             return [];
+        }
+    }
+
+    async calcularTotalRateioClientes(clienteCodigos = []) {
+        if (!clienteCodigos.length) return {};
+
+        const placeholders = clienteCodigos.map(() => '?').join(',');
+
+        try {
+            const resultado = await this.mainClient.execute({
+                sql: `
+                    SELECT rat_cliente_codigo, SUM(rat_percentual) AS total_percentual
+                    FROM rat_cliente_repositor
+                    WHERE rat_cliente_codigo IN (${placeholders})
+                    GROUP BY rat_cliente_codigo
+                `,
+                args: clienteCodigos
+            });
+
+            const totais = {};
+            resultado.rows.forEach(row => {
+                totais[row.rat_cliente_codigo] = Number(row.total_percentual || 0);
+            });
+
+            return totais;
+        } catch (error) {
+            console.error('Erro ao calcular totais de rateio:', error);
+            return {};
         }
     }
 
