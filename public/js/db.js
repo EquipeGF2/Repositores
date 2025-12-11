@@ -1472,16 +1472,17 @@ class TursoDatabase {
     async consultarRoteiro({ repositorIds = [], diaSemana = '', cidade = '', dataInicio = null, dataFim = null } = {}) {
         const args = [];
         let sql = `
-            SELECT
-                rc.rot_cid_id,
-                rc.rot_repositor_id,
-                rc.rot_dia_semana,
-                rc.rot_cidade,
-                rc.rot_ordem_cidade,
-                cli.rot_cliente_codigo,
-                cli.rot_ordem_visita,
-                r.repo_nome,
-                r.repo_cod
+              SELECT
+                  rc.rot_cid_id,
+                  rc.rot_repositor_id,
+                  rc.rot_dia_semana,
+                  rc.rot_cidade,
+                  rc.rot_ordem_cidade,
+                  rc.rot_atualizado_em,
+                  cli.rot_cliente_codigo,
+                  cli.rot_ordem_visita,
+                  r.repo_nome,
+                  r.repo_cod
             FROM rot_roteiro_cidade rc
             JOIN cad_repositor r ON r.repo_cod = rc.rot_repositor_id
             JOIN rot_roteiro_cliente cli ON cli.rot_cid_id = rc.rot_cid_id
@@ -1540,11 +1541,33 @@ class TursoDatabase {
             return resultado.rows.map(row => ({
                 ...row,
                 rot_cidade: (row.rot_cidade || '').toUpperCase(),
+                rot_atualizado_em: normalizarDataISO(row.rot_atualizado_em),
                 cliente_dados: detalhes[row.rot_cliente_codigo] || null
             }));
         } catch (error) {
             console.error('Erro ao consultar roteiro:', error);
             return [];
+        }
+    }
+
+    async getUltimaAtualizacaoRoteiro(repositorId) {
+        if (!repositorId) return null;
+
+        try {
+            const resultado = await this.mainClient.execute({
+                sql: `
+                    SELECT MAX(rot_atualizado_em) AS ultima_atualizacao
+                    FROM rot_roteiro_cidade
+                    WHERE rot_repositor_id = ?
+                `,
+                args: [repositorId]
+            });
+
+            const data = resultado?.rows?.[0]?.ultima_atualizacao;
+            return normalizarDataISO(data);
+        } catch (error) {
+            console.error('Erro ao buscar última atualização do roteiro:', error);
+            return null;
         }
     }
 
@@ -1906,6 +1929,8 @@ class TursoDatabase {
 
     async listarClientesRateioIncompleto() {
         try {
+            await this.connect();
+
             const resultado = await this.mainClient.execute({
                 sql: `
                     WITH clientes_rateio AS (

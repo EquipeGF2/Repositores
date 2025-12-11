@@ -1089,7 +1089,6 @@ export const pages = {
                                 <option value="">Selecione</option>
                                 ${repositorOptions}
                             </select>
-                            <small class="helper-compact">Escolha apenas um repositor</small>
                         </div>
                         <div class="filter-group">
                             <label for="filtro_dia_consulta_roteiro">Dia da semana</label>
@@ -1129,17 +1128,17 @@ export const pages = {
                             <button class="btn btn-success" id="btnExportarPDF">
                                 📄 Exportar PDF
                             </button>
-                            <button class="btn btn-success" id="btnExportarXLS">
-                                📊 Exportar Excel
-                            </button>
-                            <span class="text-muted">A exportação seguirá o layout da planilha “Roteiro de Visitas”.</span>
-                        </div>
+                                <button class="btn btn-success" id="btnExportarXLS">
+                                    📊 Exportar Excel
+                                </button>
+                                <span class="text-muted">A exportação seguirá o layout da planilha “Roteiro de Visitas”.</span>
+                            </div>
                     </div>
 
                     <div class="table-container" id="resumoConsultaRoteiro">
                         <div class="empty-state">
                             <div class="empty-state-icon">🧭</div>
-                            <p>Selecione um repositor para visualizar o roteiro consolidado.</p>
+                            <p>Selecione um repositor ou uma cidade para visualizar o roteiro consolidado.</p>
                             <small>Os dados serão organizados por dia da semana e cidade, prontos para exportação.</small>
                         </div>
                     </div>
@@ -1159,7 +1158,7 @@ export const pages = {
                                     </div>
                                 </div>
 
-                                <div class="export-options">
+                                <div class="export-options" id="exportacaoEscopoContainer">
                                     <label class="export-option">
                                         <input type="radio" name="exportacao_repositor_escopo" value="atual" checked>
                                         <div>
@@ -1178,7 +1177,7 @@ export const pages = {
                                 </div>
 
                                 <div id="exportacaoRepositorLista" class="export-repositor-list" style="display: none;">
-                                    <p class="export-repositor-title">Escolha repositores extras:</p>
+                                    <p id="exportacaoListaTitulo" class="export-repositor-title">Escolha repositores extras:</p>
                                     <div id="exportacaoRepositorCheckboxes" class="checkbox-grid"></div>
                                 </div>
 

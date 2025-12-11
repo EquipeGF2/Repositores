@@ -57,6 +57,7 @@ class App {
         this.rateioBuscaTimeout = null;
         this.repositoresCache = [];
         this.exportacaoRoteiroContexto = null;
+        this.cacheUltimaAtualizacaoRoteiro = {};
         this.cidadesConsultaDisponiveis = [];
         this.recursosPorPagina = {
             'cadastro-repositor': 'mod_repositores',
@@ -2661,7 +2662,7 @@ class App {
         const repositorId = selectRepositor ? Number(selectRepositor.value) || null : null;
 
         const diaSemana = document.getElementById('filtro_dia_consulta_roteiro')?.value || '';
-        const cidade = document.getElementById('filtro_cidade_consulta_roteiro')?.value || '';
+        const cidade = (document.getElementById('filtro_cidade_consulta_roteiro')?.value || '').trim();
         const dataInicio = document.getElementById('filtro_data_inicio_consulta_roteiro')?.value || '';
         const dataFim = document.getElementById('filtro_data_fim_consulta_roteiro')?.value || '';
 
@@ -2675,14 +2676,29 @@ class App {
         };
     }
 
+    obterRepositoresDosResultados() {
+        const ids = new Set();
+        (this.resultadosConsultaRoteiro || []).forEach(item => {
+            if (item?.rot_repositor_id) {
+                ids.add(Number(item.rot_repositor_id));
+            }
+        });
+        return Array.from(ids);
+    }
+
     atualizarEstadoBotoesConsultaRoteiro() {
         const btnExportarPDF = document.getElementById('btnExportarPDF');
         const btnExportarXLS = document.getElementById('btnExportarXLS');
-        const { repositorId } = this.coletarFiltrosConsultaRoteiro();
+        const { repositorId, cidade } = this.coletarFiltrosConsultaRoteiro();
         const temResultados = Array.isArray(this.resultadosConsultaRoteiro) && this.resultadosConsultaRoteiro.length > 0;
 
-        const disabled = !repositorId || !temResultados;
-        const title = repositorId ? (temResultados ? '' : 'Realize uma busca antes de exportar') : 'Selecione um repositor';
+        const repositoresEncontrados = repositorId ? [repositorId] : this.obterRepositoresDosResultados();
+        const possuiFiltroObrigatorio = Boolean(repositorId || cidade);
+
+        const disabled = !possuiFiltroObrigatorio || !temResultados || !repositoresEncontrados.length;
+        const title = possuiFiltroObrigatorio
+            ? (temResultados ? '' : 'Realize uma busca antes de exportar')
+            : 'Selecione um repositor ou uma cidade';
 
         if (btnExportarPDF) {
             btnExportarPDF.disabled = disabled;
@@ -2735,8 +2751,8 @@ class App {
         const filtros = this.coletarFiltrosConsultaRoteiro();
         this.atualizarEstadoBotoesConsultaRoteiro();
 
-        if (!filtros.repositorId) {
-            this.showNotification('Selecione um repositor para realizar a consulta.', 'warning');
+        if (!filtros.repositorId && !filtros.cidade) {
+            this.showNotification('Selecione um repositor ou uma cidade para realizar a consulta.', 'warning');
             this.renderConsultaRoteiro([]);
             this.resultadosConsultaRoteiro = [];
             this.atualizarEstadoBotoesConsultaRoteiro();
@@ -2773,19 +2789,14 @@ class App {
 
         const { repositorId, diaSemana, dataInicio, dataFim, cidade } = this.coletarFiltrosConsultaRoteiro();
 
-        if (!repositorId) {
-            selectCidade.innerHTML = '<option value="">Selecione um repositor primeiro</option>';
-            selectCidade.value = '';
-            return;
-        }
-
         selectCidade.innerHTML = '<option value="">Carregando...</option>';
         try {
             const cidades = await db.getCidadesConsultaRoteiro({ repositorId, diaSemana, dataInicio, dataFim });
             this.cidadesConsultaDisponiveis = cidades;
 
             const opcoes = cidades.map(c => `<option value="${c}">${c}</option>`).join('');
-            selectCidade.innerHTML = `<option value="">Todas</option>${opcoes}`;
+            const rotuloPadrao = repositorId ? 'Todas' : 'Todas as cidades';
+            selectCidade.innerHTML = `<option value="">${rotuloPadrao}</option>${opcoes}`;
 
             if (cidade && cidades.includes(cidade)) {
                 selectCidade.value = cidade;
@@ -2885,6 +2896,42 @@ class App {
         });
     }
 
+    formatarDataCurta(data) {
+        const objetoData = data instanceof Date ? data : new Date(data);
+        if (!objetoData || Number.isNaN(objetoData.getTime())) return null;
+        return objetoData.toLocaleDateString('pt-BR');
+    }
+
+    extrairUltimaAtualizacaoDeRegistros(registros = []) {
+        const datas = registros
+            .map(r => r.rot_atualizado_em)
+            .filter(Boolean)
+            .map(data => new Date(data))
+            .filter(data => !Number.isNaN(data.getTime()));
+
+        if (!datas.length) return null;
+
+        const ultima = new Date(Math.max(...datas.map(d => d.getTime())));
+        return this.formatarDataCurta(ultima);
+    }
+
+    async obterUltimaAtualizacaoRepositor(repositorId, registros = []) {
+        const dataLocal = this.extrairUltimaAtualizacaoDeRegistros(registros);
+        if (dataLocal) return dataLocal;
+
+        if (!repositorId) return null;
+        if (this.cacheUltimaAtualizacaoRoteiro[repositorId]) {
+            return this.cacheUltimaAtualizacaoRoteiro[repositorId];
+        }
+
+        const ultima = await db.getUltimaAtualizacaoRoteiro(repositorId);
+        const formatada = this.formatarDataCurta(ultima);
+        if (formatada) {
+            this.cacheUltimaAtualizacaoRoteiro[repositorId] = formatada;
+        }
+        return formatada;
+    }
+
     exportarConsultaRoteiroPDF() {
         this.abrirModalExportacaoRoteiro('pdf');
     }
@@ -2895,8 +2942,10 @@ class App {
 
     async abrirModalExportacaoRoteiro(tipo) {
         const filtros = this.coletarFiltrosConsultaRoteiro();
-        if (!filtros.repositorId) {
-            this.showNotification('Selecione um repositor para exportar.', 'warning');
+        const repositoresResultado = this.obterRepositoresDosResultados();
+
+        if (!filtros.repositorId && !repositoresResultado.length) {
+            this.showNotification('Selecione um repositor ou informe uma cidade para definir a exportação.', 'warning');
             return;
         }
 
@@ -2914,19 +2963,38 @@ class App {
         const selectTipoPDF = document.getElementById('selectTipoRelatorioPDF');
         const containerTipoPDF = document.getElementById('containerTipoRelatorioPDF');
 
-        const repositorInfo = this.repositoresCache.find(r => Number(r.repo_cod) === Number(filtros.repositorId));
-        const nomeRepositor = repositorInfo ? `${repositorInfo.repo_cod} - ${repositorInfo.repo_nome}` : filtros.repositorId;
+        const repositorPrincipalId = filtros.repositorId || repositoresResultado[0];
+        const repositorInfo = this.repositoresCache.find(r => Number(r.repo_cod) === Number(repositorPrincipalId));
+        const nomeRepositor = repositorInfo
+            ? `${repositorInfo.repo_cod} - ${repositorInfo.repo_nome}`
+            : filtros.repositorId
+                ? filtros.repositorId
+                : `${repositoresResultado.length} repositores encontrados`;
 
         if (titulo) titulo.textContent = tipo === 'pdf' ? 'Exportar PDF do roteiro' : 'Exportar Excel do roteiro';
         if (repositorLabel) repositorLabel.textContent = nomeRepositor;
         if (selectTipoPDF) selectTipoPDF.value = 'detalhado';
         if (containerTipoPDF) containerTipoPDF.style.display = tipo === 'pdf' ? 'block' : 'none';
 
-        this.preencherListaRepositoresExportacao(filtros.repositorId);
-        document.querySelectorAll('input[name="exportacao_repositor_escopo"]').forEach(radio => {
-            radio.checked = radio.value === 'atual';
-        });
-        this.atualizarExibicaoListaExportacao();
+        const escopoContainer = document.getElementById('exportacaoEscopoContainer');
+        const listaContainer = document.getElementById('exportacaoRepositorLista');
+        const listaTitulo = document.getElementById('exportacaoListaTitulo');
+
+        if (filtros.repositorId) {
+            if (escopoContainer) escopoContainer.style.display = 'flex';
+            if (listaTitulo) listaTitulo.textContent = 'Escolha repositores extras:';
+            this.preencherListaRepositoresExportacao(filtros.repositorId, [], repositoresResultado);
+            document.querySelectorAll('input[name="exportacao_repositor_escopo"]').forEach(radio => {
+                radio.checked = radio.value === 'atual';
+            });
+            this.atualizarExibicaoListaExportacao();
+            if (listaContainer) listaContainer.style.display = 'none';
+        } else {
+            if (escopoContainer) escopoContainer.style.display = 'none';
+            if (listaTitulo) listaTitulo.textContent = 'Selecione os repositores para exportar:';
+            this.preencherListaRepositoresExportacao(null, repositoresResultado, repositoresResultado);
+            if (listaContainer) listaContainer.style.display = 'block';
+        }
 
         if (modal) {
             modal.classList.add('active');
@@ -2942,37 +3010,44 @@ class App {
     atualizarExibicaoListaExportacao() {
         const lista = document.getElementById('exportacaoRepositorLista');
         const selecionado = document.querySelector('input[name="exportacao_repositor_escopo"]:checked');
-        if (lista) {
-            lista.style.display = selecionado?.value === 'outros' ? 'block' : 'none';
-        }
+        if (!lista || !selecionado) return;
+
+        lista.style.display = selecionado.value === 'outros' ? 'block' : 'none';
     }
 
-    preencherListaRepositoresExportacao(repositorIdAtual) {
+    preencherListaRepositoresExportacao(repositorIdAtual, preSelecionados = [], listaRestrita = null) {
         const container = document.getElementById('exportacaoRepositorCheckboxes');
         if (!container) return;
 
-        const outros = (this.repositoresCache || []).filter(repo => Number(repo.repo_cod) !== Number(repositorIdAtual));
-        if (!outros.length) {
+        const idsRestritos = (listaRestrita || []).map(Number);
+        let candidatos = this.repositoresCache || [];
+
+        if (idsRestritos.length) {
+            candidatos = candidatos.filter(repo => idsRestritos.includes(Number(repo.repo_cod)));
+        } else if (repositorIdAtual) {
+            candidatos = candidatos.filter(repo => Number(repo.repo_cod) !== Number(repositorIdAtual));
+        }
+
+        if (!candidatos.length) {
             container.innerHTML = '<p class="text-muted" style="margin: 0;">Nenhum outro repositor disponível.</p>';
             return;
         }
 
-        container.innerHTML = outros.map(repo => `
+        container.innerHTML = candidatos.map(repo => {
+            const selecionado = preSelecionados.includes(Number(repo.repo_cod)) ? 'checked' : '';
+            return `
             <label class="checkbox-option">
-                <input type="checkbox" value="${repo.repo_cod}">
+                <input type="checkbox" value="${repo.repo_cod}" ${selecionado}>
                 <span>${repo.repo_cod} - ${repo.repo_nome}</span>
             </label>
-        `).join('');
+        `;
+        }).join('');
     }
 
     async confirmarExportacaoRoteiro() {
         const contexto = this.exportacaoRoteiroContexto || {};
         const filtros = this.coletarFiltrosConsultaRoteiro();
-
-        if (!filtros.repositorId) {
-            this.showNotification('Selecione um repositor antes de exportar.', 'warning');
-            return;
-        }
+        const repositoresResultado = this.obterRepositoresDosResultados();
 
         if (!this.resultadosConsultaRoteiro || this.resultadosConsultaRoteiro.length === 0) {
             this.showNotification('Realize uma busca para gerar os arquivos.', 'warning');
@@ -2981,12 +3056,18 @@ class App {
 
         const escopo = document.querySelector('input[name="exportacao_repositor_escopo"]:checked')?.value || 'atual';
         const formatoPDF = document.getElementById('selectTipoRelatorioPDF')?.value || 'detalhado';
-        const adicionais = escopo === 'outros'
-            ? Array.from(document.querySelectorAll('#exportacaoRepositorCheckboxes input:checked')).map(el => Number(el.value))
-            : [];
+        const selecionados = Array.from(document.querySelectorAll('#exportacaoRepositorCheckboxes input:checked')).map(el => Number(el.value));
 
-        const repositorIds = [filtros.repositorId, ...adicionais].filter(Boolean);
-        const idsUnicos = [...new Set(repositorIds)];
+        let repositorIds = [];
+
+        if (filtros.repositorId) {
+            const adicionais = escopo === 'outros' ? selecionados : [];
+            repositorIds = [filtros.repositorId, ...adicionais];
+        } else {
+            repositorIds = selecionados.length ? selecionados : repositoresResultado;
+        }
+
+        const idsUnicos = [...new Set(repositorIds.filter(Boolean))];
 
         if (!idsUnicos.length) {
             this.showNotification('Selecione ao menos um repositor para exportar.', 'warning');
@@ -2998,8 +3079,9 @@ class App {
     }
 
     async exportarArquivosRoteiro({ tipo = 'pdf', repositorIds = [], filtros = {}, formatoPDF = 'detalhado' } = {}) {
-        const dataNome = new Date().toISOString().split('T')[0].replace(/-/g, '');
-        const dataAtual = new Date().toLocaleDateString('pt-BR');
+        const dataGeracao = new Date();
+        const dataGeracaoTexto = dataGeracao.toLocaleDateString('pt-BR');
+        const dataNome = dataGeracao.toISOString().split('T')[0].replace(/-/g, '');
 
         await this.carregarRepositoresCache();
 
@@ -3013,31 +3095,33 @@ class App {
             }
 
             const repositorInfo = (this.repositoresCache || []).find(r => Number(r.repo_cod) === Number(repoId)) || { repo_cod: repoId, repo_nome: 'Repositor' };
+            const dataAtualizacao = await this.obterUltimaAtualizacaoRepositor(repoId, registros);
+            const contextoDatas = {
+                dataGeracao: dataGeracaoTexto,
+                dataAtualizacao: dataAtualizacao || dataGeracaoTexto
+            };
 
             if (tipo === 'xls') {
                 this.gerarExcelRoteiroDetalhado(registros, repositorInfo, dataNome);
             } else if (formatoPDF === 'semanal') {
-                this.gerarPDFRoteiroSemanal(registros, repositorInfo, dataAtual, dataNome);
+                this.gerarPDFRoteiroSemanal(registros, repositorInfo, contextoDatas, dataNome);
             } else {
-                this.gerarPDFRoteiroDetalhado(registros, repositorInfo, dataAtual, dataNome);
+                this.gerarPDFRoteiroDetalhado(registros, repositorInfo, contextoDatas, dataNome);
             }
         }
 
         this.showNotification('Exportação concluída com base nos filtros aplicados.', 'success');
     }
 
-    gerarPDFRoteiroDetalhado(registros, repositorInfo, dataAtual, dataNome) {
+    gerarPDFRoteiroDetalhado(registros, repositorInfo, datasContexto, dataNome) {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF('landscape');
         const nomeRepositor = `${repositorInfo.repo_cod} - ${repositorInfo.repo_nome}`;
-
-        doc.setFontSize(16);
-        doc.setFont(undefined, 'bold');
-        doc.text('Roteiro de Visitas', 14, 20);
-        doc.setFontSize(10);
-        doc.setFont(undefined, 'normal');
-        doc.text(`Atualizado em ${dataAtual}`, 14, 27);
-        doc.text(`Repositor: ${nomeRepositor}`, 14, 33);
+        const telefone = repositorInfo.rep_telefone || repositorInfo.rep_contato_telefone || '-';
+        const email = repositorInfo.rep_email || '-';
+        const turno = repositorInfo.rep_jornada_tipo || repositorInfo.jornada || '-';
+        const dataAtualizacao = datasContexto?.dataAtualizacao || '-';
+        const dataGeracao = datasContexto?.dataGeracao || '-';
 
         const cabecalho = ['Dia', 'Cidade', 'Ordem Cidade', 'Código', 'Nome', 'Ordem Visita', 'Fantasia', 'Endereço', 'Bairro', 'Grupo', 'Documento'];
         const linhas = registros.map(item => {
@@ -3057,25 +3141,54 @@ class App {
             ];
         });
 
+        const margemTopo = 52;
+        const margemRodape = 20;
+
+        const desenharCabecalho = () => {
+            doc.setFontSize(16);
+            doc.setFont(undefined, 'bold');
+            doc.text('ROTEIRO DE VISITAS', 14, 18);
+            doc.setFontSize(10);
+            doc.setFont(undefined, 'normal');
+            doc.text(`Repositor: ${nomeRepositor}`, 14, 26);
+            doc.text(`Telefone: ${telefone}`, 14, 32);
+            doc.text(`E-mail: ${email}`, 14, 38);
+            doc.text(`Atualizado em: ${dataAtualizacao}`, 110, 26);
+            doc.text(`Turno: ${turno}`, 110, 32);
+        };
+
+        const desenharRodape = () => {
+            const posY = doc.internal.pageSize.getHeight() - 10;
+            doc.setFontSize(9);
+            doc.text(`Gerado em: ${dataGeracao}`, 14, posY);
+        };
+
         if (doc.autoTable) {
             doc.autoTable({
                 head: [cabecalho],
                 body: linhas,
-                startY: 40,
-                styles: { fontSize: 8 }
+                startY: margemTopo,
+                styles: { fontSize: 8 },
+                margin: { top: margemTopo, bottom: margemRodape },
+                didDrawPage: () => {
+                    desenharCabecalho();
+                    desenharRodape();
+                }
             });
         }
 
         doc.save(`roteiro_${repositorInfo.repo_cod}_${dataNome}.pdf`);
     }
 
-    gerarPDFRoteiroSemanal(registros, repositorInfo, dataAtual, dataNome) {
+    gerarPDFRoteiroSemanal(registros, repositorInfo, datasContexto, dataNome) {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF('landscape');
         const nomeRepositor = `${repositorInfo.repo_cod} - ${repositorInfo.repo_nome}`;
         const telefone = repositorInfo.rep_telefone || repositorInfo.rep_contato_telefone || '-';
         const email = repositorInfo.rep_email || '-';
         const turno = repositorInfo.rep_jornada_tipo || repositorInfo.jornada || '-';
+        const dataAtualizacao = datasContexto?.dataAtualizacao || '-';
+        const dataGeracao = datasContexto?.dataGeracao || '-';
 
         doc.setFontSize(16);
         doc.setFont(undefined, 'bold');
@@ -3085,7 +3198,7 @@ class App {
         doc.text(`Repositor: ${nomeRepositor}`, 14, 26);
         doc.text(`Telefone: ${telefone}`, 14, 32);
         doc.text(`E-mail: ${email}`, 14, 38);
-        doc.text(`Atualizado em: ${dataAtual}`, 110, 26);
+        doc.text(`Atualizado em: ${dataAtualizacao}`, 110, 26);
         doc.text(`Turno: ${turno}`, 110, 32);
 
         const dias = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
@@ -3098,24 +3211,37 @@ class App {
             const linhas = [];
 
             cidades.forEach(cidade => {
-                linhas.push(cidade);
+                const ordemCidade = registrosDia.find(r => r.rot_cidade === cidade)?.rot_ordem_cidade;
+                const prefixoCidade = ordemCidade || ordemCidade === 0 ? `${ordemCidade || 0} - ` : '- ';
+                linhas.push({ texto: `${prefixoCidade}${cidade}`, isCidade: true });
                 registrosDia
                     .filter(r => r.rot_cidade === cidade)
                     .forEach(item => {
                         const cliente = item.cliente_dados || {};
                         const nomeFantasia = cliente.fantasia || cliente.nome || '-';
-                        linhas.push(`  ${item.rot_cliente_codigo} - ${nomeFantasia}`);
+                        const ordemVisita = item.rot_ordem_visita || item.rot_ordem_visita === 0
+                            ? `${item.rot_ordem_visita || 0} - `
+                            : '- ';
+                        linhas.push({ texto: `  ${ordemVisita}${item.rot_cliente_codigo} - ${nomeFantasia}` });
                     });
-                linhas.push('');
+                linhas.push({ texto: '' });
             });
 
-            return linhas.join('\n').trim();
+            return linhas;
         });
 
-        const maxLinhas = Math.max(...conteudos.map(texto => (texto ? texto.split('\n').length : 0)), 1);
+        const maxLinhas = Math.max(...conteudos.map(lista => (Array.isArray(lista) ? lista.length : 0)), 1);
         const linhasTabela = [];
         for (let i = 0; i < maxLinhas; i++) {
-            linhasTabela.push(conteudos.map(texto => texto.split('\n')[i] || ''));
+            linhasTabela.push(conteudos.map(lista => {
+                const celula = Array.isArray(lista) ? lista[i] : null;
+                if (!celula) return { content: '' };
+
+                return {
+                    content: celula.texto || '',
+                    styles: celula.isCidade ? { fontStyle: 'bold' } : {}
+                };
+            }));
         }
 
         if (doc.autoTable) {
@@ -3124,7 +3250,13 @@ class App {
                 body: linhasTabela,
                 startY: 48,
                 styles: { fontSize: 8, cellPadding: 2 },
-                columnStyles: { 0: { cellWidth: 45 } }
+                columnStyles: { 0: { cellWidth: 45 }, 1: { cellWidth: 45 }, 2: { cellWidth: 45 }, 3: { cellWidth: 45 }, 4: { cellWidth: 45 }, 5: { cellWidth: 45 } },
+                margin: { top: 48, bottom: 20 },
+                didDrawPage: () => {
+                    const posY = doc.internal.pageSize.getHeight() - 10;
+                    doc.setFontSize(9);
+                    doc.text(`Gerado em: ${dataGeracao}`, 14, posY);
+                }
             });
         }
 
