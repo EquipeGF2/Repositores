@@ -145,10 +145,8 @@ export const pages = {
                             <div class="repositor-grid">
                                 <section class="form-card card-span-2">
                                     <div class="form-card-header">
-                                    <div>
-                                            <p class="form-card-eyebrow">Dados principais</p>
-                                            <h4>Repositor</h4>
-                                        </div>
+                                        <p class="form-card-eyebrow">Dados principais</p>
+                                        <h4 class="form-card-title-inline">Repositor</h4>
                                     </div>
                                     <div class="form-card-body">
                                         <div class="dados-repositor-grid">
@@ -242,7 +240,7 @@ export const pages = {
 
                                 <section class="form-card alinhamento-card">
                                     <div class="form-card-header">
-                                        <p class="form-card-eyebrow">Alinhamento Comercial</p>
+                                        <p class="form-card-eyebrow">Contato Comercial</p>
                                         <h4>Representante e Supervisor</h4>
                                     </div>
                                     <div class="form-card-body alinhamento-grid">
@@ -263,11 +261,13 @@ export const pages = {
                                         </div>
                                     </div>
                                 </section>
-                            </div>
 
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" onclick="window.app.closeModalRepositor()">Cancelar</button>
-                                <button type="submit" class="btn btn-primary" id="btnSubmitRepositor">Cadastrar</button>
+                                <div class="form-actions-inline">
+                                    <div class="modal-footer modal-footer-inline">
+                                        <button type="button" class="btn btn-secondary" onclick="window.app.closeModalRepositor()">Cancelar</button>
+                                        <button type="submit" class="btn btn-primary" id="btnSubmitRepositor">Cadastrar</button>
+                                    </div>
+                                </div>
                             </div>
                         </form>
                     </div>

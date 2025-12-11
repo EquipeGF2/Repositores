@@ -1527,7 +1527,7 @@ class App {
                 <tbody>
                     ${clientesOrdenados.map(cliente => {
                         const dados = cliente.cliente_dados || {};
-                        const enderecoCompleto = `${dados.endereco || ''} ${dados.num_endereco || ''}`.trim();
+                        const enderecoCompleto = [dados.endereco, dados.num_endereco].filter(Boolean).join(', ');
                         return `
                         <tr>
                             <td>
@@ -1822,7 +1822,7 @@ class App {
                 <tbody>
                     ${clientes.map(cliente => {
                         const jaIncluido = selecionadosSet.has(String(cliente.cliente));
-                        const enderecoCompleto = `${cliente.endereco || ''} ${cliente.num_endereco || ''}`.trim();
+                        const enderecoCompleto = [cliente.endereco, cliente.num_endereco].filter(Boolean).join(', ');
                         return `
                             <tr>
                                 <td>${cliente.cliente}</td>
