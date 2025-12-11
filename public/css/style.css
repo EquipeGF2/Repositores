@@ -1105,6 +1105,124 @@ tbody td {
     font-size: 0.8rem;
 }
 
+.info-banner {
+    display: flex;
+    gap: var(--spacing-sm);
+    background: var(--gray-100);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-sm);
+    margin-bottom: var(--spacing);
+    align-items: flex-start;
+}
+
+.info-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+}
+
+.info-title {
+    font-weight: 700;
+    color: var(--gray-800);
+    margin-bottom: 4px;
+}
+
+.info-description {
+    color: var(--gray-600);
+    font-size: 0.95rem;
+}
+
+.export-info {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    background: var(--gray-100);
+    padding: var(--spacing-sm);
+    border-radius: var(--radius);
+    border: 1px solid var(--gray-200);
+    margin-bottom: var(--spacing);
+}
+
+.export-info-icon {
+    font-size: 1.6rem;
+}
+
+.export-info-title {
+    margin: 0;
+    font-weight: 700;
+}
+
+.export-info-description {
+    margin: 2px 0 0;
+    color: var(--gray-600);
+}
+
+.export-options {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing);
+}
+
+.export-option {
+    display: flex;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius);
+    cursor: pointer;
+    align-items: flex-start;
+}
+
+.export-option input {
+    margin-top: 4px;
+}
+
+.export-option-title {
+    margin: 0;
+    font-weight: 700;
+}
+
+.export-option-description {
+    margin: 2px 0 0;
+    color: var(--gray-600);
+}
+
+.export-repositor-list {
+    margin-bottom: var(--spacing);
+}
+
+.export-repositor-title {
+    margin-bottom: 6px;
+    font-weight: 600;
+}
+
+.checkbox-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.5rem;
+}
+
+.checkbox-option {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    background: var(--gray-100);
+    padding: 0.5rem;
+    border-radius: var(--radius);
+    border: 1px solid var(--gray-200);
+}
+
+.export-select label {
+    font-weight: 600;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.export-select select {
+    width: 100%;
+}
+
 .modal-body-representante {
     background: var(--gray-100);
     padding: var(--spacing-lg);

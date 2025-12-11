@@ -927,16 +927,23 @@ export const pages = {
             <option value="${repo.repo_cod}">${repo.repo_cod} - ${repo.repo_nome}</option>
         `).join('');
 
-        const cidadesRoteiroOptions = cidadesRoteiro.map(cidade => `<option value="${cidade}"></option>`).join('');
+        const cidadesRoteiroOptions = cidadesRoteiro.map(cidade => `<option value="${cidade}">${cidade}</option>`).join('');
 
         const diasSemana = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SAB', 'DOM'];
 
-        return `
+            return `
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">Consulta de Alterações</h3>
                 </div>
                 <div class="card-body">
+                    <div class="info-banner">
+                        <span class="info-icon">ℹ️</span>
+                        <div>
+                            <p class="info-title">Os dados desta tela são exibidos somente após a aplicação dos filtros e clique em "Buscar".</p>
+                            <p class="info-description">Escolha os filtros desejados em qualquer aba e confirme a busca para carregar os resultados.</p>
+                        </div>
+                    </div>
                     <div class="tab-switcher">
                         <button class="tab-button active" data-target="aba-cadastro">Alterações de Cadastro</button>
                         <button class="tab-button" data-target="aba-roteiro">Alterações de Roteiro</button>
@@ -1057,7 +1064,7 @@ export const pages = {
             <option value="${repo.repo_cod}">${repo.repo_cod} - ${repo.repo_nome}</option>
         `).join('');
 
-        const cidadesRoteiroOptions = cidadesRoteiro.map(cidade => `<option value="${cidade}"></option>`).join('');
+        const cidadesRoteiroOptions = cidadesRoteiro.map(cidade => `<option value="${cidade}">${cidade}</option>`).join('');
 
         return `
             <div class="card">
@@ -1071,10 +1078,11 @@ export const pages = {
                     <div class="filter-bar filter-bar-wide">
                         <div class="filter-group">
                             <label for="filtro_repositor_consulta_roteiro">Repositor</label>
-                            <select id="filtro_repositor_consulta_roteiro" multiple>
+                            <select id="filtro_repositor_consulta_roteiro">
+                                <option value="">Selecione</option>
                                 ${repositorOptions}
                             </select>
-                            <small class="helper-compact">Selecione um ou mais repositores</small>
+                            <small class="helper-compact">Escolha apenas um repositor</small>
                         </div>
                         <div class="filter-group">
                             <label for="filtro_dia_consulta_roteiro">Dia da semana</label>
@@ -1091,8 +1099,10 @@ export const pages = {
                         </div>
                         <div class="filter-group">
                             <label for="filtro_cidade_consulta_roteiro">Cidade</label>
-                            <input type="text" id="filtro_cidade_consulta_roteiro" list="lista_cidades_consulta_roteiro" placeholder="Cidade" />
-                            <datalist id="lista_cidades_consulta_roteiro">${cidadesRoteiroOptions}</datalist>
+                            <select id="filtro_cidade_consulta_roteiro">
+                                <option value="">Todas</option>
+                                ${cidadesRoteiroOptions}
+                            </select>
                         </div>
                         <div class="filter-group">
                             <label for="filtro_data_inicio_consulta_roteiro">Data Início</label>
@@ -1124,6 +1134,59 @@ export const pages = {
                             <div class="empty-state-icon">🧭</div>
                             <p>Selecione um repositor para visualizar o roteiro consolidado.</p>
                             <small>Os dados serão organizados por dia da semana e cidade, prontos para exportação.</small>
+                        </div>
+                    </div>
+
+                    <div class="modal" id="modalExportacaoRoteiro">
+                        <div class="modal-content" style="max-width: 720px;">
+                            <div class="modal-header">
+                                <h3 id="tituloModalExportacao">Exportação de Roteiro</h3>
+                                <button class="modal-close" onclick="window.app.fecharModalExportacaoRoteiro()">&times;</button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="export-info">
+                                    <div class="export-info-icon">🧭</div>
+                                    <div>
+                                        <p class="export-info-title">Repositor selecionado</p>
+                                        <p id="exportacaoRepositorAtual" class="export-info-description">Nenhum repositor escolhido.</p>
+                                    </div>
+                                </div>
+
+                                <div class="export-options">
+                                    <label class="export-option">
+                                        <input type="radio" name="exportacao_repositor_escopo" value="atual" checked>
+                                        <div>
+                                            <p class="export-option-title">Gerar apenas para o repositor selecionado</p>
+                                            <p class="export-option-description">Usa exatamente o repositor escolhido no filtro.</p>
+                                        </div>
+                                    </label>
+
+                                    <label class="export-option">
+                                        <input type="radio" name="exportacao_repositor_escopo" value="outros">
+                                        <div>
+                                            <p class="export-option-title">Incluir outros repositores na exportação</p>
+                                            <p class="export-option-description">Selecione repositores adicionais somente para gerar arquivos.</p>
+                                        </div>
+                                    </label>
+                                </div>
+
+                                <div id="exportacaoRepositorLista" class="export-repositor-list" style="display: none;">
+                                    <p class="export-repositor-title">Escolha repositores extras:</p>
+                                    <div id="exportacaoRepositorCheckboxes" class="checkbox-grid"></div>
+                                </div>
+
+                                <div id="containerTipoRelatorioPDF" class="export-select">
+                                    <label for="selectTipoRelatorioPDF">Tipo de relatório (PDF)</label>
+                                    <select id="selectTipoRelatorioPDF">
+                                        <option value="detalhado">Modelo 1 – Detalhado</option>
+                                        <option value="semanal">Modelo 2 – Roteiro semanal</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button class="btn btn-secondary" onclick="window.app.fecharModalExportacaoRoteiro()">Cancelar</button>
+                                <button class="btn btn-success" id="btnConfirmarExportacaoRoteiro">Gerar arquivos</button>
+                            </div>
                         </div>
                     </div>
                 </div>

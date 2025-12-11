@@ -55,6 +55,9 @@ class App {
         this.rateioClientesManutencao = [];
         this.rateioClienteEmFoco = null;
         this.rateioBuscaTimeout = null;
+        this.repositoresCache = [];
+        this.exportacaoRoteiroContexto = null;
+        this.cidadesConsultaDisponiveis = [];
         this.recursosPorPagina = {
             'cadastro-repositor': 'mod_repositores',
             'validacao-dados': 'mod_repositores',
@@ -2451,7 +2454,7 @@ class App {
                 resultadosDiv.innerHTML = `
                     <div class="empty-state">
                         <div class="empty-state-icon">🔍</div>
-                        <p>Nenhuma alteração encontrada com os filtros selecionados</p>
+                        <p>Não há resultado a ser exibido.</p>
                     </div>
                 `;
             } else {
@@ -2529,7 +2532,7 @@ class App {
             container.innerHTML = `
                 <div class="empty-state">
                     <div class="empty-state-icon">🔍</div>
-                    <p>Nenhuma alteração de roteiro encontrada com os filtros selecionados</p>
+                    <p>Não há resultado a ser exibido.</p>
                 </div>
             `;
             return;
@@ -2636,28 +2639,31 @@ class App {
 
     coletarFiltrosConsultaRoteiro() {
         const selectRepositor = document.getElementById('filtro_repositor_consulta_roteiro');
-        const selecionados = selectRepositor?.selectedOptions
-            ? Array.from(selectRepositor.selectedOptions).map(opt => Number(opt.value)).filter(Boolean)
-            : [];
+        const repositorId = selectRepositor ? Number(selectRepositor.value) || null : null;
 
         const diaSemana = document.getElementById('filtro_dia_consulta_roteiro')?.value || '';
         const cidade = document.getElementById('filtro_cidade_consulta_roteiro')?.value || '';
+        const dataInicio = document.getElementById('filtro_data_inicio_consulta_roteiro')?.value || '';
+        const dataFim = document.getElementById('filtro_data_fim_consulta_roteiro')?.value || '';
 
         return {
-            repositorIds: selecionados,
+            repositorId,
+            repositorIds: repositorId ? [repositorId] : [],
             diaSemana: diaSemana || '',
-            cidade: cidade ? cidade.toUpperCase() : ''
+            cidade: cidade ? cidade.toUpperCase() : '',
+            dataInicio: dataInicio || null,
+            dataFim: dataFim || null
         };
     }
 
     atualizarEstadoBotoesConsultaRoteiro() {
         const btnExportarPDF = document.getElementById('btnExportarPDF');
         const btnExportarXLS = document.getElementById('btnExportarXLS');
-        const { repositorIds } = this.coletarFiltrosConsultaRoteiro();
+        const { repositorId } = this.coletarFiltrosConsultaRoteiro();
         const temResultados = Array.isArray(this.resultadosConsultaRoteiro) && this.resultadosConsultaRoteiro.length > 0;
 
-        const disabled = !repositorIds.length || !temResultados;
-        const title = repositorIds.length ? (temResultados ? '' : 'Realize uma busca antes de exportar') : 'Selecione ao menos um repositor';
+        const disabled = !repositorId || !temResultados;
+        const title = repositorId ? (temResultados ? '' : 'Realize uma busca antes de exportar') : 'Selecione um repositor';
 
         if (btnExportarPDF) {
             btnExportarPDF.disabled = disabled;
@@ -2673,31 +2679,45 @@ class App {
         const btnBuscar = document.getElementById('btnBuscarConsultaRoteiro');
         const btnExportarPDF = document.getElementById('btnExportarPDF');
         const btnExportarXLS = document.getElementById('btnExportarXLS');
+        const btnConfirmarExportacao = document.getElementById('btnConfirmarExportacaoRoteiro');
 
         if (btnBuscar) btnBuscar.onclick = () => this.buscarConsultaRoteiro();
-        if (btnExportarPDF) btnExportarPDF.onclick = () => this.exportarConsultaRoteiroPDF();
-        if (btnExportarXLS) btnExportarXLS.onclick = () => this.exportarConsultaRoteiroXLS();
+        if (btnExportarPDF) btnExportarPDF.onclick = () => this.abrirModalExportacaoRoteiro('pdf');
+        if (btnExportarXLS) btnExportarXLS.onclick = () => this.abrirModalExportacaoRoteiro('xls');
+        if (btnConfirmarExportacao) btnConfirmarExportacao.onclick = () => this.confirmarExportacaoRoteiro();
 
-        ['filtro_repositor_consulta_roteiro', 'filtro_dia_consulta_roteiro', 'filtro_cidade_consulta_roteiro'].forEach(id => {
+        ['filtro_repositor_consulta_roteiro', 'filtro_dia_consulta_roteiro', 'filtro_data_inicio_consulta_roteiro', 'filtro_data_fim_consulta_roteiro', 'filtro_cidade_consulta_roteiro'].forEach(id => {
             const elemento = document.getElementById(id);
             if (!elemento) return;
 
-            elemento.addEventListener('change', () => this.atualizarEstadoBotoesConsultaRoteiro());
+            elemento.addEventListener('change', () => {
+                this.atualizarEstadoBotoesConsultaRoteiro();
+                if (['filtro_repositor_consulta_roteiro', 'filtro_dia_consulta_roteiro', 'filtro_data_inicio_consulta_roteiro', 'filtro_data_fim_consulta_roteiro'].includes(id)) {
+                    this.atualizarCidadesConsultaRoteiro();
+                }
+            });
+
             if (elemento.tagName === 'INPUT') {
                 elemento.addEventListener('input', () => this.atualizarEstadoBotoesConsultaRoteiro());
             }
         });
 
+        document.querySelectorAll('input[name="exportacao_repositor_escopo"]').forEach(radio => {
+            radio.addEventListener('change', () => this.atualizarExibicaoListaExportacao());
+        });
+
         this.resultadosConsultaRoteiro = [];
         this.atualizarEstadoBotoesConsultaRoteiro();
+        await this.carregarRepositoresCache();
+        await this.atualizarCidadesConsultaRoteiro();
     }
 
     async buscarConsultaRoteiro() {
         const filtros = this.coletarFiltrosConsultaRoteiro();
         this.atualizarEstadoBotoesConsultaRoteiro();
 
-        if (!filtros.repositorIds || filtros.repositorIds.length === 0) {
-            this.showNotification('Selecione pelo menos um repositor para realizar a consulta.', 'warning');
+        if (!filtros.repositorId) {
+            this.showNotification('Selecione um repositor para realizar a consulta.', 'warning');
             this.renderConsultaRoteiro([]);
             this.resultadosConsultaRoteiro = [];
             this.atualizarEstadoBotoesConsultaRoteiro();
@@ -2709,8 +2729,53 @@ class App {
             this.resultadosConsultaRoteiro = registros;
             this.renderConsultaRoteiro(registros);
             this.atualizarEstadoBotoesConsultaRoteiro();
+            await this.atualizarCidadesConsultaRoteiro();
         } catch (error) {
             this.showNotification('Erro ao consultar roteiro: ' + error.message, 'error');
+        }
+    }
+
+    async carregarRepositoresCache() {
+        if (this.repositoresCache && this.repositoresCache.length) return this.repositoresCache;
+
+        try {
+            this.repositoresCache = await db.getAllRepositors();
+        } catch (error) {
+            console.error('Erro ao carregar repositores para exportação:', error);
+            this.repositoresCache = [];
+        }
+
+        return this.repositoresCache;
+    }
+
+    async atualizarCidadesConsultaRoteiro() {
+        const selectCidade = document.getElementById('filtro_cidade_consulta_roteiro');
+        if (!selectCidade) return;
+
+        const { repositorId, diaSemana, dataInicio, dataFim, cidade } = this.coletarFiltrosConsultaRoteiro();
+
+        if (!repositorId) {
+            selectCidade.innerHTML = '<option value="">Selecione um repositor primeiro</option>';
+            selectCidade.value = '';
+            return;
+        }
+
+        selectCidade.innerHTML = '<option value="">Carregando...</option>';
+        try {
+            const cidades = await db.getCidadesConsultaRoteiro({ repositorId, diaSemana, dataInicio, dataFim });
+            this.cidadesConsultaDisponiveis = cidades;
+
+            const opcoes = cidades.map(c => `<option value="${c}">${c}</option>`).join('');
+            selectCidade.innerHTML = `<option value="">Todas</option>${opcoes}`;
+
+            if (cidade && cidades.includes(cidade)) {
+                selectCidade.value = cidade;
+            } else {
+                selectCidade.value = '';
+            }
+        } catch (error) {
+            console.error('Erro ao atualizar cidades disponíveis:', error);
+            selectCidade.innerHTML = '<option value="">Erro ao carregar cidades</option>';
         }
     }
 
@@ -2750,7 +2815,7 @@ class App {
                     <tbody>
                         ${registros.map(item => {
                             const cliente = item.cliente_dados || {};
-                            const endereco = `${cliente.endereco || ''} ${cliente.num_endereco || ''}`.trim();
+                            const endereco = this.montarEnderecoCliente(cliente);
                             return `
                                 <tr>
                                     <td>${item.repo_cod} - ${item.repo_nome}</td>
@@ -2761,7 +2826,7 @@ class App {
                                     <td>${cliente.nome || '-'}</td>
                                     <td>${item.rot_ordem_visita || '-'}</td>
                                     <td>${cliente.fantasia || '-'}</td>
-                                    <td>${endereco || '-'}</td>
+                                    <td>${endereco}</td>
                                     <td>${cliente.bairro || '-'}</td>
                                     <td>${formatarGrupo(cliente.grupo_desc)}</td>
                                 </tr>
@@ -2773,153 +2838,303 @@ class App {
         `;
     }
 
-    // ==================== EXPORTAÇÃO PDF ====================
+    // ==================== EXPORTAÇÃO PDF E EXCEL ====================
 
-    agruparResultadosConsultaPorRepositor() {
-        const mapa = {};
-        (this.resultadosConsultaRoteiro || []).forEach(item => {
-            const repoId = item.rot_repositor_id;
-            if (!mapa[repoId]) {
-                mapa[repoId] = {
-                    repoCod: item.repo_cod,
-                    repoNome: item.repo_nome,
-                    registros: []
-                };
-            }
-            mapa[repoId].registros.push(item);
+    montarEnderecoCliente(cliente = {}) {
+        const enderecoBase = (cliente.endereco || '').trim();
+        const numero = (cliente.num_endereco || '').toString().trim();
+        const numeroPresente = numero && enderecoBase.includes(numero);
+        const sufixoNumero = numero && !numeroPresente ? `, ${numero}` : '';
+        const enderecoCompleto = `${enderecoBase}${sufixoNumero}`.trim();
+        return enderecoCompleto || '-';
+    }
+
+    ordenarRegistrosRoteiro(registros = []) {
+        const ordemDias = { seg: 1, segunda: 1, ter: 2, terca: 2, qua: 3, quarta: 3, qui: 4, quinta: 4, sex: 5, sexta: 5, sab: 6, sabado: 6, dom: 7, domingo: 7 };
+        return [...registros].sort((a, b) => {
+            const diaA = ordemDias[(a.rot_dia_semana || '').toLowerCase()] || 99;
+            const diaB = ordemDias[(b.rot_dia_semana || '').toLowerCase()] || 99;
+            if (diaA !== diaB) return diaA - diaB;
+
+            const ordemCidadeA = a.rot_ordem_cidade || 999;
+            const ordemCidadeB = b.rot_ordem_cidade || 999;
+            if (ordemCidadeA !== ordemCidadeB) return ordemCidadeA - ordemCidadeB;
+
+            const ordemVisitaA = a.rot_ordem_visita || 999;
+            const ordemVisitaB = b.rot_ordem_visita || 999;
+            return ordemVisitaA - ordemVisitaB;
         });
-        return mapa;
     }
 
     exportarConsultaRoteiroPDF() {
-        const { repositorIds } = this.coletarFiltrosConsultaRoteiro();
-        if (!repositorIds || repositorIds.length === 0) {
-            this.showNotification('Selecione ao menos um repositor para exportar.', 'warning');
+        this.abrirModalExportacaoRoteiro('pdf');
+    }
+
+    exportarConsultaRoteiroXLS() {
+        this.abrirModalExportacaoRoteiro('xls');
+    }
+
+    async abrirModalExportacaoRoteiro(tipo) {
+        const filtros = this.coletarFiltrosConsultaRoteiro();
+        if (!filtros.repositorId) {
+            this.showNotification('Selecione um repositor para exportar.', 'warning');
             return;
         }
 
         if (!this.resultadosConsultaRoteiro || this.resultadosConsultaRoteiro.length === 0) {
-            this.showNotification('Nenhum dado para exportar. Realize uma busca primeiro.', 'warning');
+            this.showNotification('Nenhum dado para exportar. Realize uma busca antes.', 'warning');
             return;
         }
 
-        const grupos = this.agruparResultadosConsultaPorRepositor();
+        await this.carregarRepositoresCache();
+
+        this.exportacaoRoteiroContexto = { tipo };
+        const modal = document.getElementById('modalExportacaoRoteiro');
+        const titulo = document.getElementById('tituloModalExportacao');
+        const repositorLabel = document.getElementById('exportacaoRepositorAtual');
+        const selectTipoPDF = document.getElementById('selectTipoRelatorioPDF');
+        const containerTipoPDF = document.getElementById('containerTipoRelatorioPDF');
+
+        const repositorInfo = this.repositoresCache.find(r => Number(r.repo_cod) === Number(filtros.repositorId));
+        const nomeRepositor = repositorInfo ? `${repositorInfo.repo_cod} - ${repositorInfo.repo_nome}` : filtros.repositorId;
+
+        if (titulo) titulo.textContent = tipo === 'pdf' ? 'Exportar PDF do roteiro' : 'Exportar Excel do roteiro';
+        if (repositorLabel) repositorLabel.textContent = nomeRepositor;
+        if (selectTipoPDF) selectTipoPDF.value = 'detalhado';
+        if (containerTipoPDF) containerTipoPDF.style.display = tipo === 'pdf' ? 'block' : 'none';
+
+        this.preencherListaRepositoresExportacao(filtros.repositorId);
+        document.querySelectorAll('input[name="exportacao_repositor_escopo"]').forEach(radio => {
+            radio.checked = radio.value === 'atual';
+        });
+        this.atualizarExibicaoListaExportacao();
+
+        if (modal) {
+            modal.classList.add('active');
+        }
+    }
+
+    fecharModalExportacaoRoteiro() {
+        const modal = document.getElementById('modalExportacaoRoteiro');
+        if (modal) modal.classList.remove('active');
+        this.exportacaoRoteiroContexto = null;
+    }
+
+    atualizarExibicaoListaExportacao() {
+        const lista = document.getElementById('exportacaoRepositorLista');
+        const selecionado = document.querySelector('input[name="exportacao_repositor_escopo"]:checked');
+        if (lista) {
+            lista.style.display = selecionado?.value === 'outros' ? 'block' : 'none';
+        }
+    }
+
+    preencherListaRepositoresExportacao(repositorIdAtual) {
+        const container = document.getElementById('exportacaoRepositorCheckboxes');
+        if (!container) return;
+
+        const outros = (this.repositoresCache || []).filter(repo => Number(repo.repo_cod) !== Number(repositorIdAtual));
+        if (!outros.length) {
+            container.innerHTML = '<p class="text-muted" style="margin: 0;">Nenhum outro repositor disponível.</p>';
+            return;
+        }
+
+        container.innerHTML = outros.map(repo => `
+            <label class="checkbox-option">
+                <input type="checkbox" value="${repo.repo_cod}">
+                <span>${repo.repo_cod} - ${repo.repo_nome}</span>
+            </label>
+        `).join('');
+    }
+
+    async confirmarExportacaoRoteiro() {
+        const contexto = this.exportacaoRoteiroContexto || {};
+        const filtros = this.coletarFiltrosConsultaRoteiro();
+
+        if (!filtros.repositorId) {
+            this.showNotification('Selecione um repositor antes de exportar.', 'warning');
+            return;
+        }
+
+        if (!this.resultadosConsultaRoteiro || this.resultadosConsultaRoteiro.length === 0) {
+            this.showNotification('Realize uma busca para gerar os arquivos.', 'warning');
+            return;
+        }
+
+        const escopo = document.querySelector('input[name="exportacao_repositor_escopo"]:checked')?.value || 'atual';
+        const formatoPDF = document.getElementById('selectTipoRelatorioPDF')?.value || 'detalhado';
+        const adicionais = escopo === 'outros'
+            ? Array.from(document.querySelectorAll('#exportacaoRepositorCheckboxes input:checked')).map(el => Number(el.value))
+            : [];
+
+        const repositorIds = [filtros.repositorId, ...adicionais].filter(Boolean);
+        const idsUnicos = [...new Set(repositorIds)];
+
+        if (!idsUnicos.length) {
+            this.showNotification('Selecione ao menos um repositor para exportar.', 'warning');
+            return;
+        }
+
+        await this.exportarArquivosRoteiro({ tipo: contexto.tipo || 'pdf', repositorIds: idsUnicos, filtros, formatoPDF });
+        this.fecharModalExportacaoRoteiro();
+    }
+
+    async exportarArquivosRoteiro({ tipo = 'pdf', repositorIds = [], filtros = {}, formatoPDF = 'detalhado' } = {}) {
         const dataNome = new Date().toISOString().split('T')[0].replace(/-/g, '');
         const dataAtual = new Date().toLocaleDateString('pt-BR');
 
-        repositorIds.forEach(repoId => {
-            const grupo = grupos[repoId];
-            if (!grupo || !grupo.registros.length) return;
+        await this.carregarRepositoresCache();
 
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF('landscape');
-            const nomeRepositor = `${grupo.repoCod} - ${grupo.repoNome}`;
+        for (const repoId of repositorIds) {
+            const registros = repoId === filtros.repositorId
+                ? this.ordenarRegistrosRoteiro((this.resultadosConsultaRoteiro || []).filter(r => Number(r.rot_repositor_id) === Number(repoId)))
+                : this.ordenarRegistrosRoteiro(await db.consultarRoteiro({ ...filtros, repositorIds: [repoId], repositorId: repoId }));
 
-            doc.setFontSize(16);
-            doc.setFont(undefined, 'bold');
-            doc.text('Roteiro de Visitas', 14, 20);
-            doc.setFontSize(10);
-            doc.setFont(undefined, 'normal');
-            doc.text(`Atualizado em ${dataAtual}`, 14, 27);
-            doc.text(`Repositor: ${nomeRepositor}`, 14, 33);
-
-            const cabecalho = ['Dia', 'Cidade', 'Ordem Cidade', 'Código', 'Nome', 'Ordem Visita', 'Fantasia', 'Endereço', 'Bairro', 'Grupo', 'Documento'];
-            const linhas = grupo.registros.map(item => {
-                const cliente = item.cliente_dados || {};
-                const endereco = `${cliente.endereco || ''} ${cliente.num_endereco || ''}`.trim();
-                return [
-                    this.formatarDiaSemanaLabel(item.rot_dia_semana),
-                    item.rot_cidade,
-                    item.rot_ordem_cidade || '-',
-                    item.rot_cliente_codigo,
-                    cliente.nome || '-',
-                    item.rot_ordem_visita || '-',
-                    cliente.fantasia || '-',
-                    endereco || '-',
-                    cliente.bairro || '-',
-                    formatarGrupo(cliente.grupo_desc),
-                    formatarDocumento(cliente.cnpj_cpf)
-                ];
-            });
-
-            if (doc.autoTable) {
-                doc.autoTable({
-                    head: [cabecalho],
-                    body: linhas,
-                    startY: 40,
-                    styles: { fontSize: 8 }
-                });
-            } else {
-                let y = 40;
-                doc.setFontSize(9);
-                doc.setFont(undefined, 'bold');
-                doc.text(cabecalho.join(' | '), 14, y);
-                y += 6;
-                doc.setFont(undefined, 'normal');
-                linhas.forEach(linha => {
-                    doc.text(linha.join(' | '), 14, y);
-                    y += 6;
-                    if (y > 200) {
-                        doc.addPage();
-                        y = 20;
-                    }
-                });
+            if (!registros || registros.length === 0) {
+                continue;
             }
 
-            doc.save(`relatorio_roteiro_${grupo.repoCod}_${dataNome}.pdf`);
-        });
+            const repositorInfo = (this.repositoresCache || []).find(r => Number(r.repo_cod) === Number(repoId)) || { repo_cod: repoId, repo_nome: 'Repositor' };
 
-        this.showNotification('Exportação em PDF iniciada.', 'success');
+            if (tipo === 'xls') {
+                this.gerarExcelRoteiroDetalhado(registros, repositorInfo, dataNome);
+            } else if (formatoPDF === 'semanal') {
+                this.gerarPDFRoteiroSemanal(registros, repositorInfo, dataAtual, dataNome);
+            } else {
+                this.gerarPDFRoteiroDetalhado(registros, repositorInfo, dataAtual, dataNome);
+            }
+        }
+
+        this.showNotification('Exportação concluída com base nos filtros aplicados.', 'success');
     }
 
-    // ==================== EXPORTAÇÃO EXCEL ====================
+    gerarPDFRoteiroDetalhado(registros, repositorInfo, dataAtual, dataNome) {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('landscape');
+        const nomeRepositor = `${repositorInfo.repo_cod} - ${repositorInfo.repo_nome}`;
 
-    exportarConsultaRoteiroXLS() {
-        const { repositorIds } = this.coletarFiltrosConsultaRoteiro();
-        if (!repositorIds || repositorIds.length === 0) {
-            this.showNotification('Selecione ao menos um repositor para exportar.', 'warning');
-            return;
-        }
+        doc.setFontSize(16);
+        doc.setFont(undefined, 'bold');
+        doc.text('Roteiro de Visitas', 14, 20);
+        doc.setFontSize(10);
+        doc.setFont(undefined, 'normal');
+        doc.text(`Atualizado em ${dataAtual}`, 14, 27);
+        doc.text(`Repositor: ${nomeRepositor}`, 14, 33);
 
-        if (!this.resultadosConsultaRoteiro || this.resultadosConsultaRoteiro.length === 0) {
-            this.showNotification('Nenhum dado para exportar. Realize uma busca primeiro.', 'warning');
-            return;
-        }
-
-        const grupos = this.agruparResultadosConsultaPorRepositor();
-        const dataNome = new Date().toISOString().split('T')[0].replace(/-/g, '');
-
-        repositorIds.forEach(repoId => {
-            const grupo = grupos[repoId];
-            if (!grupo || !grupo.registros.length) return;
-
-            const cabecalho = ['Dia', 'Cidade', 'Ordem Cidade', 'Código', 'Nome', 'Ordem Visita', 'Fantasia', 'Endereço', 'Bairro', 'Grupo', 'Documento'];
-            const linhas = grupo.registros.map(item => {
-                const cliente = item.cliente_dados || {};
-                const endereco = `${cliente.endereco || ''} ${cliente.num_endereco || ''}`.trim();
-                return [
-                    this.formatarDiaSemanaLabel(item.rot_dia_semana),
-                    item.rot_cidade,
-                    item.rot_ordem_cidade || '-',
-                    item.rot_cliente_codigo,
-                    cliente.nome || '-',
-                    item.rot_ordem_visita || '-',
-                    cliente.fantasia || '-',
-                    endereco || '-',
-                    cliente.bairro || '-',
-                    formatarGrupo(cliente.grupo_desc),
-                    formatarDocumento(cliente.cnpj_cpf)
-                ];
-            });
-
-            const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas]);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Roteiro');
-            const nomeArquivo = `relatorio_roteiro_${grupo.repoCod}_${dataNome}.xlsx`;
-            XLSX.writeFile(wb, nomeArquivo);
+        const cabecalho = ['Dia', 'Cidade', 'Ordem Cidade', 'Código', 'Nome', 'Ordem Visita', 'Fantasia', 'Endereço', 'Bairro', 'Grupo', 'Documento'];
+        const linhas = registros.map(item => {
+            const cliente = item.cliente_dados || {};
+            return [
+                this.formatarDiaSemanaLabel(item.rot_dia_semana),
+                item.rot_cidade,
+                item.rot_ordem_cidade || '-',
+                item.rot_cliente_codigo,
+                cliente.nome || '-',
+                item.rot_ordem_visita || '-',
+                cliente.fantasia || '-',
+                this.montarEnderecoCliente(cliente),
+                cliente.bairro || '-',
+                formatarGrupo(cliente.grupo_desc),
+                formatarDocumento(cliente.cnpj_cpf)
+            ];
         });
 
-        this.showNotification('Exportação em Excel iniciada.', 'success');
+        if (doc.autoTable) {
+            doc.autoTable({
+                head: [cabecalho],
+                body: linhas,
+                startY: 40,
+                styles: { fontSize: 8 }
+            });
+        }
+
+        doc.save(`roteiro_${repositorInfo.repo_cod}_${dataNome}.pdf`);
+    }
+
+    gerarPDFRoteiroSemanal(registros, repositorInfo, dataAtual, dataNome) {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('landscape');
+        const nomeRepositor = `${repositorInfo.repo_cod} - ${repositorInfo.repo_nome}`;
+        const telefone = repositorInfo.rep_telefone || repositorInfo.rep_contato_telefone || '-';
+        const email = repositorInfo.rep_email || '-';
+        const turno = repositorInfo.rep_jornada_tipo || repositorInfo.jornada || '-';
+
+        doc.setFontSize(16);
+        doc.setFont(undefined, 'bold');
+        doc.text('ROTEIRO DE VISITAS', 14, 18);
+        doc.setFontSize(10);
+        doc.setFont(undefined, 'normal');
+        doc.text(`Repositor: ${nomeRepositor}`, 14, 26);
+        doc.text(`Telefone: ${telefone}`, 14, 32);
+        doc.text(`E-mail: ${email}`, 14, 38);
+        doc.text(`Atualizado em: ${dataAtual}`, 110, 26);
+        doc.text(`Turno: ${turno}`, 110, 32);
+
+        const dias = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
+        const cabecalho = dias.map(d => this.formatarDiaSemanaLabel(d).toUpperCase());
+        const conteudos = dias.map(dia => {
+            const registrosDia = registros.filter(r => (r.rot_dia_semana || '').toLowerCase() === dia);
+            if (!registrosDia.length) return '';
+
+            const cidades = [...new Set(registrosDia.map(r => r.rot_cidade))];
+            const linhas = [];
+
+            cidades.forEach(cidade => {
+                linhas.push(cidade);
+                registrosDia
+                    .filter(r => r.rot_cidade === cidade)
+                    .forEach(item => {
+                        const cliente = item.cliente_dados || {};
+                        const nomeFantasia = cliente.fantasia || cliente.nome || '-';
+                        linhas.push(`  ${item.rot_cliente_codigo} - ${nomeFantasia}`);
+                    });
+                linhas.push('');
+            });
+
+            return linhas.join('\n').trim();
+        });
+
+        const maxLinhas = Math.max(...conteudos.map(texto => (texto ? texto.split('\n').length : 0)), 1);
+        const linhasTabela = [];
+        for (let i = 0; i < maxLinhas; i++) {
+            linhasTabela.push(conteudos.map(texto => texto.split('\n')[i] || ''));
+        }
+
+        if (doc.autoTable) {
+            doc.autoTable({
+                head: [cabecalho],
+                body: linhasTabela,
+                startY: 48,
+                styles: { fontSize: 8, cellPadding: 2 },
+                columnStyles: { 0: { cellWidth: 45 } }
+            });
+        }
+
+        doc.save(`roteiro_${repositorInfo.repo_cod}_${dataNome}.pdf`);
+    }
+
+    gerarExcelRoteiroDetalhado(registros, repositorInfo, dataNome) {
+        const cabecalho = ['Dia', 'Cidade', 'Ordem Cidade', 'Código', 'Nome', 'Ordem Visita', 'Fantasia', 'Endereço', 'Bairro', 'Grupo', 'Documento'];
+        const linhas = registros.map(item => {
+            const cliente = item.cliente_dados || {};
+            return [
+                this.formatarDiaSemanaLabel(item.rot_dia_semana),
+                item.rot_cidade,
+                item.rot_ordem_cidade || '-',
+                item.rot_cliente_codigo,
+                cliente.nome || '-',
+                item.rot_ordem_visita || '-',
+                cliente.fantasia || '-',
+                this.montarEnderecoCliente(cliente),
+                cliente.bairro || '-',
+                formatarGrupo(cliente.grupo_desc),
+                formatarDocumento(cliente.cnpj_cpf)
+            ];
+        });
+
+        const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas]);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Roteiro');
+        XLSX.writeFile(wb, `roteiro_${repositorInfo.repo_cod}_${dataNome}.xlsx`);
     }
 
     // ==================== SELEÇÃO MÚLTIPLA DE CIDADES ====================

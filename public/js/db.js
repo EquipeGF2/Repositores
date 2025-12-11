@@ -1037,6 +1037,45 @@ class TursoDatabase {
         }
     }
 
+    async getCidadesConsultaRoteiro({ repositorId = null, diaSemana = '', dataInicio = null, dataFim = null } = {}) {
+        try {
+            const args = [];
+            let sql = `
+                SELECT DISTINCT rot_cidade
+                FROM rot_roteiro_cidade
+                WHERE rot_cidade IS NOT NULL AND rot_cidade <> ''
+            `;
+
+            if (repositorId) {
+                sql += ' AND rot_repositor_id = ?';
+                args.push(repositorId);
+            }
+
+            if (diaSemana) {
+                sql += ' AND rot_dia_semana = ?';
+                args.push(diaSemana);
+            }
+
+            if (dataInicio) {
+                sql += ' AND date(rot_atualizado_em) >= date(?)';
+                args.push(dataInicio);
+            }
+
+            if (dataFim) {
+                sql += ' AND date(rot_atualizado_em) <= date(?)';
+                args.push(dataFim);
+            }
+
+            sql += ' ORDER BY rot_cidade';
+
+            const resultado = await this.mainClient.execute({ sql, args });
+            return resultado.rows.map(row => (row.rot_cidade || '').toUpperCase());
+        } catch (error) {
+            console.error('Erro ao buscar cidades disponíveis na consulta de roteiro:', error);
+            return [];
+        }
+    }
+
     async getClientesPorCidade(cidade, busca = '') {
         await this.connectComercial();
         if (!this.comercialClient || !cidade) return [];
@@ -1430,7 +1469,7 @@ class TursoDatabase {
         }));
     }
 
-    async consultarRoteiro({ repositorIds = [], diaSemana = '', cidade = '' } = {}) {
+    async consultarRoteiro({ repositorIds = [], diaSemana = '', cidade = '', dataInicio = null, dataFim = null } = {}) {
         const args = [];
         let sql = `
             SELECT
@@ -1464,6 +1503,16 @@ class TursoDatabase {
             const cidadeNormalizada = cidade.toUpperCase();
             sql += ' AND rc.rot_cidade = ?';
             args.push(cidadeNormalizada);
+        }
+
+        if (dataInicio) {
+            sql += ' AND date(rc.rot_atualizado_em) >= date(?)';
+            args.push(dataInicio);
+        }
+
+        if (dataFim) {
+            sql += ' AND date(rc.rot_atualizado_em) <= date(?)';
+            args.push(dataFim);
         }
 
         sql += `
