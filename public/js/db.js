@@ -1179,14 +1179,18 @@ class TursoDatabase {
         }
     }
 
-    async adicionarCidadeRoteiro(repositorId, diaSemana, cidade, usuario = '') {
+    async adicionarCidadeRoteiro(repositorId, diaSemana, cidade, usuario = '', ordemCidade = null) {
         try {
+            const ordemValida = ordemCidade ? Math.max(1, Math.floor(Number(ordemCidade))) : null;
+            if (!ordemValida) {
+                throw new Error('Informe uma ordem válida para a cidade.');
+            }
             const result = await this.mainClient.execute({
                 sql: `
-                    INSERT INTO rot_roteiro_cidade (rot_repositor_id, rot_dia_semana, rot_cidade)
-                    VALUES (?, ?, ?)
+                    INSERT INTO rot_roteiro_cidade (rot_repositor_id, rot_dia_semana, rot_cidade, rot_ordem_cidade)
+                    VALUES (?, ?, ?, ?)
                 `,
-                args: [repositorId, diaSemana, cidade]
+                args: [repositorId, diaSemana, cidade, ordemValida]
             });
 
             await this.registrarAuditoriaRoteiro({
@@ -1350,10 +1354,21 @@ class TursoDatabase {
         try {
             const result = await this.mainClient.execute({
                 sql: `
-                    SELECT *
-                    FROM rot_roteiro_cliente
-                    WHERE rot_cid_id = ?
-                    ORDER BY COALESCE(rot_ordem_visita, rot_cli_id)
+                    SELECT 
+                        cli.*,
+                        cid.rot_repositor_id,
+                        CASE 
+                            WHEN EXISTS (
+                                SELECT 1
+                                FROM rat_cliente_repositor rat
+                                WHERE rat.rat_cliente_codigo = cli.rot_cliente_codigo
+                                  AND rat.rat_repositor_id = cid.rot_repositor_id
+                            ) THEN 1 ELSE 0
+                        END AS rot_possui_rateio
+                    FROM rot_roteiro_cliente cli
+                    JOIN rot_roteiro_cidade cid ON cid.rot_cid_id = cli.rot_cid_id
+                    WHERE cli.rot_cid_id = ?
+                    ORDER BY COALESCE(cli.rot_ordem_visita, cli.rot_cli_id)
                 `,
                 args: [rotCidId]
             });
@@ -1474,7 +1489,7 @@ class TursoDatabase {
         }
     }
 
-    async adicionarClienteRoteiro(rotCidId, clienteCodigo, usuario = '', { ordemVisita = null, possuiRateio = false } = {}) {
+    async adicionarClienteRoteiro(rotCidId, clienteCodigo, usuario = '', { ordemVisita = null } = {}) {
         try {
             const cidade = await this.getRoteiroCidadePorId(rotCidId);
 
@@ -1500,6 +1515,10 @@ class TursoDatabase {
                 }
             }
 
+            const rateioAtivo = cidade
+                ? await this.possuiRateioClienteRepositor(clienteCodigo, cidade.rot_repositor_id)
+                : false;
+
             await this.mainClient.execute({
                 sql: `
                     INSERT INTO rot_roteiro_cliente (rot_cid_id, rot_cliente_codigo, rot_ordem_visita, rot_possui_rateio)
@@ -1510,7 +1529,7 @@ class TursoDatabase {
                         rot_possui_rateio = excluded.rot_possui_rateio,
                         rot_atualizado_em = CURRENT_TIMESTAMP
                 `,
-                args: [rotCidId, clienteCodigo, ordemInteira, possuiRateio ? 1 : 0]
+                args: [rotCidId, clienteCodigo, ordemInteira, rateioAtivo ? 1 : 0]
             });
 
             if (cidade) {
@@ -1521,12 +1540,8 @@ class TursoDatabase {
                     cidade: cidade.rot_cidade,
                     clienteCodigo,
                     acao: 'INCLUIR_CLIENTE',
-                    detalhes: `Cliente incluído na rota com ordem ${ordemInteira}${possuiRateio ? ' e flag de rateio' : ''}`
+                    detalhes: `Cliente incluído na rota com ordem ${ordemInteira}${rateioAtivo ? ' e flag de rateio' : ''}`
                 });
-
-                if (possuiRateio) {
-                    await this.garantirRateioClienteRepositor(clienteCodigo, cidade.rot_repositor_id, usuario);
-                }
             }
         } catch (error) {
             console.error('Erro ao adicionar cliente no roteiro:', error);
@@ -1579,6 +1594,27 @@ class TursoDatabase {
         }
     }
 
+    async possuiRateioClienteRepositor(clienteCodigo, repositorId) {
+        if (!clienteCodigo || !repositorId) return false;
+
+        try {
+            const resultado = await this.mainClient.execute({
+                sql: `
+                    SELECT 1
+                    FROM rat_cliente_repositor
+                    WHERE rat_cliente_codigo = ? AND rat_repositor_id = ?
+                    LIMIT 1
+                `,
+                args: [clienteCodigo, repositorId]
+            });
+
+            return resultado.rows?.length > 0;
+        } catch (error) {
+            console.error('Erro ao validar rateio do cliente:', error);
+            return false;
+        }
+    }
+
     async garantirRateioClienteRepositor(clienteCodigo, repositorId, usuario = '') {
         if (!clienteCodigo || !repositorId) return;
 
@@ -1617,6 +1653,30 @@ class TursoDatabase {
         }
     }
 
+    async removerRateioClienteRepositor(clienteCodigo, repositorId, usuario = '') {
+        if (!clienteCodigo || !repositorId) return;
+
+        try {
+            await this.mainClient.execute({
+                sql: `
+                    DELETE FROM rat_cliente_repositor
+                    WHERE rat_cliente_codigo = ? AND rat_repositor_id = ?
+                `,
+                args: [clienteCodigo, repositorId]
+            });
+
+            await this.registrarAuditoriaRoteiro({
+                usuario,
+                repositorId,
+                clienteCodigo,
+                acao: 'RATEIO_CLIENTE',
+                detalhes: 'Rateio desativado via roteiro'
+            });
+        } catch (error) {
+            console.error('Erro ao remover vínculo de rateio:', error);
+        }
+    }
+
     async atualizarRateioClienteRoteiro(rotCliId, possuiRateio, usuario = '') {
         const registro = await this.mainClient.execute({
             sql: `
@@ -1633,13 +1693,22 @@ class TursoDatabase {
             throw new Error('Cliente do roteiro não encontrado para atualizar rateio.');
         }
 
+        if (possuiRateio) {
+            await this.garantirRateioClienteRepositor(dados.rot_cliente_codigo, dados.rot_repositor_id, usuario);
+        } else {
+            await this.removerRateioClienteRepositor(dados.rot_cliente_codigo, dados.rot_repositor_id, usuario);
+        }
+
         await this.mainClient.execute({
             sql: `
                 UPDATE rot_roteiro_cliente
                 SET rot_possui_rateio = ?, rot_atualizado_em = CURRENT_TIMESTAMP
-                WHERE rot_cli_id = ?
+                WHERE rot_cliente_codigo = ?
+                  AND rot_cid_id IN (
+                      SELECT rot_cid_id FROM rot_roteiro_cidade WHERE rot_repositor_id = ?
+                  )
             `,
-            args: [possuiRateio ? 1 : 0, rotCliId]
+            args: [possuiRateio ? 1 : 0, dados.rot_cliente_codigo, dados.rot_repositor_id]
         });
 
         await this.registrarAuditoriaRoteiro({
@@ -1652,9 +1721,7 @@ class TursoDatabase {
             detalhes: possuiRateio ? 'Rateio ativado' : 'Rateio desativado'
         });
 
-        if (possuiRateio) {
-            await this.garantirRateioClienteRepositor(dados.rot_cliente_codigo, dados.rot_repositor_id, usuario);
-        }
+        
     }
 
     // ==================== RATEIO ====================

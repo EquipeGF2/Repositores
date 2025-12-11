@@ -6,7 +6,7 @@
 import { db } from './db.js';
 import { pages, pageTitles } from './pages.js';
 import { ACL_RECURSOS } from './acl-resources.js';
-import { formatarDataISO, normalizarSupervisor, normalizarTextoCadastro, formatarCNPJCPF } from './utils.js';
+import { formatarDataISO, normalizarSupervisor, normalizarTextoCadastro, formatarCNPJ } from './utils.js';
 
 const AUTH_STORAGE_KEY = 'GERMANI_AUTH_USER';
 
@@ -43,7 +43,6 @@ class App {
             ultimaOrdem: 0,
             possuiHistorico: false,
             ordemEditadaManualmente: false,
-            rateioMarcado: false,
             cidadeId: null
         };
         this.resultadosConsultaRoteiro = [];
@@ -1118,9 +1117,11 @@ class App {
 
     async adicionarCidadeRoteiro() {
         const inputCidade = document.getElementById('roteiroCidadeBusca');
+        const inputOrdem = document.getElementById('roteiroCidadeOrdem');
         const mensagem = document.getElementById('roteiroCidadesMensagem');
         const dia = this.estadoRoteiro.diaSelecionado;
         const cidade = (inputCidade?.value || '').trim().toUpperCase();
+        const ordemInformada = inputOrdem?.value ? Number(inputOrdem.value) : null;
 
         if (!dia) {
             if (mensagem) mensagem.textContent = 'Selecione um dia trabalhado para adicionar cidades.';
@@ -1132,16 +1133,23 @@ class App {
             return;
         }
 
+        if (!ordemInformada || Number.isNaN(ordemInformada) || ordemInformada < 1) {
+            this.showNotification('Informe uma ordem válida para a cidade antes de adicionar.', 'warning');
+            if (mensagem) mensagem.textContent = 'A ordem da cidade é obrigatória.';
+            return;
+        }
+
         try {
             const usuario = this.usuarioLogado?.username || 'desconhecido';
             console.log(`[ROTEIRO] Tentando adicionar cidade ${cidade} ao roteiro (repo: ${this.contextoRoteiro.repo_cod}, dia: ${dia})`);
 
-            const novoId = await db.adicionarCidadeRoteiro(this.contextoRoteiro.repo_cod, dia, cidade, usuario);
+            const novoId = await db.adicionarCidadeRoteiro(this.contextoRoteiro.repo_cod, dia, cidade, usuario, ordemInformada);
             console.log(`[ROTEIRO] Cidade adicionada com sucesso! ID: ${novoId}`);
 
             this.estadoRoteiro.cidadeSelecionada = novoId;
             this.resetarFormularioClienteRoteiro(novoId);
             if (inputCidade) inputCidade.value = '';
+            if (inputOrdem) inputOrdem.value = '';
             if (mensagem) mensagem.textContent = '';
 
             // Limpa cache antes de recarregar
@@ -1259,10 +1267,22 @@ class App {
         }
 
         container.querySelectorAll('.input-ordem-cidade').forEach(input => {
+            input.dataset.valorAnterior = input.value || '';
             const handler = async () => {
                 const valor = input.value ? Number(input.value) : null;
-                await this.atualizarOrdemCidade(Number(input.dataset.id), valor);
-                await this.carregarCidadesRoteiro();
+                if (!valor || Number.isNaN(valor) || valor < 1) {
+                    this.showNotification('Informe uma ordem válida (maior que zero) para a cidade.', 'warning');
+                    input.value = input.dataset.valorAnterior || '';
+                    input.focus();
+                    return;
+                }
+
+                try {
+                    await this.atualizarOrdemCidade(Number(input.dataset.id), valor);
+                    await this.carregarCidadesRoteiro();
+                } catch (error) {
+                    this.showNotification(error.message || 'Erro ao atualizar ordem da cidade.', 'error');
+                }
             };
 
             input.addEventListener('blur', handler);
@@ -1273,6 +1293,12 @@ class App {
                 }
             });
         });
+
+        const campoOrdemCidade = document.getElementById('roteiroCidadeOrdem');
+        if (campoOrdemCidade && !campoOrdemCidade.value) {
+            const maiorOrdem = Math.max(...cidades.map(c => Number(c.rot_ordem_cidade) || 0), 0);
+            campoOrdemCidade.value = (maiorOrdem + 1).toString();
+        }
 
         console.log('[ROTEIRO] Cidades renderizadas com sucesso! Total:', cidades.length);
         if (mensagem) mensagem.textContent = '';
@@ -1303,6 +1329,9 @@ class App {
     }
 
     async atualizarOrdemCidade(rotCidId, ordem) {
+        if (!ordem || Number.isNaN(ordem) || ordem < 1) {
+            throw new Error('A ordem da cidade deve ser maior que zero.');
+        }
         const usuario = this.usuarioLogado?.username || 'desconhecido';
         await db.atualizarOrdemCidade(rotCidId, ordem, usuario);
     }
@@ -1325,8 +1354,7 @@ class App {
             sugestaoOrdem: 1,
             ultimaOrdem: 0,
             possuiHistorico: false,
-            ordemEditadaManualmente: false,
-            rateioMarcado: false
+            ordemEditadaManualmente: false
         };
 
         this.atualizarCamposClienteModal();
@@ -1371,11 +1399,6 @@ class App {
             } else {
                 helper.textContent = 'Primeiro cliente nesta cidade.';
             }
-        }
-
-        const flagRateio = document.getElementById('modalFlagRateio');
-        if (flagRateio) {
-            flagRateio.checked = !!this.formClienteRoteiro.rateioMarcado;
         }
     }
 
@@ -1493,7 +1516,7 @@ class App {
                                     </label>
                                 </div>
                             </td>
-                            <td class="col-cnpj">${formatarCNPJCPF(dados.cnpj_cpf)}</td>
+                            <td class="col-cnpj">${formatarCNPJ(dados.cnpj_cpf)}</td>
                             <td>${enderecoCompleto || '-'}</td>
                             <td>${dados.bairro || '-'}</td>
                             <td>${dados.grupo_desc || '-'}</td>
@@ -1662,14 +1685,6 @@ class App {
             };
         }
 
-        const flagRateio = document.getElementById('modalFlagRateio');
-        if (flagRateio) {
-            flagRateio.checked = this.formClienteRoteiro.rateioMarcado;
-            flagRateio.onchange = (event) => {
-                this.formClienteRoteiro.rateioMarcado = event.target.checked;
-            };
-        }
-
         this.renderModalClientesCidade();
     }
 
@@ -1692,12 +1707,9 @@ class App {
             return;
         }
 
-        const possuiRateio = !!this.formClienteRoteiro.rateioMarcado;
-
         try {
             await this.alternarClienteRoteiro(cidadeAtiva.rot_cid_id, clienteCodigo, true, {
-                ordemVisita: ordemInformada,
-                possuiRateio
+                ordemVisita: ordemInformada
             });
 
             this.formClienteRoteiro.ordemEditadaManualmente = false;
@@ -1773,7 +1785,7 @@ class App {
                                 <td>${cliente.cliente}</td>
                                 <td>${cliente.nome || '-'}</td>
                                 <td>${cliente.fantasia || '-'}</td>
-                                <td class="col-cnpj">${formatarCNPJCPF(cliente.cnpj_cpf)}</td>
+                                <td class="col-cnpj">${formatarCNPJ(cliente.cnpj_cpf)}</td>
                                 <td>${enderecoCompleto || '-'}</td>
                                 <td>${cliente.bairro || '-'}</td>
                                 <td>${cliente.grupo_desc || '-'}</td>

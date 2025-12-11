@@ -145,23 +145,27 @@ export const pages = {
                             <div class="repositor-grid">
                                 <section class="form-card card-span-2">
                                     <div class="form-card-header">
-                                        <div>
+                                    <div>
                                             <p class="form-card-eyebrow">Dados principais</p>
                                             <h4>Repositor</h4>
                                         </div>
                                     </div>
                                     <div class="form-card-body">
-                                        <div class="form-grid">
-                                            <div class="form-group span-2">
+                                        <div class="dados-repositor-grid">
+                                            <div class="form-group span-2-cols">
                                                 <label for="repo_nome">Nome do Repositor</label>
                                                 <input type="text" id="repo_nome" required>
                                             </div>
-                                            <div class="form-group compact-checkbox">
-                                                <label for="repo_vinculo_agencia">Vínculo</label>
+                                            <div class="form-group vinculo-agencia">
+                                                <label for="repo_vinculo_agencia" class="label-nowrap">Vínculo</label>
                                                 <label class="checkbox-inline">
                                                     <input type="checkbox" id="repo_vinculo_agencia" style="width: auto;">
                                                     <span>É uma Agência?</span>
                                                 </label>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="repo_cidade_ref">Cidade Referência</label>
+                                                <input type="text" id="repo_cidade_ref" placeholder="Ex: São Paulo" required>
                                             </div>
 
                                             <div class="form-group">
@@ -175,19 +179,14 @@ export const pages = {
                                             </div>
 
                                             <div class="form-group">
-                                                <label for="repo_cidade_ref">Cidade Referência</label>
-                                                <input type="text" id="repo_cidade_ref" placeholder="Ex: São Paulo" required>
-                                            </div>
-
-                                            <div class="form-group">
-                                                <label for="repo_data_inicio">Data Início</label>
+                                                <label for="repo_data_inicio" class="label-nowrap">Data Início</label>
                                                 <input type="date" id="repo_data_inicio" required>
                                             </div>
 
                                             <div class="form-group">
-                                                <label for="repo_data_fim">Data Fim</label>
+                                                <label for="repo_data_fim" class="label-nowrap">Data Fim</label>
                                                 <input type="date" id="repo_data_fim">
-                                                <small>Deixe em branco se ainda estiver ativo</small>
+                                                <small class="helper-compact">Deixe em branco se ainda estiver ativo</small>
                                             </div>
                                         </div>
                                     </div>
@@ -198,10 +197,10 @@ export const pages = {
                                         <p class="form-card-eyebrow">Rotina</p>
                                         <h4>Jornada de Trabalho</h4>
                                     </div>
-                                    <div class="form-card-body">
+                                    <div class="form-card-body rotina-card-body">
                                         <div class="form-group full-width">
-                                            <label>Dias Trabalhados</label>
-                                            <div class="dias-trabalho-grid">
+                                            <label class="label-nowrap">Dias Trabalhados</label>
+                                            <div class="dias-trabalho-grid compact">
                                                 <label class="checkbox-inline">
                                                     <input type="checkbox" class="dia-trabalho" value="seg" style="width: auto;" checked> Segunda
                                                 </label>
@@ -224,11 +223,11 @@ export const pages = {
                                                     <input type="checkbox" class="dia-trabalho" value="dom" style="width: auto;"> Domingo
                                                 </label>
                                             </div>
-                                            <small>Marque os dias que o repositor trabalha (padrão: Seg a Sex)</small>
+                                            <small class="helper-compact">Marque os dias que o repositor trabalha (padrão: Seg a Sex)</small>
                                         </div>
 
-                                        <div class="form-group full-width">
-                                            <label>Jornada</label>
+                                        <div class="form-group full-width jornada-group">
+                                            <label class="label-nowrap">Jornada</label>
                                             <div class="radio-group">
                                                 <label class="checkbox-inline">
                                                     <input type="radio" name="rep_jornada_tipo" value="INTEGRAL" style="width: auto;" checked> Integral
@@ -241,35 +240,26 @@ export const pages = {
                                     </div>
                                 </section>
 
-                                <section class="form-card">
+                                <section class="form-card alinhamento-card">
                                     <div class="form-card-header">
                                         <p class="form-card-eyebrow">Alinhamento Comercial</p>
-                                        <h4>Representante</h4>
+                                        <h4>Representante e Supervisor</h4>
                                     </div>
-                                    <div class="form-card-body">
+                                    <div class="form-card-body alinhamento-grid">
                                         <div class="form-group">
-                                            <label for="repo_representante">Representante</label>
+                                            <label for="repo_representante" class="label-nowrap">Representante</label>
                                             <select id="repo_representante" required>
                                                 <option value="">Selecione</option>
                                                 ${representanteOptions}
                                             </select>
                                         </div>
-                                    </div>
-                                </section>
-
-                                <section class="form-card">
-                                    <div class="form-card-header">
-                                        <p class="form-card-eyebrow">Gestão</p>
-                                        <h4>Supervisor</h4>
-                                    </div>
-                                    <div class="form-card-body">
-                                        <div class="form-group">
-                                            <label for="repo_supervisor">Supervisor</label>
+                                        <div class="form-group supervisor-group">
+                                            <label for="repo_supervisor" class="label-nowrap">Supervisor</label>
                                             <select id="repo_supervisor">
                                                 <option value="">Selecione</option>
                                                 ${supervisorOptions}
                                             </select>
-                                            <small>Preenchido automaticamente pelo representante selecionado</small>
+                                            <small class="helper-compact">Preenchido automaticamente pelo representante selecionado</small>
                                         </div>
                                     </div>
                                 </section>
@@ -581,6 +571,10 @@ export const pages = {
                                 <input type="text" id="roteiroCidadeBusca" placeholder="Digite para buscar e adicionar cidade...">
                                 <div id="roteiroCidadeSugestoes" class="autocomplete-list"></div>
                             </div>
+                            <div class="cidade-ordem-wrapper">
+                                <label for="roteiroCidadeOrdem">Ordem</label>
+                                <input type="number" id="roteiroCidadeOrdem" min="1" step="1" placeholder="1" aria-label="Ordem da cidade">
+                            </div>
                             <button class="btn btn-primary btn-sm" id="btnAdicionarCidade">+ Adicionar</button>
                         </div>
 
@@ -627,13 +621,6 @@ export const pages = {
                                 <label for="modalOrdemCliente">Ordem de atendimento</label>
                                 <input type="number" id="modalOrdemCliente" min="1" step="1" placeholder="Informe a ordem" required>
                                 <small id="modalOrdemHelper" class="text-muted"></small>
-                            </div>
-                            <div class="form-group">
-                                <label class="checkbox-inline" for="modalFlagRateio">
-                                    <input type="checkbox" id="modalFlagRateio">
-                                    <span>Cliente com rateio entre repositores</span>
-                                </label>
-                                <small class="text-muted">Cria vínculo inicial de 100% para o repositor atual.</small>
                             </div>
                         </div>
                         <div class="table-container" id="modalTabelaClientesCidade"></div>

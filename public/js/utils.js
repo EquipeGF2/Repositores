@@ -142,3 +142,15 @@ export function formatarCNPJCPF(valor) {
     // Se não conseguiu formatar, retorna o texto sem formatação
     return texto || '-';
 }
+
+/**
+ * Formata CNPJ garantindo 14 dígitos no padrão XX.XXX.XXX/XXXX-XX
+ */
+export function formatarCNPJ(valor) {
+    if (!valor && valor !== 0) return '-';
+
+    const apenasNumeros = String(valor).replace(/\D/g, '');
+    if (apenasNumeros.length !== 14) return '-';
+
+    return apenasNumeros.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+}
