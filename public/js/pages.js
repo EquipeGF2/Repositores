@@ -415,53 +415,22 @@ export const pages = {
             <div class="card">
                 <div class="card-header">
                     <div>
-                        <p class="text-muted" style="margin: 0;">Distribua o percentual de atendimento de clientes entre os repositores.</p>
-                        <h3 class="card-title">Cadastro de Rateio</h3>
+                        <p class="text-muted" style="margin: 0;">Ajuste percentuais de clientes que já possuem rateio.</p>
+                        <h3 class="card-title">Manutenção de Rateio</h3>
                         <p class="text-muted" style="margin: 4px 0 0; font-size: 0.9rem;">
-                            <strong>Dica:</strong> Clientes atendidos por múltiplos repositores devem ter o rateio configurado aqui.
+                            Revise os percentuais cadastrados no roteiro e garanta que cada cliente some exatamente 100%.
                         </p>
                     </div>
                     <div class="card-actions">
-                        <button class="btn btn-secondary btn-sm" id="btnListarClientesComRateio">Ver clientes com rateio</button>
-                        <button class="btn btn-primary" id="btnSalvarRateio">Salvar rateio</button>
+                        <button class="btn btn-secondary btn-sm" id="btnRecarregarRateio">Recarregar</button>
                     </div>
                 </div>
-                <div class="card-body rateio-layout">
-                    <div class="form-row">
-                        <div class="form-group full-width" style="position: relative;">
-                            <label for="rateioBuscaCliente">Cliente</label>
-                            <input type="text" id="rateioBuscaCliente" placeholder="Digite código, nome, fantasia ou CNPJ/CPF" autocomplete="off">
-                            <div id="rateioClienteSugestoes" class="autocomplete-list"></div>
-                            <small id="rateioClienteSelecionadoInfo" class="text-muted"></small>
+                <div class="card-body">
+                    <div id="rateioManutencaoContainer" class="rateio-manutencao-lista">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">⏳</div>
+                            <p>Carregando rateios cadastrados...</p>
                         </div>
-                    </div>
-
-                    <div id="rateioGridContainer" class="rateio-grid"></div>
-
-                    <div class="rateio-footer">
-                        <button class="btn btn-secondary" type="button" id="btnAdicionarLinhaRateio">+ Adicionar repositor</button>
-                        <div id="rateioTotalPercentual" class="rateio-total">Total: 0%</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Modal Lista de Clientes com Rateio -->
-            <div class="modal" id="modalClientesComRateio">
-                <div class="modal-content" style="max-width: 800px;">
-                    <div class="modal-header">
-                        <h3>Clientes com Rateio Configurado</h3>
-                        <button class="modal-close" onclick="window.app.fecharModalClientesComRateio()">&times;</button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="table-container" id="tabelaClientesComRateio">
-                            <div class="empty-state">
-                                <div class="empty-state-icon">⏳</div>
-                                <p>Carregando...</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button class="btn btn-secondary" onclick="window.app.fecharModalClientesComRateio()">Fechar</button>
                     </div>
                 </div>
             </div>
@@ -1264,7 +1233,7 @@ export const pages = {
 export const pageTitles = {
     'home': 'Início',
     'cadastro-repositor': 'Cadastro de Repositores',
-    'cadastro-rateio': 'Cadastro de Rateio',
+    'cadastro-rateio': 'Manutenção de Rateio',
     'validacao-dados': 'Validação de Dados',
     'resumo-periodo': 'Resumo do Período',
     'resumo-mensal': 'Resumo Mensal',

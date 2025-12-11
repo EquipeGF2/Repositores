@@ -1798,6 +1798,69 @@ class TursoDatabase {
         }
     }
 
+    async listarRateiosDetalhados() {
+        try {
+            const resultado = await this.mainClient.execute({
+                sql: `
+                    SELECT
+                        rat.rat_cliente_codigo AS cliente_codigo,
+                        rat.rat_repositor_id,
+                        rat.rat_percentual,
+                        rat.rat_vigencia_inicio,
+                        rat.rat_vigencia_fim,
+                        cli.nome AS cliente_nome,
+                        cli.fantasia AS cliente_fantasia,
+                        cli.cidade AS cliente_cidade,
+                        cli.estado AS cliente_estado,
+                        CAST(cli.cnpj_cpf AS TEXT) AS cnpj_cpf,
+                        repo.repo_nome
+                    FROM rat_cliente_repositor rat
+                    LEFT JOIN cliente cli ON cli.cliente = rat.rat_cliente_codigo
+                    LEFT JOIN cad_repositor repo ON repo.repo_cod = rat.rat_repositor_id
+                    ORDER BY cliente_nome, rat.rat_cliente_codigo, repo.repo_nome
+                `
+            });
+
+            return resultado.rows.map(row => ({
+                ...row,
+                cnpj_cpf: normalizarDocumento(row.cnpj_cpf)
+            }));
+        } catch (error) {
+            console.error('Erro ao buscar rateios para manutenção:', error);
+            return [];
+        }
+    }
+
+    async listarClientesRateioIncompleto() {
+        try {
+            const resultado = await this.mainClient.execute({
+                sql: `
+                    WITH clientes_rateio AS (
+                        SELECT DISTINCT rat_cliente_codigo AS cliente_codigo FROM rat_cliente_repositor
+                        UNION
+                        SELECT DISTINCT rot_cliente_codigo FROM rot_roteiro_cliente WHERE rot_possui_rateio = 1
+                    )
+                    SELECT
+                        cr.cliente_codigo,
+                        COALESCE(SUM(rat.rat_percentual), 0) AS total_percentual,
+                        MAX(cli.nome) AS cliente_nome,
+                        MAX(cli.fantasia) AS cliente_fantasia
+                    FROM clientes_rateio cr
+                    LEFT JOIN rat_cliente_repositor rat ON rat.rat_cliente_codigo = cr.cliente_codigo
+                    LEFT JOIN cliente cli ON cli.cliente = cr.cliente_codigo
+                    GROUP BY cr.cliente_codigo
+                    HAVING ABS(COALESCE(SUM(rat.rat_percentual), 0) - 100) > 0.01
+                    ORDER BY cliente_nome
+                `
+            });
+
+            return resultado.rows;
+        } catch (error) {
+            console.error('Erro ao buscar clientes com rateio incompleto:', error);
+            return [];
+        }
+    }
+
     async calcularTotalRateioClientes(clienteCodigos = []) {
         if (!clienteCodigos.length) return {};
 
