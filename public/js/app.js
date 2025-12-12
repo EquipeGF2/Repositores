@@ -3344,33 +3344,53 @@ class App {
     }
 
     gerarMensagemWhatsAppRoteiro(registros = [], repositorInfo = {}, dataAtualizacao = '') {
-        console.log('Gerando mensagem WhatsApp com', registros.length, 'registros');
-        console.log('Primeiro registro:', registros[0]);
+        console.log('📱 Gerando mensagem WhatsApp');
+        console.log('Total de registros:', registros.length);
+        if (registros.length > 0) {
+            console.log('Primeiro registro:', JSON.stringify(registros[0], null, 2));
+        }
 
-        const diasSemana = ['SEGUNDA-FEIRA', 'TERÇA-FEIRA', 'QUARTA-FEIRA', 'QUINTA-FEIRA', 'SEXTA-FEIRA', 'SÁBADO', 'DOMINGO'];
-        const diasAbrev = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB', 'DOM'];
+        const diasSemana = {
+            1: 'SEGUNDA-FEIRA',
+            2: 'TERÇA-FEIRA',
+            3: 'QUARTA-FEIRA',
+            4: 'QUINTA-FEIRA',
+            5: 'SEXTA-FEIRA',
+            6: 'SÁBADO',
+            7: 'DOMINGO'
+        };
 
-        // Agrupar por dia e cidade
+        // Agrupar por dia e cidade usando números de dia
         const agrupado = {};
+
         registros.forEach(reg => {
-            const diaNum = reg.rot_dia_semana || reg.dia_semana || 1;
-            const diaIdx = parseInt(diaNum) - 1;
-            const dia = diasAbrev[diaIdx] || 'SEG';
-            const cidade = (reg.rot_cidade || reg.cidade || 'SEM CIDADE').toUpperCase();
-            const ordem = reg.rot_ordem_cidade || reg.ordem_cidade || 0;
+            const dia = parseInt(reg.rot_dia_semana || reg.dia_semana || 1);
+            const cidade = (reg.rot_cidade || reg.cidade || 'SEM CIDADE').trim().toUpperCase();
 
-            if (!agrupado[dia]) agrupado[dia] = {};
-            if (!agrupado[dia][cidade]) agrupado[dia][cidade] = [];
+            if (!agrupado[dia]) {
+                agrupado[dia] = {};
+            }
+            if (!agrupado[dia][cidade]) {
+                agrupado[dia][cidade] = [];
+            }
 
-            agrupado[dia][cidade].push({ ...reg, ordem });
+            agrupado[dia][cidade].push(reg);
         });
 
-        console.log('Agrupado:', agrupado);
+        console.log('Agrupamento por dia:', Object.keys(agrupado));
+        console.log('Estrutura:', JSON.stringify(Object.keys(agrupado).reduce((acc, dia) => {
+            acc[`Dia ${dia}`] = Object.keys(agrupado[dia]);
+            return acc;
+        }, {}), null, 2));
 
         // Ordenar clientes por ordem dentro de cada cidade
         Object.keys(agrupado).forEach(dia => {
             Object.keys(agrupado[dia]).forEach(cidade => {
-                agrupado[dia][cidade].sort((a, b) => (a.ordem || 0) - (b.ordem || 0));
+                agrupado[dia][cidade].sort((a, b) => {
+                    const ordemA = parseInt(a.rot_ordem_cidade || a.ordem_cidade || 0);
+                    const ordemB = parseInt(b.rot_ordem_cidade || b.ordem_cidade || 0);
+                    return ordemA - ordemB;
+                });
             });
         });
 
@@ -3388,54 +3408,74 @@ class App {
         mensagem += `📅 Atualizado em: ${dataAtualizacao}\n`;
         mensagem += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
 
-        // Iterar pelos dias em ordem
-        [1, 2, 3, 4, 5, 6, 7].forEach(diaNum => {
-            const diaAbrev = diasAbrev[diaNum - 1];
-            const diaCompleto = diasSemana[diaNum - 1];
+        // Iterar pelos dias em ordem (1-7)
+        for (let diaNum = 1; diaNum <= 7; diaNum++) {
+            if (!agrupado[diaNum]) continue;
 
-            if (!agrupado[diaAbrev]) return;
+            mensagem += `*${diasSemana[diaNum]}*\n\n`;
 
-            mensagem += `*${diaCompleto}*\n\n`;
+            // Iterar pelas cidades (ordenadas alfabeticamente)
+            const cidades = Object.keys(agrupado[diaNum]).sort();
 
-            // Agrupar por cidade
-            const cidades = Object.keys(agrupado[diaAbrev]).sort();
             cidades.forEach(cidade => {
                 mensagem += `📍 *${cidade}*\n\n`;
 
-                const clientes = agrupado[diaAbrev][cidade];
+                const clientes = agrupado[diaNum][cidade];
+
                 clientes.forEach((cliente, idx) => {
                     const numeroOrdem = idx + 1;
                     const emoji = numeroOrdem <= 9 ? `${numeroOrdem}️⃣` : `${numeroOrdem}.`;
 
-                    const nomeCliente = cliente.cliente_dados?.fantasia || cliente.cliente_dados?.nome || cliente.rot_cliente_fantasia || cliente.rot_cliente_codigo;
+                    // Nome do cliente
+                    const nomeCliente = cliente.cliente_dados?.fantasia
+                        || cliente.cliente_dados?.nome
+                        || cliente.rot_cliente_fantasia
+                        || cliente.rot_cliente_codigo
+                        || 'CLIENTE';
+
                     mensagem += `${emoji} *${nomeCliente}*\n`;
 
-                    if (cliente.cliente_dados?.endereco || cliente.rot_endereco) {
-                        const endereco = cliente.cliente_dados?.endereco || cliente.rot_endereco;
-                        const bairro = cliente.cliente_dados?.bairro || cliente.rot_bairro || '';
+                    // Endereço
+                    const endereco = cliente.cliente_dados?.endereco || cliente.rot_endereco || '';
+                    const bairro = cliente.cliente_dados?.bairro || cliente.rot_bairro || '';
+
+                    if (endereco) {
                         mensagem += `   📌 ${endereco}`;
-                        if (bairro) mensagem += ` - ${bairro}`;
+                        if (bairro) {
+                            mensagem += ` - ${bairro}`;
+                        }
                         mensagem += `\n`;
                     }
 
-                    mensagem += `   🏢 Cód: ${cliente.rot_cliente_codigo}\n`;
+                    // Código do cliente
+                    const codigo = cliente.rot_cliente_codigo || cliente.cliente_codigo || '';
+                    if (codigo) {
+                        mensagem += `   🏢 Cód: ${codigo}\n`;
+                    }
 
                     mensagem += `\n`;
                 });
             });
 
             mensagem += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-        });
+        }
 
         // Resumo
         const totalClientes = registros.length;
-        const cidadesUnicas = [...new Set(registros.map(r => r.rot_cidade || r.cidade))].filter(Boolean).length;
+        const cidadesUnicas = new Set();
+        registros.forEach(r => {
+            const cidade = r.rot_cidade || r.cidade;
+            if (cidade) cidadesUnicas.add(cidade);
+        });
         const diasAtivos = Object.keys(agrupado).length;
 
         mensagem += `📊 *RESUMO*\n`;
         mensagem += `✅ Total de clientes: ${totalClientes}\n`;
-        mensagem += `📍 Total de cidades: ${cidadesUnicas}\n`;
+        mensagem += `📍 Total de cidades: ${cidadesUnicas.size}\n`;
         mensagem += `🗓️ Dias úteis: ${diasAtivos}\n`;
+
+        console.log('✅ Mensagem gerada!');
+        console.log('Tamanho:', mensagem.length, 'caracteres');
 
         return mensagem;
     }
