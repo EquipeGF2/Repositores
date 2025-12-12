@@ -2050,7 +2050,7 @@ class TursoDatabase {
         }
     }
 
-    async listarRateiosDetalhados() {
+    async listarRateiosDetalhados(filtros = {}) {
         try {
             await this.connect();
 
@@ -2064,6 +2064,22 @@ class TursoDatabase {
 
             let resultado = null;
             try {
+                // Construir cláusulas WHERE baseado nos filtros
+                const whereClauses = [];
+                const params = [];
+
+                if (filtros.repositorId) {
+                    whereClauses.push('rat.rat_repositor_id = ?');
+                    params.push(filtros.repositorId);
+                }
+
+                if (filtros.cliente) {
+                    whereClauses.push('(rat.rat_cliente_codigo LIKE ? OR repo.repo_nome LIKE ?)');
+                    params.push(`%${filtros.cliente}%`, `%${filtros.cliente}%`);
+                }
+
+                const whereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
                 const sqlQuery = `
                     SELECT
                         rat.rat_cliente_codigo AS cliente_codigo,
@@ -2076,10 +2092,13 @@ class TursoDatabase {
                         repo.repo_nome
                     FROM rat_cliente_repositor rat
                     LEFT JOIN cad_repositor repo ON repo.repo_cod = rat.rat_repositor_id
+                    ${whereClause}
                     ORDER BY rat.rat_cliente_codigo, repo.repo_nome
                 `;
 
-                resultado = await this.mainClient.execute(sqlQuery);
+                resultado = params.length > 0
+                    ? await this.mainClient.execute(sqlQuery, params)
+                    : await this.mainClient.execute(sqlQuery);
             } catch (execError) {
                 console.error('Erro ao executar query de rateios:', execError);
                 return [];
@@ -2105,7 +2124,7 @@ class TursoDatabase {
             const codigosClientes = [...new Set(linhas.map(row => row.cliente_codigo).filter(Boolean))];
             const clientesMap = await this.getClientesPorCodigo(codigosClientes);
 
-            return linhas.map(row => ({
+            let resultado_final = linhas.map(row => ({
                 cliente_codigo: row.cliente_codigo || '',
                 cliente_nome: clientesMap[row.cliente_codigo]?.nome || '',
                 cliente_fantasia: clientesMap[row.cliente_codigo]?.fantasia || '',
@@ -2120,8 +2139,66 @@ class TursoDatabase {
                 rat_atualizado_em: normalizarDataISO(row.rat_atualizado_em) || null,
                 repo_nome: row.repo_nome || ''
             }));
+
+            // Aplicar filtro de cidade se fornecido
+            if (filtros.cidade) {
+                resultado_final = resultado_final.filter(row =>
+                    row.cliente_cidade && row.cliente_cidade.toUpperCase().includes(filtros.cidade.toUpperCase())
+                );
+            }
+
+            return resultado_final;
         } catch (error) {
             console.error('Erro ao buscar rateios para manutenção:', error);
+            return [];
+        }
+    }
+
+    async obterCidadesComRateio() {
+        try {
+            await this.connect();
+
+            if (!this.mainClient) {
+                console.error('mainClient não inicializado');
+                return [];
+            }
+
+            // Garantir que as tabelas existem
+            await this.ensureRateioTables();
+
+            // Buscar todos os códigos de clientes que têm rateio
+            const resultado = await this.mainClient.execute(`
+                SELECT DISTINCT rat_cliente_codigo
+                FROM rat_cliente_repositor
+                ORDER BY rat_cliente_codigo
+            `);
+
+            const linhasBrutas = Array.isArray(resultado)
+                ? resultado
+                : Array.isArray(resultado?.rows)
+                    ? resultado.rows
+                    : [];
+
+            const codigosClientes = linhasBrutas.map(row => row.rat_cliente_codigo).filter(Boolean);
+
+            if (codigosClientes.length === 0) {
+                return [];
+            }
+
+            // Buscar cidades dos clientes do banco comercial
+            const clientesMap = await this.getClientesPorCodigo(codigosClientes);
+
+            // Extrair cidades únicas
+            const cidadesSet = new Set();
+            Object.values(clientesMap).forEach(cliente => {
+                if (cliente.cidade) {
+                    cidadesSet.add(cliente.cidade);
+                }
+            });
+
+            return [...cidadesSet].sort();
+        } catch (error) {
+            console.error('Erro ao buscar cidades com rateio:', error);
             return [];
         }
     }

@@ -2113,12 +2113,66 @@ class App {
     async inicializarCadastroRateio() {
         this.rateioRepositores = await db.getRepositoresDetalhados({ status: 'ativos' });
 
-        const btnRecarregar = document.getElementById('btnRecarregarRateio');
-        if (btnRecarregar) {
-            btnRecarregar.addEventListener('click', () => this.carregarListaRateioManutencao());
+        // Popular filtro de repositores
+        const selectRepositor = document.getElementById('filtroRepositor');
+        if (selectRepositor) {
+            this.rateioRepositores.forEach(repo => {
+                const option = document.createElement('option');
+                option.value = repo.repo_cod;
+                option.textContent = `${repo.repo_cod} - ${repo.repo_nome}`;
+                selectRepositor.appendChild(option);
+            });
         }
 
-        await this.carregarListaRateioManutencao();
+        // Popular filtro de cidades
+        const cidades = await db.obterCidadesComRateio();
+        const selectCidade = document.getElementById('filtroCidade');
+        if (selectCidade) {
+            cidades.forEach(cidade => {
+                const option = document.createElement('option');
+                option.value = cidade;
+                option.textContent = cidade;
+                selectCidade.appendChild(option);
+            });
+        }
+
+        // Event listeners
+        const btnRecarregar = document.getElementById('btnRecarregarRateio');
+        if (btnRecarregar) {
+            btnRecarregar.addEventListener('click', () => this.aplicarFiltrosRateio());
+        }
+
+        const btnAplicarFiltros = document.getElementById('btnAplicarFiltrosRateio');
+        if (btnAplicarFiltros) {
+            btnAplicarFiltros.addEventListener('click', () => this.aplicarFiltrosRateio());
+        }
+
+        // Permitir filtrar ao pressionar Enter no campo de cliente
+        const inputCliente = document.getElementById('filtroCliente');
+        if (inputCliente) {
+            inputCliente.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    this.aplicarFiltrosRateio();
+                }
+            });
+        }
+    }
+
+    obterFiltrosRateio() {
+        const repositorId = document.getElementById('filtroRepositor')?.value || '';
+        const cidade = document.getElementById('filtroCidade')?.value || '';
+        const cliente = document.getElementById('filtroCliente')?.value?.trim() || '';
+
+        return {
+            repositorId: repositorId ? parseInt(repositorId) : null,
+            cidade,
+            cliente
+        };
+    }
+
+    async aplicarFiltrosRateio() {
+        const filtros = this.obterFiltrosRateio();
+        await this.carregarListaRateioManutencao(filtros);
     }
 
     agruparRateiosManutencao(linhas = []) {
@@ -2164,7 +2218,7 @@ class App {
         return Math.round(total * 100) / 100;
     }
 
-    async carregarListaRateioManutencao() {
+    async carregarListaRateioManutencao(filtros = {}) {
         const container = document.getElementById('rateioManutencaoContainer');
         if (container) {
             container.innerHTML = `
@@ -2176,12 +2230,16 @@ class App {
         }
 
         try {
-            const linhas = await db.listarRateiosDetalhados();
+            const linhas = await db.listarRateiosDetalhados(filtros);
             const linhasNormalizadas = Array.isArray(linhas) ? linhas : [];
 
             this.rateioClientesManutencao = this.agruparRateiosManutencao(linhasNormalizadas);
             this.renderRateioManutencao();
             // await this.atualizarAlertaRateioGlobal(); // DESABILITADO - tabela cliente não existe no banco principal
+
+            if (this.rateioClientesManutencao.length > 0) {
+                this.showNotification(`${this.rateioClientesManutencao.length} cliente(s) encontrado(s)`, 'success');
+            }
 
             if (this.rateioClienteEmFoco) {
                 this.destacarClienteRateio(this.rateioClienteEmFoco);
@@ -3426,6 +3484,9 @@ class App {
                     const numeroOrdem = idx + 1;
                     const emoji = numeroOrdem <= 9 ? `${numeroOrdem}️⃣` : `${numeroOrdem}.`;
 
+                    // Código do cliente
+                    const codigo = cliente.rot_cliente_codigo || cliente.cliente_codigo || '';
+
                     // Nome do cliente
                     const nomeCliente = cliente.cliente_dados?.fantasia
                         || cliente.cliente_dados?.nome
@@ -3433,24 +3494,23 @@ class App {
                         || cliente.rot_cliente_codigo
                         || 'CLIENTE';
 
-                    mensagem += `${emoji} *${nomeCliente}*\n`;
+                    // Mostrar código e nome juntos
+                    if (codigo) {
+                        mensagem += `${emoji} *${codigo} - ${nomeCliente}*\n`;
+                    } else {
+                        mensagem += `${emoji} *${nomeCliente}*\n`;
+                    }
 
                     // Endereço
                     const endereco = cliente.cliente_dados?.endereco || cliente.rot_endereco || '';
                     const bairro = cliente.cliente_dados?.bairro || cliente.rot_bairro || '';
 
                     if (endereco) {
-                        mensagem += `   📌 ${endereco}`;
+                        mensagem += `📌 ${endereco}`;
                         if (bairro) {
                             mensagem += ` - ${bairro}`;
                         }
                         mensagem += `\n`;
-                    }
-
-                    // Código do cliente
-                    const codigo = cliente.rot_cliente_codigo || cliente.cliente_codigo || '';
-                    if (codigo) {
-                        mensagem += `   🏢 Cód: ${codigo}\n`;
                     }
 
                     mensagem += `\n`;
