@@ -2073,16 +2073,10 @@ class TursoDatabase {
                         rat.rat_vigencia_fim,
                         rat.rat_criado_em,
                         rat.rat_atualizado_em,
-                        cli.nome AS cliente_nome,
-                        cli.fantasia AS cliente_fantasia,
-                        cli.cidade AS cliente_cidade,
-                        cli.estado AS cliente_estado,
-                        CAST(cli.cnpj_cpf AS TEXT) AS cnpj_cpf,
                         repo.repo_nome
                     FROM rat_cliente_repositor rat
-                    LEFT JOIN cliente cli ON cli.cliente = rat.rat_cliente_codigo
                     LEFT JOIN cad_repositor repo ON repo.repo_cod = rat.rat_repositor_id
-                    ORDER BY cliente_nome, rat.rat_cliente_codigo, repo.repo_nome
+                    ORDER BY rat.rat_cliente_codigo, repo.repo_nome
                 `;
 
                 resultado = await this.mainClient.execute(sqlQuery);
@@ -2115,11 +2109,6 @@ class TursoDatabase {
                 rat_vigencia_fim: normalizarDataISO(row.rat_vigencia_fim) || null,
                 rat_criado_em: normalizarDataISO(row.rat_criado_em) || null,
                 rat_atualizado_em: normalizarDataISO(row.rat_atualizado_em) || null,
-                cliente_nome: row.cliente_nome || '',
-                cliente_fantasia: row.cliente_fantasia || '',
-                cliente_cidade: row.cliente_cidade || '',
-                cliente_estado: row.cliente_estado || '',
-                cnpj_cpf: documentoParaExibicao(row.cnpj_cpf) || '',
                 repo_nome: row.repo_nome || ''
             }));
         } catch (error) {
@@ -2145,14 +2134,11 @@ class TursoDatabase {
                 const sqlQuery = `
                     SELECT
                         rat.rat_cliente_codigo AS cliente_codigo,
-                        COALESCE(SUM(rat.rat_percentual), 0) AS total_percentual,
-                        MAX(cli.nome) AS cliente_nome,
-                        MAX(cli.fantasia) AS cliente_fantasia
+                        COALESCE(SUM(rat.rat_percentual), 0) AS total_percentual
                     FROM rat_cliente_repositor rat
-                    LEFT JOIN cliente cli ON cli.cliente = rat.rat_cliente_codigo
                     GROUP BY rat.rat_cliente_codigo
                     HAVING ABS(COALESCE(SUM(rat.rat_percentual), 0) - 100) > 0.01
-                    ORDER BY cliente_nome
+                    ORDER BY rat.rat_cliente_codigo
                 `;
 
                 resultado = await this.mainClient.execute(sqlQuery);
@@ -2179,9 +2165,7 @@ class TursoDatabase {
 
             return linhas.map(linha => ({
                 cliente_codigo: linha.cliente_codigo || '',
-                total_percentual: Number(linha.total_percentual || 0),
-                cliente_nome: linha.cliente_nome || '',
-                cliente_fantasia: linha.cliente_fantasia || ''
+                total_percentual: Number(linha.total_percentual || 0)
             }));
         } catch (error) {
             console.error('Erro ao buscar clientes com rateio incompleto:', error);

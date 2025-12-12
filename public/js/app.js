@@ -102,7 +102,7 @@ class App {
         await this.carregarPermissoesUsuario();
         this.aplicarInformacoesUsuario();
         this.configurarVisibilidadeConfiguracoes();
-        await this.atualizarAlertaRateioGlobal();
+        // await this.atualizarAlertaRateioGlobal(); // DESABILITADO - tabela cliente não existe no banco principal
 
         if (!this.usuarioTemPermissao('mod_repositores')) {
             this.renderAcessoNegado('mod_repositores');
@@ -1819,9 +1819,9 @@ class App {
             }
         }
 
-        if (clientesImpactados.size) {
-            await this.atualizarAlertaRateioGlobal();
-        }
+        // if (clientesImpactados.size) {
+        //     await this.atualizarAlertaRateioGlobal(); // DESABILITADO - tabela cliente não existe no banco principal
+        // }
 
         this.rateioPendentes = {};
     }
@@ -2181,7 +2181,7 @@ class App {
 
             this.rateioClientesManutencao = this.agruparRateiosManutencao(linhasNormalizadas);
             this.renderRateioManutencao();
-            await this.atualizarAlertaRateioGlobal();
+            // await this.atualizarAlertaRateioGlobal(); // DESABILITADO - tabela cliente não existe no banco principal
 
             if (this.rateioClienteEmFoco) {
                 this.destacarClienteRateio(this.rateioClienteEmFoco);
