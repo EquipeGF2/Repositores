@@ -2052,7 +2052,7 @@ class TursoDatabase {
 
     async listarRateiosDetalhados() {
         try {
-            const resultado = await this.mainClient.execute({
+            const resultado = (await this.mainClient.execute({
                 sql: `
                     SELECT
                         rat.rat_cliente_codigo AS cliente_codigo,
@@ -2073,9 +2073,14 @@ class TursoDatabase {
                     LEFT JOIN cad_repositor repo ON repo.repo_cod = rat.rat_repositor_id
                     ORDER BY cliente_nome, rat.rat_cliente_codigo, repo.repo_nome
                 `
-            });
+            })) || {};
 
-            const linhas = Array.isArray(resultado?.rows) ? resultado.rows.filter(Boolean) : [];
+            const linhasBrutas = Array.isArray(resultado)
+                ? resultado
+                : Array.isArray(resultado?.rows)
+                    ? resultado.rows
+                    : [];
+            const linhas = linhasBrutas.filter(Boolean);
 
             return linhas.map(row => ({
                 ...row,
@@ -2095,7 +2100,7 @@ class TursoDatabase {
         try {
             await this.connect();
 
-            const resultado = await this.mainClient.execute({
+            const resultado = (await this.mainClient.execute({
                 sql: `
                     SELECT
                         rat.rat_cliente_codigo AS cliente_codigo,
@@ -2108,9 +2113,14 @@ class TursoDatabase {
                     HAVING ABS(COALESCE(SUM(rat.rat_percentual), 0) - 100) > 0.01
                     ORDER BY cliente_nome
                 `
-            });
+            })) || {};
 
-            const linhas = Array.isArray(resultado?.rows) ? resultado.rows.filter(Boolean) : [];
+            const linhasBrutas = Array.isArray(resultado)
+                ? resultado
+                : Array.isArray(resultado?.rows)
+                    ? resultado.rows
+                    : [];
+            const linhas = linhasBrutas.filter(Boolean);
 
             return linhas.map(linha => ({
                 ...linha,

@@ -160,7 +160,8 @@ class App {
 
         try {
             const incompletos = await db.listarClientesRateioIncompleto();
-            const ativo = Array.isArray(incompletos) && incompletos.length > 0;
+            const listaClientes = Array.isArray(incompletos) ? incompletos : [];
+            const ativo = listaClientes.length > 0;
 
             alerta.style.display = ativo ? 'flex' : 'none';
             alerta.classList.toggle('active', ativo);
@@ -2176,7 +2177,9 @@ class App {
 
         try {
             const linhas = await db.listarRateiosDetalhados();
-            this.rateioClientesManutencao = this.agruparRateiosManutencao(linhas);
+            const linhasNormalizadas = Array.isArray(linhas) ? linhas : [];
+
+            this.rateioClientesManutencao = this.agruparRateiosManutencao(linhasNormalizadas);
             this.renderRateioManutencao();
             await this.atualizarAlertaRateioGlobal();
 
