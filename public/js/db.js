@@ -2101,8 +2101,17 @@ class TursoDatabase {
 
             const linhas = linhasBrutas.filter(row => row && typeof row === 'object');
 
+            // Buscar nomes dos clientes do banco comercial
+            const codigosClientes = [...new Set(linhas.map(row => row.cliente_codigo).filter(Boolean))];
+            const clientesMap = await this.getClientesPorCodigo(codigosClientes);
+
             return linhas.map(row => ({
                 cliente_codigo: row.cliente_codigo || '',
+                cliente_nome: clientesMap[row.cliente_codigo]?.nome || '',
+                cliente_fantasia: clientesMap[row.cliente_codigo]?.fantasia || '',
+                cliente_cidade: clientesMap[row.cliente_codigo]?.cidade || '',
+                cliente_estado: clientesMap[row.cliente_codigo]?.estado || '',
+                cnpj_cpf: clientesMap[row.cliente_codigo]?.cnpj_cpf || '',
                 rat_repositor_id: row.rat_repositor_id || '',
                 rat_percentual: row.rat_percentual || 0,
                 rat_vigencia_inicio: normalizarDataISO(row.rat_vigencia_inicio) || null,

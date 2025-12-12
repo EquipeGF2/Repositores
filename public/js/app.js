@@ -2804,6 +2804,7 @@ class App {
     atualizarEstadoBotoesConsultaRoteiro() {
         const btnExportarPDF = document.getElementById('btnExportarPDF');
         const btnExportarXLS = document.getElementById('btnExportarXLS');
+        const btnEnviarWhatsApp = document.getElementById('btnEnviarWhatsApp');
         const { repositorId, cidade, supervisor, representante } = this.coletarFiltrosConsultaRoteiro();
         const temResultados = Array.isArray(this.resultadosConsultaRoteiro) && this.resultadosConsultaRoteiro.length > 0;
 
@@ -2815,6 +2816,12 @@ class App {
             ? (temResultados ? '' : 'Realize uma busca antes de exportar')
             : 'Selecione um repositor ou uma cidade';
 
+        // WhatsApp exige que seja apenas um repositor
+        const whatsappDisabled = !repositorId || !temResultados;
+        const whatsappTitle = !repositorId
+            ? 'Selecione um repositor específico para enviar por WhatsApp'
+            : (temResultados ? '' : 'Realize uma busca antes de enviar');
+
         if (btnExportarPDF) {
             btnExportarPDF.disabled = disabled;
             btnExportarPDF.title = title;
@@ -2823,17 +2830,23 @@ class App {
             btnExportarXLS.disabled = disabled;
             btnExportarXLS.title = title;
         }
+        if (btnEnviarWhatsApp) {
+            btnEnviarWhatsApp.disabled = whatsappDisabled;
+            btnEnviarWhatsApp.title = whatsappTitle;
+        }
     }
 
     async inicializarConsultaRoteiro() {
         const btnBuscar = document.getElementById('btnBuscarConsultaRoteiro');
         const btnExportarPDF = document.getElementById('btnExportarPDF');
         const btnExportarXLS = document.getElementById('btnExportarXLS');
+        const btnEnviarWhatsApp = document.getElementById('btnEnviarWhatsApp');
         const btnConfirmarExportacao = document.getElementById('btnConfirmarExportacaoRoteiro');
 
         if (btnBuscar) btnBuscar.onclick = () => this.buscarConsultaRoteiro();
         if (btnExportarPDF) btnExportarPDF.onclick = () => this.abrirModalExportacaoRoteiro('pdf');
         if (btnExportarXLS) btnExportarXLS.onclick = () => this.abrirModalExportacaoRoteiro('xls');
+        if (btnEnviarWhatsApp) btnEnviarWhatsApp.onclick = () => this.enviarRoteiroWhatsApp();
         if (btnConfirmarExportacao) btnConfirmarExportacao.onclick = () => this.confirmarExportacaoRoteiro();
 
         ['filtro_repositor_consulta_roteiro', 'filtro_dia_consulta_roteiro', 'filtro_data_inicio_consulta_roteiro', 'filtro_data_fim_consulta_roteiro', 'filtro_cidade_consulta_roteiro', 'filtro_supervisor_consulta_roteiro', 'filtro_representante_consulta_roteiro'].forEach(id => {
@@ -3328,6 +3341,154 @@ class App {
         }
 
         this.showNotification('Exportação concluída com base nos filtros aplicados.', 'success');
+    }
+
+    gerarMensagemWhatsAppRoteiro(registros = [], repositorInfo = {}, dataAtualizacao = '') {
+        const diasSemana = ['SEGUNDA-FEIRA', 'TERÇA-FEIRA', 'QUARTA-FEIRA', 'QUINTA-FEIRA', 'SEXTA-FEIRA', 'SÁBADO', 'DOMINGO'];
+        const diasAbrev = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB', 'DOM'];
+
+        // Agrupar por dia e cidade
+        const agrupado = {};
+        registros.forEach(reg => {
+            const diaIdx = parseInt(reg.rot_dia_semana) - 1;
+            const dia = diasAbrev[diaIdx] || 'N/A';
+            const cidade = (reg.rot_cidade || 'SEM CIDADE').toUpperCase();
+            const ordem = reg.rot_ordem_cidade || 0;
+
+            if (!agrupado[dia]) agrupado[dia] = {};
+            if (!agrupado[dia][cidade]) agrupado[dia][cidade] = [];
+
+            agrupado[dia][cidade].push({ ...reg, ordem });
+        });
+
+        // Ordenar clientes por ordem dentro de cada cidade
+        Object.keys(agrupado).forEach(dia => {
+            Object.keys(agrupado[dia]).forEach(cidade => {
+                agrupado[dia][cidade].sort((a, b) => (a.ordem || 0) - (b.ordem || 0));
+            });
+        });
+
+        // Construir mensagem
+        let mensagem = `📋 *ROTEIRO DE VISITAS*\n\n`;
+        mensagem += `👤 ${repositorInfo.repo_cod} - ${repositorInfo.repo_nome || ''}\n`;
+
+        if (repositorInfo.rep_telefone) {
+            mensagem += `📞 ${repositorInfo.rep_telefone}\n`;
+        }
+        if (repositorInfo.rep_email) {
+            mensagem += `📧 ${repositorInfo.rep_email}\n`;
+        }
+
+        mensagem += `📅 Atualizado em: ${dataAtualizacao}\n`;
+        mensagem += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+        // Iterar pelos dias em ordem
+        [1, 2, 3, 4, 5, 6, 7].forEach(diaNum => {
+            const diaAbrev = diasAbrev[diaNum - 1];
+            const diaCompleto = diasSemana[diaNum - 1];
+
+            if (!agrupado[diaAbrev]) return;
+
+            mensagem += `*${diaCompleto}*\n\n`;
+
+            // Agrupar por cidade
+            const cidades = Object.keys(agrupado[diaAbrev]).sort();
+            cidades.forEach(cidade => {
+                mensagem += `📍 *${cidade}*\n\n`;
+
+                const clientes = agrupado[diaAbrev][cidade];
+                clientes.forEach((cliente, idx) => {
+                    const numeroOrdem = idx + 1;
+                    const emoji = numeroOrdem <= 9 ? `${numeroOrdem}️⃣` : `${numeroOrdem}.`;
+
+                    const nomeCliente = cliente.cliente_dados?.fantasia || cliente.cliente_dados?.nome || cliente.rot_cliente_fantasia || cliente.rot_cliente_codigo;
+                    mensagem += `${emoji} *${nomeCliente}*\n`;
+
+                    if (cliente.cliente_dados?.endereco || cliente.rot_endereco) {
+                        const endereco = cliente.cliente_dados?.endereco || cliente.rot_endereco;
+                        const bairro = cliente.cliente_dados?.bairro || cliente.rot_bairro || '';
+                        mensagem += `   📌 ${endereco}`;
+                        if (bairro) mensagem += ` - ${bairro}`;
+                        mensagem += `\n`;
+                    }
+
+                    mensagem += `   🏢 Cód: ${cliente.rot_cliente_codigo}\n`;
+
+                    if (cliente.rat_percentual) {
+                        mensagem += `   📊 Rateio: ${cliente.rat_percentual}%\n`;
+                    }
+
+                    mensagem += `\n`;
+                });
+            });
+
+            mensagem += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+        });
+
+        // Resumo
+        const totalClientes = registros.length;
+        const cidadesUnicas = [...new Set(registros.map(r => r.rot_cidade))].length;
+        const diasAtivos = Object.keys(agrupado).length;
+
+        mensagem += `📊 *RESUMO*\n`;
+        mensagem += `✅ Total de clientes: ${totalClientes}\n`;
+        mensagem += `📍 Total de cidades: ${cidadesUnicas}\n`;
+        mensagem += `🗓️ Dias úteis: ${diasAtivos}\n`;
+
+        return mensagem;
+    }
+
+    async enviarRoteiroWhatsApp() {
+        const filtros = this.coletarFiltrosConsultaRoteiro();
+
+        if (!filtros.repositorId) {
+            this.showNotification('Selecione um repositor para enviar o roteiro.', 'warning');
+            return;
+        }
+
+        if (!this.resultadosConsultaRoteiro || this.resultadosConsultaRoteiro.length === 0) {
+            this.showNotification('Realize uma busca antes de enviar para o WhatsApp.', 'warning');
+            return;
+        }
+
+        await this.carregarRepositoresCache();
+
+        const registros = this.ordenarRegistrosRoteiro(
+            (this.resultadosConsultaRoteiro || []).filter(r => Number(r.rot_repositor_id) === Number(filtros.repositorId))
+        );
+
+        if (!registros || registros.length === 0) {
+            this.showNotification('Nenhum registro encontrado para este repositor.', 'warning');
+            return;
+        }
+
+        const repositorInfo = (this.repositoresCache || []).find(r => Number(r.repo_cod) === Number(filtros.repositorId)) ||
+            { repo_cod: filtros.repositorId, repo_nome: 'Repositor' };
+
+        const dataAtualizacao = await this.obterUltimaAtualizacaoRepositor(filtros.repositorId, registros);
+        const dataFormatada = dataAtualizacao || new Date().toLocaleDateString('pt-BR');
+
+        const mensagem = this.gerarMensagemWhatsAppRoteiro(registros, repositorInfo, dataFormatada);
+
+        // Buscar telefone do repositor
+        let telefone = repositorInfo.rep_telefone || repositorInfo.rep_contato_telefone || '';
+        telefone = telefone.replace(/\D/g, ''); // Remove tudo que não é número
+
+        if (!telefone) {
+            this.showNotification('Telefone do repositor não encontrado. Configure o telefone no cadastro.', 'warning');
+            return;
+        }
+
+        // Garantir que tem código do país
+        if (!telefone.startsWith('55') && telefone.length === 11) {
+            telefone = '55' + telefone;
+        }
+
+        const mensagemEncoded = encodeURIComponent(mensagem);
+        const urlWhatsApp = `https://wa.me/${telefone}?text=${mensagemEncoded}`;
+
+        window.open(urlWhatsApp, '_blank');
+        this.showNotification('WhatsApp aberto com a mensagem do roteiro!', 'success');
     }
 
     gerarPDFMapaConsolidado(registros = [], repositorInfo = {}, dataGeracaoTexto = '', dataReferencia = new Date()) {
