@@ -3344,22 +3344,28 @@ class App {
     }
 
     gerarMensagemWhatsAppRoteiro(registros = [], repositorInfo = {}, dataAtualizacao = '') {
+        console.log('Gerando mensagem WhatsApp com', registros.length, 'registros');
+        console.log('Primeiro registro:', registros[0]);
+
         const diasSemana = ['SEGUNDA-FEIRA', 'TERÇA-FEIRA', 'QUARTA-FEIRA', 'QUINTA-FEIRA', 'SEXTA-FEIRA', 'SÁBADO', 'DOMINGO'];
         const diasAbrev = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB', 'DOM'];
 
         // Agrupar por dia e cidade
         const agrupado = {};
         registros.forEach(reg => {
-            const diaIdx = parseInt(reg.rot_dia_semana) - 1;
-            const dia = diasAbrev[diaIdx] || 'N/A';
-            const cidade = (reg.rot_cidade || 'SEM CIDADE').toUpperCase();
-            const ordem = reg.rot_ordem_cidade || 0;
+            const diaNum = reg.rot_dia_semana || reg.dia_semana || 1;
+            const diaIdx = parseInt(diaNum) - 1;
+            const dia = diasAbrev[diaIdx] || 'SEG';
+            const cidade = (reg.rot_cidade || reg.cidade || 'SEM CIDADE').toUpperCase();
+            const ordem = reg.rot_ordem_cidade || reg.ordem_cidade || 0;
 
             if (!agrupado[dia]) agrupado[dia] = {};
             if (!agrupado[dia][cidade]) agrupado[dia][cidade] = [];
 
             agrupado[dia][cidade].push({ ...reg, ordem });
         });
+
+        console.log('Agrupado:', agrupado);
 
         // Ordenar clientes por ordem dentro de cada cidade
         Object.keys(agrupado).forEach(dia => {
@@ -3423,7 +3429,7 @@ class App {
 
         // Resumo
         const totalClientes = registros.length;
-        const cidadesUnicas = [...new Set(registros.map(r => r.rot_cidade))].length;
+        const cidadesUnicas = [...new Set(registros.map(r => r.rot_cidade || r.cidade))].filter(Boolean).length;
         const diasAtivos = Object.keys(agrupado).length;
 
         mensagem += `📊 *RESUMO*\n`;
