@@ -2059,8 +2059,12 @@ class TursoDatabase {
                 return [];
             }
 
-            const resultado = (await this.mainClient.execute({
-                sql: `
+            // Garantir que as tabelas existem
+            await this.ensureRateioTables();
+
+            let resultado = null;
+            try {
+                const sqlQuery = `
                     SELECT
                         rat.rat_cliente_codigo AS cliente_codigo,
                         rat.rat_repositor_id,
@@ -2079,27 +2083,45 @@ class TursoDatabase {
                     LEFT JOIN cliente cli ON cli.cliente = rat.rat_cliente_codigo
                     LEFT JOIN cad_repositor repo ON repo.repo_cod = rat.rat_repositor_id
                     ORDER BY cliente_nome, rat.rat_cliente_codigo, repo.repo_nome
-                `
-            })) || {};
+                `;
+
+                resultado = await this.mainClient.execute(sqlQuery);
+            } catch (execError) {
+                console.error('Erro ao executar query de rateios:', execError);
+                return [];
+            }
+
+            if (!resultado) {
+                return [];
+            }
 
             const linhasBrutas = Array.isArray(resultado)
                 ? resultado
                 : Array.isArray(resultado?.rows)
                     ? resultado.rows
                     : [];
-            const linhas = linhasBrutas.filter(Boolean);
 
-            return linhas.map(row => {
-                if (!row || typeof row !== 'object') return null;
-                return {
-                    ...row,
-                    cnpj_cpf: documentoParaExibicao(row?.cnpj_cpf),
-                    rat_vigencia_inicio: normalizarDataISO(row?.rat_vigencia_inicio),
-                    rat_vigencia_fim: normalizarDataISO(row?.rat_vigencia_fim),
-                    rat_criado_em: normalizarDataISO(row?.rat_criado_em),
-                    rat_atualizado_em: normalizarDataISO(row?.rat_atualizado_em)
-                };
-            }).filter(Boolean);
+            if (!linhasBrutas || linhasBrutas.length === 0) {
+                return [];
+            }
+
+            const linhas = linhasBrutas.filter(row => row && typeof row === 'object');
+
+            return linhas.map(row => ({
+                cliente_codigo: row.cliente_codigo || '',
+                rat_repositor_id: row.rat_repositor_id || '',
+                rat_percentual: row.rat_percentual || 0,
+                rat_vigencia_inicio: normalizarDataISO(row.rat_vigencia_inicio) || null,
+                rat_vigencia_fim: normalizarDataISO(row.rat_vigencia_fim) || null,
+                rat_criado_em: normalizarDataISO(row.rat_criado_em) || null,
+                rat_atualizado_em: normalizarDataISO(row.rat_atualizado_em) || null,
+                cliente_nome: row.cliente_nome || '',
+                cliente_fantasia: row.cliente_fantasia || '',
+                cliente_cidade: row.cliente_cidade || '',
+                cliente_estado: row.cliente_estado || '',
+                cnpj_cpf: documentoParaExibicao(row.cnpj_cpf) || '',
+                repo_nome: row.repo_nome || ''
+            }));
         } catch (error) {
             console.error('Erro ao buscar rateios para manutenção:', error);
             return [];
@@ -2115,8 +2137,12 @@ class TursoDatabase {
                 return [];
             }
 
-            const resultado = (await this.mainClient.execute({
-                sql: `
+            // Garantir que as tabelas existem
+            await this.ensureRateioTables();
+
+            let resultado = null;
+            try {
+                const sqlQuery = `
                     SELECT
                         rat.rat_cliente_codigo AS cliente_codigo,
                         COALESCE(SUM(rat.rat_percentual), 0) AS total_percentual,
@@ -2127,23 +2153,36 @@ class TursoDatabase {
                     GROUP BY rat.rat_cliente_codigo
                     HAVING ABS(COALESCE(SUM(rat.rat_percentual), 0) - 100) > 0.01
                     ORDER BY cliente_nome
-                `
-            })) || {};
+                `;
+
+                resultado = await this.mainClient.execute(sqlQuery);
+            } catch (execError) {
+                console.error('Erro ao executar query de clientes incompletos:', execError);
+                return [];
+            }
+
+            if (!resultado) {
+                return [];
+            }
 
             const linhasBrutas = Array.isArray(resultado)
                 ? resultado
                 : Array.isArray(resultado?.rows)
                     ? resultado.rows
                     : [];
-            const linhas = linhasBrutas.filter(Boolean);
 
-            return linhas.map(linha => {
-                if (!linha || typeof linha !== 'object') return null;
-                return {
-                    ...linha,
-                    total_percentual: Number(linha?.total_percentual || 0)
-                };
-            }).filter(Boolean);
+            if (!linhasBrutas || linhasBrutas.length === 0) {
+                return [];
+            }
+
+            const linhas = linhasBrutas.filter(row => row && typeof row === 'object');
+
+            return linhas.map(linha => ({
+                cliente_codigo: linha.cliente_codigo || '',
+                total_percentual: Number(linha.total_percentual || 0),
+                cliente_nome: linha.cliente_nome || '',
+                cliente_fantasia: linha.cliente_fantasia || ''
+            }));
         } catch (error) {
             console.error('Erro ao buscar clientes com rateio incompleto:', error);
             return [];
