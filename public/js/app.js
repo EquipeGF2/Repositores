@@ -38,6 +38,7 @@ class App {
         this.clientesSelecionadosCidadeAtual = [];
         this.buscaClientesModal = '';
         this.rateioPendentes = {};
+        this.vendasCentralizadasPendentes = {};
         this.rateioModalContexto = null;
         this.formClienteRoteiro = {
             ordemSelecionada: 1,
@@ -708,6 +709,7 @@ class App {
             this.clientesSelecionadosCidadeAtual = [];
             this.buscaClientesModal = '';
             this.rateioPendentes = {};
+            this.vendasCentralizadasPendentes = {};
             this.rateioModalContexto = null;
             this.resetarFormularioClienteRoteiro();
 
@@ -1508,9 +1510,12 @@ class App {
         const ajustados = selecionados.map(cliente => {
             const pendente = this.rateioPendentes?.[cliente.rot_cli_id];
             const ativo = pendente?.ativo ?? !!cliente.rot_possui_rateio;
+            const pendenteVenda = this.vendasCentralizadasPendentes?.[cliente.rot_cli_id];
+            const vendaCentralizada = pendenteVenda?.ativo ?? !!cliente.rot_venda_centralizada;
             return {
                 ...cliente,
                 rot_possui_rateio: ativo ? 1 : 0,
+                rot_venda_centralizada: vendaCentralizada ? 1 : 0,
                 rateio_percentual: pendente?.percentual ?? cliente.rateio_percentual ?? null
             };
         });
@@ -1570,6 +1575,7 @@ class App {
                         <th class="col-nome">Nome</th>
                         <th class="col-fantasia">Fantasia</th>
                         <th class="col-rateio">Rateio</th>
+                        <th class="col-venda">Venda centralizada</th>
                         <th class="col-cnpj">CNPJ/CPF</th>
                         <th class="col-endereco">Endereço</th>
                         <th>Bairro</th>
@@ -1611,6 +1617,18 @@ class App {
                                         <span class="rateio-toggle-slider"></span>
                                     </label>
                                 </div>
+                            </td>
+                            <td class="col-venda">
+                                <label class="rateio-toggle-wrapper" title="Marcar venda centralizada">
+                                    <input
+                                        type="checkbox"
+                                        class="venda-centralizada-toggle"
+                                        data-cli-id="${cliente.rot_cli_id}"
+                                        data-cliente="${cliente.rot_cliente_codigo}"
+                                        ${cliente.rot_venda_centralizada ? 'checked' : ''}
+                                    >
+                                    <span class="rateio-toggle-slider"></span>
+                                </label>
                             </td>
                             <td class="col-cnpj">${documentoParaExibicao(dados.cnpj_cpf) || '-'}</td>
                             <td>${enderecoCompleto || '-'}</td>
@@ -1672,6 +1690,23 @@ class App {
                     });
                     this.carregarClientesRoteiro();
                 }
+            });
+        });
+
+        tabela.querySelectorAll('.venda-centralizada-toggle').forEach(toggle => {
+            toggle.addEventListener('change', () => {
+                const cliente = clientesPorId.get(String(toggle.dataset.cliId));
+                if (!cliente) return;
+
+                this.definirVendaCentralizadaPendente({
+                    rotCliId: cliente.rot_cli_id,
+                    clienteCodigo: cliente.rot_cliente_codigo,
+                    repositorId: this.contextoRoteiro?.repo_cod,
+                    ativo: toggle.checked
+                });
+
+                cliente.rot_venda_centralizada = toggle.checked ? 1 : 0;
+                this.carregarClientesRoteiro();
             });
         });
 
@@ -1747,6 +1782,7 @@ class App {
     async salvarRoteiroCompleto() {
         try {
             await this.aplicarRateiosPendentes();
+            await this.aplicarVendasCentralizadasPendentes();
 
             // Recarregar dados para sincronizar
             await this.carregarCidadesRoteiro();
@@ -1787,6 +1823,19 @@ class App {
         }
 
         this.rateioPendentes = {};
+    }
+
+    async aplicarVendasCentralizadasPendentes() {
+        const pendentes = Object.values(this.vendasCentralizadasPendentes || {});
+        if (!pendentes.length) return;
+
+        const usuario = this.usuarioLogado?.username || 'desconhecido';
+
+        for (const item of pendentes) {
+            await db.atualizarVendaCentralizada(item.rotCliId, item.ativo, usuario);
+        }
+
+        this.vendasCentralizadasPendentes = {};
     }
 
     async abrirModalAdicionarCliente() {
@@ -1966,6 +2015,19 @@ class App {
         this.marcarRoteiroPendente();
     }
 
+    definirVendaCentralizadaPendente({ rotCliId, clienteCodigo, repositorId, ativo }) {
+        if (!rotCliId || !clienteCodigo || !repositorId) return;
+
+        this.vendasCentralizadasPendentes[rotCliId] = {
+            rotCliId,
+            clienteCodigo,
+            repositorId,
+            ativo: !!ativo
+        };
+
+        this.marcarRoteiroPendente();
+    }
+
     abrirModalRateioRapido(cliente) {
         const modal = document.getElementById('modalRateioRapido');
         const percentualInput = document.getElementById('rateioRapidoPercentual');
@@ -2060,8 +2122,9 @@ class App {
 
     agruparRateiosManutencao(linhas = []) {
         const mapa = new Map();
+        const registros = Array.isArray(linhas) ? linhas : [];
 
-        linhas.forEach(item => {
+        registros.forEach(item => {
             const codigo = item.cliente_codigo || item.rat_cliente_codigo || item.cliente;
             if (!codigo) return;
             const chave = String(codigo);
@@ -2083,7 +2146,9 @@ class App {
                 repositor_nome: item.repo_nome || item.rat_repositor_id,
                 rat_percentual: item.rat_percentual === null || item.rat_percentual === undefined ? '' : Number(item.rat_percentual),
                 rat_vigencia_inicio: item.rat_vigencia_inicio || '',
-                rat_vigencia_fim: item.rat_vigencia_fim || ''
+                rat_vigencia_fim: item.rat_vigencia_fim || '',
+                rat_criado_em: item.rat_criado_em || '',
+                rat_atualizado_em: item.rat_atualizado_em || ''
             });
         });
 
@@ -2166,6 +2231,9 @@ class App {
                                     <tr>
                                         <th>Repositor</th>
                                         <th>Percentual (%)</th>
+                                        <th>Data início</th>
+                                        <th>Data fim</th>
+                                        <th>Data atualização</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -2178,11 +2246,19 @@ class App {
                                                     <span class="input-sufixo">%</span>
                                                 </div>
                                             </td>
+                                            <td>
+                                                <input type="date" class="rateio-vigencia-inicio" data-cliente="${cliente.cliente}" data-index="${index}" value="${linha.rat_vigencia_inicio || ''}">
+                                            </td>
+                                            <td>
+                                                <input type="date" class="rateio-vigencia-fim" data-cliente="${cliente.cliente}" data-index="${index}" value="${linha.rat_vigencia_fim || ''}">
+                                            </td>
+                                            <td>${this.formatarDataSimples(linha.rat_atualizado_em || linha.rat_criado_em) || '-'}</td>
                                         </tr>
                                     `).join('')}
                                     <tr class="rateio-total-linha ${ok ? '' : 'alerta'}">
                                         <td>Total % do cliente</td>
                                         <td data-total-cliente-soma="${cliente.cliente}">${total.toFixed(2)}%</td>
+                                        <td colspan="3"></td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -2204,6 +2280,22 @@ class App {
             });
         });
 
+        container.querySelectorAll('.rateio-vigencia-inicio').forEach(input => {
+            const idx = Number(input.dataset.index);
+            const cliente = input.dataset.cliente;
+            input.addEventListener('change', () => {
+                this.atualizarVigenciaInicioManutencao(cliente, idx, input.value || '');
+            });
+        });
+
+        container.querySelectorAll('.rateio-vigencia-fim').forEach(input => {
+            const idx = Number(input.dataset.index);
+            const cliente = input.dataset.cliente;
+            input.addEventListener('change', () => {
+                this.atualizarVigenciaFimManutencao(cliente, idx, input.value || '');
+            });
+        });
+
         container.querySelectorAll('[data-salvar-rateio]').forEach(btn => {
             btn.addEventListener('click', () => this.salvarRateioManutencao(btn.dataset.salvarRateio));
         });
@@ -2215,6 +2307,22 @@ class App {
 
         cliente.linhas[index].rat_percentual = valor;
         this.atualizarResumoRateioCliente(clienteCodigo);
+    }
+
+    atualizarVigenciaInicioManutencao(clienteCodigo, index, valor) {
+        const cliente = (this.rateioClientesManutencao || []).find(c => String(c.cliente) === String(clienteCodigo));
+        if (!cliente || !cliente.linhas[index]) return;
+
+        cliente.linhas[index].rat_vigencia_inicio = normalizarDataISO(valor) || '';
+        this.marcarRoteiroPendente();
+    }
+
+    atualizarVigenciaFimManutencao(clienteCodigo, index, valor) {
+        const cliente = (this.rateioClientesManutencao || []).find(c => String(c.cliente) === String(clienteCodigo));
+        if (!cliente || !cliente.linhas[index]) return;
+
+        cliente.linhas[index].rat_vigencia_fim = normalizarDataISO(valor) || '';
+        this.marcarRoteiroPendente();
     }
 
     atualizarResumoRateioCliente(clienteCodigo) {
@@ -2917,6 +3025,32 @@ class App {
         return `${dia}_${mes}_${ano}`;
     }
 
+    formatarDataCompacta(data = new Date()) {
+        const instancia = data instanceof Date ? data : new Date(data);
+        if (!instancia || Number.isNaN(instancia.getTime())) return '';
+
+        const dia = String(instancia.getDate()).padStart(2, '0');
+        const mes = String(instancia.getMonth() + 1).padStart(2, '0');
+        const ano = String(instancia.getFullYear()).slice(-2);
+
+        return `${dia}${mes}${ano}`;
+    }
+
+    formatarNomeArquivoMapa(repositorInfo = {}, dataReferencia = new Date()) {
+        const codigo = repositorInfo.repo_cod || repositorInfo.repositorId || 'repositorio';
+        const nomeBruto = repositorInfo.repo_nome || repositorInfo.repositorNome || '';
+        const nomeLimpo = nomeBruto
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-zA-Z0-9\s-]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toUpperCase() || 'REPOSITOR';
+
+        const dataCompacta = this.formatarDataCompacta(dataReferencia);
+        return `${codigo} - ${nomeLimpo}_MapaRoteiro_03_${dataCompacta}.pdf`;
+    }
+
     sanitizarTextoParaArquivo(texto = '') {
         return (texto || '')
             .normalize('NFD')
@@ -2925,6 +3059,32 @@ class App {
             .replace(/\s+/g, ' ')
             .trim()
             .replace(/\s/g, '_');
+    }
+
+    agruparRegistrosPorRepositor(registros = []) {
+        const mapa = new Map();
+
+        (registros || []).forEach(linha => {
+            const chave = linha?.rot_repositor_id || linha?.repo_cod;
+            if (!chave) return;
+
+            if (!mapa.has(chave)) {
+                mapa.set(chave, {
+                    repositorId: chave,
+                    repositorNome: linha.repo_nome || '',
+                    linhas: []
+                });
+            }
+
+            mapa.get(chave).linhas.push(linha);
+        });
+
+        return Array.from(mapa.values());
+    }
+
+    formatarDataAtualizacaoRateio(rateioAtualizadoEm, rateioCriadoEm) {
+        const data = normalizarDataISO(rateioAtualizadoEm) || normalizarDataISO(rateioCriadoEm);
+        return this.formatarDataCurta(data) || '-';
     }
 
     formatarPercentualValor(valor) {
@@ -3167,16 +3327,27 @@ class App {
         this.showNotification('Exportação concluída com base nos filtros aplicados.', 'success');
     }
 
-    gerarPDFMapaConsolidado(registros = [], dataGeracaoTexto = '', dataNome = '') {
+    gerarPDFMapaConsolidado(registros = [], repositorInfo = {}, dataGeracaoTexto = '', dataReferencia = new Date()) {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF('landscape');
+
+        const repositorLabel = repositorInfo?.repositorId
+            ? `${repositorInfo.repositorId} - ${repositorInfo.repositorNome || ''}`.trim()
+            : '';
 
         doc.setFontSize(14);
         doc.setFont(undefined, 'bold');
         doc.text('Mapa consolidado de roteiro e rateio', 14, 16);
         doc.setFontSize(10);
         doc.setFont(undefined, 'normal');
-        doc.text(`Gerado em: ${dataGeracaoTexto || '-'}`, 14, 24);
+
+        if (dataGeracaoTexto) {
+            doc.text(dataGeracaoTexto, 14, 24);
+        }
+
+        if (repositorLabel) {
+            doc.text(`Repositor: ${repositorLabel}`, 14, 30);
+        }
 
         const blocosPorCidade = new Map();
 
@@ -3184,11 +3355,8 @@ class App {
             const cliente = item.cliente_dados || {};
             const cidadeChave = (item.rot_cidade || cliente.cidade || 'Sem cidade').toUpperCase();
             const estado = cliente.estado || '';
-            const rateioInfo = this.calcularSituacaoRateioCliente({
-                qtdeRepositores: item.qtde_repositores,
-                somaPercentuais: item.soma_percentuais
-            });
 
+            const percentual = Number(item.rat_percentual || 0);
             const linha = {
                 cliente: `${item.rot_cliente_codigo} - ${(cliente.nome || cliente.fantasia || '-').trim()}`,
                 bairro: cliente.bairro || '-',
@@ -3198,10 +3366,10 @@ class App {
                 representante: item.rep_representante_codigo
                     ? `${item.rep_representante_codigo} - ${item.rep_representante_nome || '-'}`
                     : '-',
-                possuiRateio: rateioInfo.possuiRateio ? 'Sim' : 'Não',
-                percentualRepositor: this.formatarPercentualValor(item.rat_percentual),
-                qtdeRepositores: rateioInfo.quantidade,
-                situacaoRateio: rateioInfo.situacao,
+                percentualRepositor: percentual ? `${percentual.toFixed(2).replace('.', ',')}%` : '-',
+                qtdeRepositores: item.qtde_repositores ? item.qtde_repositores : '-',
+                dataAtualizacao: this.formatarDataAtualizacaoRateio(item.rat_atualizado_em, item.rat_criado_em),
+                vendaCentralizada: item.rot_venda_centralizada ? 'Sim' : '-',
                 cidadeLabel: estado ? `${cidadeChave} - ${estado}` : cidadeChave
             };
 
@@ -3212,8 +3380,19 @@ class App {
             blocosPorCidade.get(cidadeChave).linhas.push(linha);
         });
 
-        let posicaoY = 32;
-        const colunas = ['Cliente', 'Bairro', 'Dia(s) da semana', 'Repositor', 'Supervisor', 'Representante', 'Possui rateio?', '% rateio', 'Qtde repos', 'Situação rateio'];
+        let posicaoY = repositorLabel ? 38 : 32;
+        const colunas = [
+            'Cliente',
+            'Bairro',
+            'Dia(s) da semana',
+            'Repositor',
+            'Supervisor',
+            'Representante',
+            '% rateio deste repositor',
+            'Quantidade de repositores do cliente',
+            'Data de atualização',
+            'Venda centralizada'
+        ];
 
         Array.from(blocosPorCidade.entries()).forEach(([cidade, dados]) => {
             if (posicaoY > doc.internal.pageSize.getHeight() - 60) {
@@ -3238,20 +3417,20 @@ class App {
                         linha.repositor,
                         linha.supervisor,
                         linha.representante,
-                        linha.possuiRateio,
                         linha.percentualRepositor,
                         linha.qtdeRepositores,
-                        linha.situacaoRateio
+                        linha.dataAtualizacao,
+                        linha.vendaCentralizada
                     ]),
                     styles: { fontSize: 8, cellPadding: 3 },
                     theme: 'grid',
                     margin: { left: 14, right: 14 },
-                    headStyles: { fillColor: [0, 98, 204] },
+                    headStyles: { fillColor: [0, 98, 204], halign: 'center', valign: 'middle' },
                     didDrawPage: () => {
                         doc.setFontSize(9);
                         doc.setFont(undefined, 'normal');
                         const posY = doc.internal.pageSize.getHeight() - 10;
-                        doc.text(`Gerado em: ${dataGeracaoTexto || '-'}`, 14, posY);
+                        doc.text(dataGeracaoTexto || '-', 14, posY);
                     }
                 });
 
@@ -3259,14 +3438,13 @@ class App {
             }
         });
 
-        const nomeArquivo = `Relatorio_03_Mapa_Roteiro_Rateio_${dataNome || this.formatarDataParaNomeArquivo(new Date())}.pdf`;
+        const nomeArquivo = this.formatarNomeArquivoMapa(repositorInfo, dataReferencia);
         doc.save(nomeArquivo);
     }
 
     async exportarMapaConsolidado({ filtros = {} } = {}) {
         const dataGeracao = new Date();
-        const dataGeracaoTexto = dataGeracao.toLocaleDateString('pt-BR');
-        const dataNome = this.formatarDataParaNomeArquivo(dataGeracao);
+        const dataGeracaoTexto = dataGeracao.toLocaleString('pt-BR');
 
         const registros = await db.consultarRoteiro({ ...filtros, incluirRateio: true });
         if (!registros || !registros.length) {
@@ -3275,8 +3453,21 @@ class App {
         }
 
         const registrosOrdenados = this.ordenarRegistrosRoteiro(registros);
-        this.gerarPDFMapaConsolidado(registrosOrdenados, dataGeracaoTexto, dataNome);
-        this.showNotification('Relatório consolidado gerado com sucesso.', 'success');
+        const grupos = this.agruparRegistrosPorRepositor(registrosOrdenados);
+
+        if (!grupos.length) {
+            this.showNotification('Não foi possível identificar repositores para gerar o modelo 3.', 'warning');
+            return;
+        }
+
+        grupos.forEach(grupo => {
+            this.gerarPDFMapaConsolidado(grupo.linhas, {
+                repositorId: grupo.repositorId,
+                repositorNome: grupo.repositorNome
+            }, dataGeracaoTexto, dataGeracao);
+        });
+
+        this.showNotification(`Relatório consolidado gerado para ${grupos.length} repositor(es).`, 'success');
     }
 
     gerarPDFRoteiroDetalhado(registros, repositorInfo, datasContexto, dataNome) {

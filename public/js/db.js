@@ -509,13 +509,45 @@ class TursoDatabase {
                 ON rat_cliente_repositor (rat_cliente_codigo)
             `);
 
+            await this.removerIndicesUnicosRateio();
+
             await this.mainClient.execute(`
                 CREATE UNIQUE INDEX IF NOT EXISTS uniq_rat_cliente_repositor
                 ON rat_cliente_repositor (rat_cliente_codigo, rat_repositor_id, IFNULL(rat_vigencia_inicio, ''), IFNULL(rat_vigencia_fim, ''))
             `);
+
+            await this.mainClient.execute(`
+                CREATE INDEX IF NOT EXISTS idx_rat_repositor
+                ON rat_cliente_repositor (rat_repositor_id)
+            `);
         } catch (error) {
             console.error('Erro ao garantir tabela de rateio:', error);
             throw error;
+        }
+    }
+
+    async removerIndicesUnicosRateio() {
+        try {
+            const listaIndices = await this.mainClient.execute("PRAGMA index_list('rat_cliente_repositor')");
+            const indices = Array.isArray(listaIndices?.rows) ? listaIndices.rows : [];
+
+            for (const indice of indices) {
+                if (!indice?.unique) continue;
+                if (indice.name === 'uniq_rat_cliente_repositor') continue;
+
+                const info = await this.mainClient.execute(`PRAGMA index_info('${indice.name}')`);
+                const colunas = (info?.rows || []).map(col => col.name);
+
+                const indiceIndividual = colunas.length === 1
+                    && (colunas[0] === 'rat_cliente_codigo' || colunas[0] === 'rat_repositor_id');
+
+                if (indiceIndividual) {
+                    const indiceNomeSeguro = indice.name.replace(/"/g, '');
+                    await this.mainClient.execute(`DROP INDEX IF EXISTS "${indiceNomeSeguro}"`);
+                }
+            }
+        } catch (error) {
+            console.warn('Aviso ao remover índices únicos de rateio:', error?.message || error);
         }
     }
 
@@ -1414,10 +1446,11 @@ class TursoDatabase {
         try {
             const result = await this.mainClient.execute({
                 sql: `
-                    SELECT 
+                    SELECT
                         cli.*,
                         cid.rot_repositor_id,
-                        CASE 
+                        cli.rot_venda_centralizada,
+                        CASE
                             WHEN EXISTS (
                                 SELECT 1
                                 FROM rat_cliente_repositor rat
@@ -1477,6 +1510,7 @@ class TursoDatabase {
         return clientesRoteiro.map(cliente => ({
             ...cliente,
             rot_possui_rateio: cliente.rot_possui_rateio ? 1 : 0,
+            rot_venda_centralizada: cliente.rot_venda_centralizada ? 1 : 0,
             cliente_dados: detalhes[cliente.rot_cliente_codigo] || null
         }));
     }
@@ -1493,19 +1527,27 @@ class TursoDatabase {
                   rc.rot_atualizado_em,
                   cli.rot_cliente_codigo,
                   cli.rot_ordem_visita,
+                  cli.rot_venda_centralizada,
                   r.repo_nome,
                   r.repo_cod,
                   r.rep_supervisor,
                   r.rep_representante_codigo,
                   r.rep_representante_nome,
                   rat.rat_percentual,
+                  rat.rat_atualizado_em,
+                  rat.rat_criado_em,
                   resumo.qtde_repositores,
                   resumo.soma_percentuais
             FROM rot_roteiro_cidade rc
             JOIN cad_repositor r ON r.repo_cod = rc.rot_repositor_id
             JOIN rot_roteiro_cliente cli ON cli.rot_cid_id = rc.rot_cid_id
             LEFT JOIN (
-                SELECT rat_cliente_codigo, rat_repositor_id, SUM(rat_percentual) AS rat_percentual
+                SELECT
+                    rat_cliente_codigo,
+                    rat_repositor_id,
+                    SUM(rat_percentual) AS rat_percentual,
+                    MAX(rat_atualizado_em) AS rat_atualizado_em,
+                    MAX(rat_criado_em) AS rat_criado_em
                 FROM rat_cliente_repositor
                 GROUP BY rat_cliente_codigo, rat_repositor_id
             ) rat ON rat.rat_cliente_codigo = cli.rot_cliente_codigo AND rat.rat_repositor_id = rc.rot_repositor_id
@@ -1582,6 +1624,9 @@ class TursoDatabase {
                 ...row,
                 rot_cidade: (row.rot_cidade || '').toUpperCase(),
                 rot_atualizado_em: normalizarDataISO(row.rot_atualizado_em),
+                rot_venda_centralizada: row.rot_venda_centralizada ? 1 : 0,
+                rat_atualizado_em: normalizarDataISO(row.rat_atualizado_em),
+                rat_criado_em: normalizarDataISO(row.rat_criado_em),
                 cliente_dados: detalhes[row.rot_cliente_codigo] || null
             }));
 
@@ -1915,6 +1960,49 @@ class TursoDatabase {
         await this.sincronizarRateioClienteRoteiro({ rotCliId, ativo: possuiRateio, percentual: 100, usuario });
     }
 
+    async atualizarVendaCentralizada(rotCliId, ativo, usuario = '') {
+        if (!rotCliId) throw new Error('Cliente não informado para atualizar venda centralizada.');
+
+        try {
+            const contexto = await this.mainClient.execute({
+                sql: `
+                    SELECT cli.rot_cliente_codigo, cid.rot_repositor_id, cid.rot_dia_semana, cid.rot_cidade
+                    FROM rot_roteiro_cliente cli
+                    JOIN rot_roteiro_cidade cid ON cid.rot_cid_id = cli.rot_cid_id
+                    WHERE cli.rot_cli_id = ?
+                `,
+                args: [rotCliId]
+            });
+
+            const info = contexto?.rows?.[0];
+            if (!info) {
+                throw new Error('Cliente do roteiro não encontrado para atualizar venda centralizada.');
+            }
+
+            await this.mainClient.execute({
+                sql: `
+                    UPDATE rot_roteiro_cliente
+                    SET rot_venda_centralizada = ?, rot_atualizado_em = CURRENT_TIMESTAMP
+                    WHERE rot_cli_id = ?
+                `,
+                args: [ativo ? 1 : 0, rotCliId]
+            });
+
+            await this.registrarAuditoriaRoteiro({
+                usuario,
+                repositorId: info.rot_repositor_id,
+                clienteCodigo: info.rot_cliente_codigo,
+                diaSemana: info.rot_dia_semana,
+                cidade: info.rot_cidade,
+                acao: 'VENDA_CENTRALIZADA',
+                detalhes: ativo ? 'Venda centralizada marcada' : 'Venda centralizada desmarcada'
+            });
+        } catch (error) {
+            console.error('Erro ao atualizar flag de venda centralizada:', error);
+            throw new Error('Não foi possível atualizar a flag de venda centralizada.');
+        }
+    }
+
     // ==================== RATEIO ====================
     async listarRateioPorCliente(clienteCodigo) {
         if (!clienteCodigo) return [];
@@ -1972,6 +2060,8 @@ class TursoDatabase {
                         rat.rat_percentual,
                         rat.rat_vigencia_inicio,
                         rat.rat_vigencia_fim,
+                        rat.rat_criado_em,
+                        rat.rat_atualizado_em,
                         cli.nome AS cliente_nome,
                         cli.fantasia AS cliente_fantasia,
                         cli.cidade AS cliente_cidade,
@@ -1990,7 +2080,10 @@ class TursoDatabase {
             return linhas.map(row => ({
                 ...row,
                 cnpj_cpf: documentoParaExibicao(row?.cnpj_cpf),
-                rat_vigencia_inicio: normalizarDataISO(row?.rat_vigencia_inicio)
+                rat_vigencia_inicio: normalizarDataISO(row?.rat_vigencia_inicio),
+                rat_vigencia_fim: normalizarDataISO(row?.rat_vigencia_fim),
+                rat_criado_em: normalizarDataISO(row?.rat_criado_em),
+                rat_atualizado_em: normalizarDataISO(row?.rat_atualizado_em)
             }));
         } catch (error) {
             console.error('Erro ao buscar rateios para manutenção:', error);
