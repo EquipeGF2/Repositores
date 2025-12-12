@@ -1117,6 +1117,14 @@ export const pages = {
                 <div class="card-body">
                     <div class="filter-bar filter-bar-wide">
                         <div class="filter-group">
+                            <label for="filtro_data_inicio_consulta_roteiro">Data Início</label>
+                            <input type="date" id="filtro_data_inicio_consulta_roteiro">
+                        </div>
+                        <div class="filter-group">
+                            <label for="filtro_data_fim_consulta_roteiro">Data Fim</label>
+                            <input type="date" id="filtro_data_fim_consulta_roteiro">
+                        </div>
+                        <div class="filter-group">
                             <label for="filtro_repositor_consulta_roteiro">Repositor</label>
                             <select id="filtro_repositor_consulta_roteiro">
                                 <option value="">Selecione</option>
@@ -1156,14 +1164,6 @@ export const pages = {
                                 <option value="">Todos</option>
                                 ${representanteOptions}
                             </select>
-                        </div>
-                        <div class="filter-group">
-                            <label for="filtro_data_inicio_consulta_roteiro">Data Início</label>
-                            <input type="date" id="filtro_data_inicio_consulta_roteiro">
-                        </div>
-                        <div class="filter-group">
-                            <label for="filtro_data_fim_consulta_roteiro">Data Fim</label>
-                            <input type="date" id="filtro_data_fim_consulta_roteiro">
                         </div>
                     </div>
 

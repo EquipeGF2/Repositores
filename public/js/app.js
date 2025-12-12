@@ -3528,6 +3528,11 @@ class App {
                     const numeroOrdem = idx + 1;
                     const emoji = numeroOrdem <= 9 ? `${numeroOrdem}️⃣` : `${numeroOrdem}.`;
 
+                    // Ordem de visita (real do cadastro)
+                    const ordemVisita = cliente.rot_ordem_visita || '';
+
+                    console.log(`Cliente ${cliente.rot_cliente_codigo}: rot_ordem_visita =`, ordemVisita);
+
                     // Nome do cliente
                     const nomeCliente = cliente.cliente_dados?.fantasia
                         || cliente.cliente_dados?.nome
@@ -3549,14 +3554,12 @@ class App {
                         mensagem += `\n`;
                     }
 
-                    // Código do cliente e ordem de visita
+                    // Código do cliente
                     const codigo = cliente.rot_cliente_codigo || cliente.cliente_codigo || '';
-                    const ordemVisita = cliente.rot_ordem_visita || '';
-
                     if (codigo) {
                         mensagem += `🏢 Cód: ${codigo}`;
                         if (ordemVisita) {
-                            mensagem += ` | Visita: ${ordemVisita}`;
+                            mensagem += ` | Ordem: ${ordemVisita}`;
                         }
                         mensagem += `\n`;
                     }
