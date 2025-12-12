@@ -3498,11 +3498,16 @@ class App {
             diasComClientes++;
             mensagem += `*${diasSemana[diaNum]}*\n\n`;
 
-            // Iterar pelas cidades (ordenadas alfabeticamente)
-            const cidades = Object.keys(agrupado[diaNum]).sort();
+            // Ordenar cidades pela ordem cadastrada
+            const cidadesComOrdem = Object.keys(agrupado[diaNum]).map(cidade => {
+                // Pegar ordem da primeira entrada da cidade (todas têm a mesma ordem)
+                const ordemCidade = agrupado[diaNum][cidade][0]?.rot_ordem_cidade || 999;
+                return { cidade, ordem: parseInt(ordemCidade) };
+            }).sort((a, b) => a.ordem - b.ordem);
 
-            cidades.forEach(cidade => {
-                mensagem += `📍 *${cidade}*\n\n`;
+            cidadesComOrdem.forEach(({ cidade, ordem }) => {
+                // Mostrar ordem da cidade
+                mensagem += `📍 *${ordem}ª ${cidade}*\n\n`;
 
                 const clientes = agrupado[diaNum][cidade];
 
@@ -3531,10 +3536,16 @@ class App {
                         mensagem += `\n`;
                     }
 
-                    // Código do cliente
+                    // Código do cliente e ordem de visita
                     const codigo = cliente.rot_cliente_codigo || cliente.cliente_codigo || '';
+                    const ordemVisita = cliente.rot_ordem_visita || '';
+
                     if (codigo) {
-                        mensagem += `🏢 Cód: ${codigo}\n`;
+                        mensagem += `🏢 Cód: ${codigo}`;
+                        if (ordemVisita) {
+                            mensagem += ` | Visita: ${ordemVisita}`;
+                        }
+                        mensagem += `\n`;
                     }
 
                     mensagem += `\n`;
