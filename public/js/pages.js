@@ -1246,6 +1246,48 @@ export const pages = {
                             </div>
                         </div>
                     </div>
+
+                    <div class="modal" id="modalDestinatariosWhatsApp">
+                        <div class="modal-content" style="max-width: 500px;">
+                            <div class="modal-header">
+                                <h3>Enviar Roteiro por WhatsApp</h3>
+                                <button class="modal-close" onclick="window.app.fecharModalDestinatariosWhatsApp()">&times;</button>
+                            </div>
+                            <div class="modal-body">
+                                <p style="margin-bottom: 20px; color: #666;">
+                                    Selecione para quem deseja enviar o roteiro:
+                                </p>
+
+                                <div style="display: flex; flex-direction: column; gap: 15px;">
+                                    <label style="display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid #ddd; border-radius: 6px; cursor: pointer;">
+                                        <input type="checkbox" id="enviarParaRepositor" checked style="width: 18px; height: 18px; cursor: pointer;">
+                                        <div>
+                                            <div style="font-weight: 600; margin-bottom: 4px;">📱 Repositor</div>
+                                            <div style="font-size: 0.9rem; color: #666;" id="telefoneRepositor">-</div>
+                                        </div>
+                                    </label>
+
+                                    <label style="display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid #ddd; border-radius: 6px; cursor: pointer;">
+                                        <input type="checkbox" id="enviarParaRepresentante" style="width: 18px; height: 18px; cursor: pointer;">
+                                        <div>
+                                            <div style="font-weight: 600; margin-bottom: 4px;">👤 Representante</div>
+                                            <div style="font-size: 0.9rem; color: #666;" id="telefoneRepresentante">-</div>
+                                        </div>
+                                    </label>
+                                </div>
+
+                                <div id="alertaDestinatarios" style="display: none; margin-top: 15px; padding: 10px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; color: #856404;">
+                                    ⚠️ Selecione pelo menos um destinatário
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button class="btn btn-secondary" onclick="window.app.fecharModalDestinatariosWhatsApp()">Cancelar</button>
+                                <button class="btn btn-primary" id="btnConfirmarEnvioWhatsApp" style="background: #25D366; border-color: #25D366;">
+                                    📱 Enviar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         `;

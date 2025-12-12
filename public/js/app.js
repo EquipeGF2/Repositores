@@ -2960,7 +2960,20 @@ class App {
         if (this.repositoresCache && this.repositoresCache.length) return this.repositoresCache;
 
         try {
-            this.repositoresCache = await db.getAllRepositors();
+            const repositores = await db.getAllRepositors();
+
+            // Buscar telefones dos representantes
+            const codigosRepresentantes = [...new Set(repositores
+                .map(r => r.rep_representante_codigo)
+                .filter(Boolean))];
+
+            const representantesMap = await db.getRepresentantesPorCodigo(codigosRepresentantes);
+
+            // Enriquecer dados dos repositores com telefone do representante
+            this.repositoresCache = repositores.map(repo => ({
+                ...repo,
+                rep_representante_telefone: representantesMap[repo.rep_representante_codigo]?.rep_fone || ''
+            }));
         } catch (error) {
             console.error('Erro ao carregar repositores para exportação:', error);
             this.repositoresCache = [];
@@ -3605,30 +3618,156 @@ class App {
         const repositorInfo = (this.repositoresCache || []).find(r => Number(r.repo_cod) === Number(filtros.repositorId)) ||
             { repo_cod: filtros.repositorId, repo_nome: 'Repositor' };
 
-        const dataAtualizacao = await this.obterUltimaAtualizacaoRepositor(filtros.repositorId, registros);
-        const dataFormatada = dataAtualizacao || new Date().toLocaleDateString('pt-BR');
+        // Salvar dados para uso posterior
+        this.dadosEnvioWhatsApp = {
+            registros,
+            repositorInfo,
+            filtros
+        };
 
-        const mensagem = this.gerarMensagemWhatsAppRoteiro(registros, repositorInfo, dataFormatada);
+        // Abrir modal de seleção de destinatários
+        this.abrirModalDestinatariosWhatsApp(repositorInfo);
+    }
 
-        // Buscar telefone do repositor
-        let telefone = repositorInfo.rep_telefone || repositorInfo.rep_contato_telefone || '';
-        telefone = telefone.replace(/\D/g, ''); // Remove tudo que não é número
+    abrirModalDestinatariosWhatsApp(repositorInfo) {
+        const modal = document.getElementById('modalDestinatariosWhatsApp');
+        if (!modal) return;
 
-        if (!telefone) {
-            this.showNotification('Telefone do repositor não encontrado. Configure o telefone no cadastro.', 'warning');
+        // Exibir telefone do repositor
+        const telefoneRepoElement = document.getElementById('telefoneRepositor');
+        const telefoneRepo = repositorInfo.rep_telefone || repositorInfo.rep_contato_telefone || '';
+        if (telefoneRepoElement) {
+            telefoneRepoElement.textContent = telefoneRepo ?
+                `${repositorInfo.repo_cod} - ${repositorInfo.repo_nome} (${telefoneRepo})` :
+                `${repositorInfo.repo_cod} - ${repositorInfo.repo_nome} (Telefone não cadastrado)`;
+        }
+
+        // Exibir telefone do representante
+        const telefoneRepElement = document.getElementById('telefoneRepresentante');
+        const telefoneRep = repositorInfo.rep_representante_telefone || '';
+        const nomeRep = repositorInfo.rep_representante_nome || repositorInfo.rep_representante_codigo || '';
+        if (telefoneRepElement) {
+            telefoneRepElement.textContent = telefoneRep ?
+                `${nomeRep} (${telefoneRep})` :
+                `${nomeRep || 'Não disponível'} (Telefone não cadastrado)`;
+        }
+
+        // Configurar evento do botão confirmar
+        const btnConfirmar = document.getElementById('btnConfirmarEnvioWhatsApp');
+        if (btnConfirmar) {
+            btnConfirmar.onclick = () => this.confirmarEnvioWhatsApp();
+        }
+
+        // Resetar checkboxes e alerta
+        const checkRepositor = document.getElementById('enviarParaRepositor');
+        const checkRepresentante = document.getElementById('enviarParaRepresentante');
+        const alerta = document.getElementById('alertaDestinatarios');
+
+        if (checkRepositor) checkRepositor.checked = true;
+        if (checkRepresentante) checkRepresentante.checked = false;
+        if (alerta) alerta.style.display = 'none';
+
+        // Desabilitar checkbox do representante se não tiver telefone
+        if (checkRepresentante) {
+            checkRepresentante.disabled = !telefoneRep;
+            if (!telefoneRep) {
+                checkRepresentante.parentElement.style.opacity = '0.5';
+                checkRepresentante.parentElement.style.cursor = 'not-allowed';
+            }
+        }
+
+        // Desabilitar checkbox do repositor se não tiver telefone
+        if (checkRepositor) {
+            checkRepositor.disabled = !telefoneRepo;
+            if (!telefoneRepo) {
+                checkRepositor.parentElement.style.opacity = '0.5';
+                checkRepositor.parentElement.style.cursor = 'not-allowed';
+            }
+        }
+
+        modal.classList.add('active');
+    }
+
+    fecharModalDestinatariosWhatsApp() {
+        const modal = document.getElementById('modalDestinatariosWhatsApp');
+        if (modal) {
+            modal.classList.remove('active');
+        }
+    }
+
+    async confirmarEnvioWhatsApp() {
+        const checkRepositor = document.getElementById('enviarParaRepositor');
+        const checkRepresentante = document.getElementById('enviarParaRepresentante');
+        const alerta = document.getElementById('alertaDestinatarios');
+
+        const enviarRepositor = checkRepositor?.checked || false;
+        const enviarRepresentante = checkRepresentante?.checked || false;
+
+        // Validar que ao menos um foi selecionado
+        if (!enviarRepositor && !enviarRepresentante) {
+            if (alerta) {
+                alerta.style.display = 'block';
+            }
             return;
         }
 
-        // Garantir que tem código do país
-        if (!telefone.startsWith('55') && telefone.length === 11) {
-            telefone = '55' + telefone;
+        if (alerta) {
+            alerta.style.display = 'none';
         }
 
-        const mensagemEncoded = encodeURIComponent(mensagem);
-        const urlWhatsApp = `https://wa.me/${telefone}?text=${mensagemEncoded}`;
+        // Recuperar dados salvos
+        const { registros, repositorInfo } = this.dadosEnvioWhatsApp;
 
-        window.open(urlWhatsApp, '_blank');
-        this.showNotification('WhatsApp aberto com a mensagem do roteiro!', 'success');
+        const dataAtualizacao = await this.obterUltimaAtualizacaoRepositor(repositorInfo.repo_cod, registros);
+        const dataFormatada = dataAtualizacao || new Date().toLocaleDateString('pt-BR');
+
+        const mensagem = this.gerarMensagemWhatsAppRoteiro(registros, repositorInfo, dataFormatada);
+        const mensagemEncoded = encodeURIComponent(mensagem);
+
+        let enviadosCount = 0;
+
+        // Enviar para repositor
+        if (enviarRepositor) {
+            let telefone = repositorInfo.rep_telefone || repositorInfo.rep_contato_telefone || '';
+            telefone = telefone.replace(/\D/g, '');
+
+            if (telefone) {
+                if (!telefone.startsWith('55') && telefone.length === 11) {
+                    telefone = '55' + telefone;
+                }
+
+                const urlWhatsApp = `https://wa.me/${telefone}?text=${mensagemEncoded}`;
+                window.open(urlWhatsApp, '_blank');
+                enviadosCount++;
+            }
+        }
+
+        // Enviar para representante
+        if (enviarRepresentante) {
+            let telefone = repositorInfo.rep_representante_telefone || '';
+            telefone = telefone.replace(/\D/g, '');
+
+            if (telefone) {
+                if (!telefone.startsWith('55') && telefone.length === 11) {
+                    telefone = '55' + telefone;
+                }
+
+                const urlWhatsApp = `https://wa.me/${telefone}?text=${mensagemEncoded}`;
+                window.open(urlWhatsApp, '_blank');
+                enviadosCount++;
+            }
+        }
+
+        this.fecharModalDestinatariosWhatsApp();
+
+        if (enviadosCount > 0) {
+            const msg = enviadosCount === 1 ?
+                'WhatsApp aberto com a mensagem do roteiro!' :
+                `${enviadosCount} conversas do WhatsApp abertas com a mensagem do roteiro!`;
+            this.showNotification(msg, 'success');
+        } else {
+            this.showNotification('Nenhum telefone válido encontrado para envio.', 'warning');
+        }
     }
 
     gerarPDFMapaConsolidado(registros = [], repositorInfo = {}, dataGeracaoTexto = '', dataReferencia = new Date()) {
