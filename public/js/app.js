@@ -3414,10 +3414,6 @@ class App {
 
                     mensagem += `   🏢 Cód: ${cliente.rot_cliente_codigo}\n`;
 
-                    if (cliente.rat_percentual) {
-                        mensagem += `   📊 Rateio: ${cliente.rat_percentual}%\n`;
-                    }
-
                     mensagem += `\n`;
                 });
             });
