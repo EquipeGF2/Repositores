@@ -2052,6 +2052,13 @@ class TursoDatabase {
 
     async listarRateiosDetalhados() {
         try {
+            await this.connect();
+
+            if (!this.mainClient) {
+                console.error('mainClient não inicializado');
+                return [];
+            }
+
             const resultado = (await this.mainClient.execute({
                 sql: `
                     SELECT
@@ -2082,14 +2089,17 @@ class TursoDatabase {
                     : [];
             const linhas = linhasBrutas.filter(Boolean);
 
-            return linhas.map(row => ({
-                ...row,
-                cnpj_cpf: documentoParaExibicao(row?.cnpj_cpf),
-                rat_vigencia_inicio: normalizarDataISO(row?.rat_vigencia_inicio),
-                rat_vigencia_fim: normalizarDataISO(row?.rat_vigencia_fim),
-                rat_criado_em: normalizarDataISO(row?.rat_criado_em),
-                rat_atualizado_em: normalizarDataISO(row?.rat_atualizado_em)
-            }));
+            return linhas.map(row => {
+                if (!row || typeof row !== 'object') return null;
+                return {
+                    ...row,
+                    cnpj_cpf: documentoParaExibicao(row?.cnpj_cpf),
+                    rat_vigencia_inicio: normalizarDataISO(row?.rat_vigencia_inicio),
+                    rat_vigencia_fim: normalizarDataISO(row?.rat_vigencia_fim),
+                    rat_criado_em: normalizarDataISO(row?.rat_criado_em),
+                    rat_atualizado_em: normalizarDataISO(row?.rat_atualizado_em)
+                };
+            }).filter(Boolean);
         } catch (error) {
             console.error('Erro ao buscar rateios para manutenção:', error);
             return [];
@@ -2099,6 +2109,11 @@ class TursoDatabase {
     async listarClientesRateioIncompleto() {
         try {
             await this.connect();
+
+            if (!this.mainClient) {
+                console.error('mainClient não inicializado');
+                return [];
+            }
 
             const resultado = (await this.mainClient.execute({
                 sql: `
@@ -2122,10 +2137,13 @@ class TursoDatabase {
                     : [];
             const linhas = linhasBrutas.filter(Boolean);
 
-            return linhas.map(linha => ({
-                ...linha,
-                total_percentual: Number(linha?.total_percentual || 0)
-            }));
+            return linhas.map(linha => {
+                if (!linha || typeof linha !== 'object') return null;
+                return {
+                    ...linha,
+                    total_percentual: Number(linha?.total_percentual || 0)
+                };
+            }).filter(Boolean);
         } catch (error) {
             console.error('Erro ao buscar clientes com rateio incompleto:', error);
             return [];
