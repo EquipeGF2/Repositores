@@ -1453,15 +1453,17 @@ export const pages = {
                         </div>
                     </div>
 
-                    <div id="gridInfoPendentes" style="display: none; margin-top: 1rem; padding: 12px; background: #fff3cd; border-radius: 4px; border-left: 4px solid #ffc107;">
-                        <strong>⚠️ Alterações Pendentes:</strong> <span id="gridContadorPendentes">0</span> célula(s) modificada(s). Clique em "Salvar Alterações" para gravar no banco de dados.
+                    <div id="gridInfoPendentes" style="display: none; margin-top: 1.5rem; padding: 16px 20px; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 12px; border-left: 5px solid #f59e0b; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                        <strong style="color: #92400e; font-size: 15px;">⚠️ Alterações Pendentes:</strong>
+                        <span id="gridContadorPendentes" style="color: #92400e; font-weight: 600; font-size: 15px;">0</span>
+                        <span style="color: #78350f;"> célula(s) modificada(s). Clique em "Salvar Alterações" para gravar no banco de dados.</span>
                     </div>
                 </div>
             </div>
 
             <!-- Modal para importar Excel -->
             <div class="modal" id="modalImportarExcel">
-                <div class="modal-content" style="max-width: 500px;">
+                <div class="modal-content" style="max-width: 500px; border-radius: 12px;">
                     <div class="modal-header">
                         <h3>Importar Planilha Excel</h3>
                         <button class="modal-close" onclick="window.app.fecharModalImportarExcel()">&times;</button>
@@ -1469,7 +1471,7 @@ export const pages = {
                     <div class="modal-body">
                         <div class="form-group">
                             <label for="arquivoExcel">Arquivo Excel (XLSX ou CSV)</label>
-                            <input type="file" id="arquivoExcel" class="form-control" accept=".xlsx,.xls,.csv">
+                            <input type="file" id="arquivoExcel" class="form-control" accept=".xlsx,.xls,.csv" style="border-radius: 8px;">
                             <small class="text-muted">
                                 O arquivo deve conter as colunas: rep_id, ano, mes, valor
                             </small>
@@ -1483,62 +1485,95 @@ export const pages = {
             </div>
 
             <style>
-                .custos-grid-table {
-                    width: 100%;
-                    border-collapse: collapse;
-                    font-size: 13px;
-                    background: white;
-                    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                /* Container do Grid */
+                #gridCustosContainer {
+                    border-radius: 12px;
+                    overflow: hidden;
+                    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
                 }
 
+                .custos-grid-table {
+                    width: 100%;
+                    border-collapse: separate;
+                    border-spacing: 0;
+                    font-size: 13px;
+                    background: white;
+                }
+
+                /* Cabeçalhos - Vermelho Forte e Vibrante */
                 .custos-grid-table thead th {
-                    background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+                    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
                     color: white;
-                    padding: 12px 8px;
+                    padding: 14px 10px;
                     text-align: center;
-                    font-weight: 600;
-                    border: 1px solid #b91c1c;
+                    font-weight: 700;
+                    font-size: 13px;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    border: none;
                     position: sticky;
                     top: 0;
                     z-index: 10;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                 }
 
                 .custos-grid-table thead th:first-child {
                     text-align: left;
-                    min-width: 200px;
+                    min-width: 220px;
                     position: sticky;
                     left: 0;
                     z-index: 11;
+                    border-top-left-radius: 12px;
                 }
 
+                .custos-grid-table thead th:last-child {
+                    border-top-right-radius: 12px;
+                }
+
+                /* Células do Corpo */
                 .custos-grid-table tbody td {
-                    border: 1px solid #fecaca;
+                    border: 1px solid #fee2e2;
                     padding: 0;
                     background: white;
+                    transition: background 0.2s ease;
+                }
+
+                .custos-grid-table tbody tr:hover td {
+                    background: #fef2f2;
                 }
 
                 .custos-grid-table tbody td:first-child {
-                    padding: 8px;
-                    font-weight: 500;
+                    padding: 12px;
+                    font-weight: 600;
+                    font-size: 13px;
                     background: #fef2f2;
                     position: sticky;
                     left: 0;
                     z-index: 5;
-                    border-right: 2px solid #fca5a5;
+                    border-right: 3px solid #fecaca;
+                    color: #7f1d1d;
                 }
 
+                /* Inputs das Células */
                 .custos-grid-table .cell-input {
                     width: 100%;
                     border: none;
-                    padding: 8px;
+                    padding: 10px;
                     text-align: right;
-                    font-family: 'Courier New', monospace;
+                    font-family: 'Segoe UI', Tahoma, sans-serif;
+                    font-size: 13px;
+                    font-weight: 500;
                     background: transparent;
+                    color: #374151;
+                    transition: all 0.2s ease;
+                    border-radius: 0;
                 }
 
                 .custos-grid-table .cell-input:focus {
-                    outline: 2px solid #dc2626;
-                    background: #fee2e2;
+                    outline: none;
+                    background: #fef2f2;
+                    box-shadow: inset 0 0 0 2px #ef4444;
+                    border-radius: 6px;
                 }
 
                 .custos-grid-table .cell-input:disabled {
@@ -1548,66 +1583,98 @@ export const pages = {
                 }
 
                 .custos-grid-table .cell-input.modified {
-                    background: #fef5e7;
-                    border-left: 3px solid #f59e0b;
+                    background: #fef3c7;
+                    border-left: 4px solid #f59e0b;
+                    font-weight: 700;
+                    color: #92400e;
                 }
 
+                /* Linha de Totais */
                 .custos-grid-table .total-row {
-                    background: #fef2f2;
-                    font-weight: 600;
+                    background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+                    font-weight: 700;
+                    font-size: 14px;
                 }
 
                 .custos-grid-table .total-row td {
-                    padding: 12px 8px;
+                    padding: 14px 10px;
                     text-align: right;
-                    border-top: 2px solid #dc2626;
-                    color: #991b1b;
+                    border-top: 3px solid #dc2626;
+                    color: #7f1d1d;
                 }
 
                 .custos-grid-table .total-row td:first-child {
                     text-align: left;
+                    font-size: 15px;
+                    letter-spacing: 0.5px;
+                    border-bottom-left-radius: 12px;
                 }
 
+                .custos-grid-table .total-row td:last-child {
+                    border-bottom-right-radius: 12px;
+                }
+
+                /* Coluna de Total por Repositor */
                 .custos-grid-table .total-col {
-                    font-weight: 600;
+                    font-weight: 700;
                     text-align: right;
-                    padding: 8px;
-                    background: #fef2f2;
+                    padding: 10px;
+                    background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
                     color: #991b1b;
+                    font-size: 14px;
+                    border-left: 2px solid #fca5a5;
                 }
 
+                /* Coluna de Ações */
                 .custos-grid-table .acoes-col {
                     text-align: center;
-                    padding: 4px;
+                    padding: 8px;
                     white-space: nowrap;
+                    background: #f9fafb;
+                    width: 100px;
                 }
 
+                /* Botões de Ação */
                 .custos-grid-table .btn-acoes {
-                    padding: 4px 8px;
+                    padding: 6px 12px;
                     font-size: 11px;
+                    font-weight: 600;
                     color: white;
                     border: none;
-                    border-radius: 3px;
+                    border-radius: 8px;
                     cursor: pointer;
-                    margin: 2px;
+                    margin: 3px 0;
                     display: block;
                     width: 100%;
+                    transition: all 0.2s ease;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    text-transform: uppercase;
+                    letter-spacing: 0.3px;
                 }
 
                 .custos-grid-table .btn-replicar {
-                    background: #dc2626;
+                    background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
                 }
 
                 .custos-grid-table .btn-replicar:hover {
-                    background: #b91c1c;
+                    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 6px rgba(239, 68, 68, 0.3);
                 }
 
                 .custos-grid-table .btn-limpar {
-                    background: #6b7280;
+                    background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%);
                 }
 
                 .custos-grid-table .btn-limpar:hover {
-                    background: #4b5563;
+                    background: linear-gradient(135deg, #64748b 0%, #475569 100%);
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 6px rgba(100, 116, 139, 0.3);
+                }
+
+                .custos-grid-table .btn-acoes:active {
+                    transform: translateY(0);
+                    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
                 }
             </style>
         `;
