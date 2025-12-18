@@ -1,6 +1,5 @@
 import express from 'express';
-import { upload, bufferToStream } from '../middleware/upload.js';
-import { tursoService } from '../services/turso.js';
+import { tursoService, DatabaseNotConfiguredError } from '../services/turso.js';
 import { googleDriveService } from '../services/googleDrive.js';
 import { emailService } from '../services/email.js';
 
@@ -8,97 +7,94 @@ const router = express.Router();
 
 // ==================== POST /api/registro-rota/visitas ====================
 // Registrar nova visita com foto
-router.post('/visitas', upload.single('arquivo_foto'), async (req, res) => {
+router.post('/visitas', async (req, res) => {
   try {
-    const { rep_id, cliente_id, data_hora_cliente, latitude, longitude } = req.body;
-    const file = req.file;
+    const {
+      rep_id,
+      cliente_id,
+      data_hora,
+      latitude,
+      longitude,
+      endereco_resolvido,
+      foto_base64,
+      foto_mime
+    } = req.body;
 
-    // Validações
-    if (!rep_id || !cliente_id) {
+    if (!rep_id || !cliente_id || !data_hora || !foto_base64 || !foto_mime) {
       return res.status(400).json({
-        success: false,
-        message: 'Repositor e cliente são obrigatórios'
+        ok: false,
+        message: 'Campos obrigatórios ausentes',
+        code: 'INVALID_PAYLOAD'
       });
     }
 
-    if (!file) {
-      return res.status(400).json({
-        success: false,
-        message: 'Arquivo de foto é obrigatório'
-      });
+    const repIdNumber = Number(rep_id);
+    if (!Number.isFinite(repIdNumber)) {
+      return res.status(400).json({ ok: false, message: 'rep_id inválido', code: 'INVALID_REP_ID' });
     }
 
-    if (!latitude || !longitude) {
-      return res.status(400).json({
-        success: false,
-        message: 'Geolocalização é obrigatória'
-      });
+    const latitudeNumber = Number(latitude);
+    const longitudeNumber = Number(longitude);
+    if (!Number.isFinite(latitudeNumber) || !Number.isFinite(longitudeNumber)) {
+      return res.status(400).json({ ok: false, message: 'Latitude e longitude são obrigatórias', code: 'LOCATION_REQUIRED' });
     }
 
-    // Verificar se repositor existe
-    const repositor = await tursoService.obterRepositor(rep_id);
+    const repositor = await tursoService.obterRepositor(repIdNumber);
     if (!repositor) {
-      return res.status(404).json({
-        success: false,
-        message: 'Repositor não encontrado'
-      });
+      return res.status(404).json({ ok: false, message: 'Repositor não encontrado', code: 'REPOSITOR_NOT_FOUND' });
     }
 
-    // Normalizar data/hora
-    const dataHora = data_hora_cliente || new Date().toISOString();
+    const dataHora = data_hora || new Date().toISOString();
 
-    // Verificar se já existe visita no mesmo dia
-    const existente = await tursoService.verificarVisitaExistente(rep_id, cliente_id, dataHora);
+    const existente = await tursoService.verificarVisitaExistente(repIdNumber, cliente_id, dataHora);
     if (existente) {
-      return res.status(409).json({
-        success: false,
-        message: 'Já existe uma visita registrada para este cliente nesta data'
-      });
+      return res.status(409).json({ ok: false, message: 'Visita já registrada para este cliente nesta data', code: 'VISIT_EXISTS' });
     }
 
-    // Montar nome do arquivo: YYYYMMDD_cliente_HHmmss.jpg
+    if (!googleDriveService.isConfigured()) {
+      return res.status(400).json({ ok: false, code: 'DRIVE_NOT_CONFIGURED' });
+    }
+
     const now = new Date(dataHora);
     const dia = now.toISOString().split('T')[0].replace(/-/g, '');
     const hora = now.toTimeString().split(' ')[0].replace(/:/g, '');
     const filename = `${dia}_${cliente_id}_${hora}.jpg`;
 
-    // Upload para Google Drive
-    const driveResult = await googleDriveService.uploadFoto({
-      buffer: bufferToStream(file.buffer),
+    const driveResult = await googleDriveService.uploadFotoBase64({
+      base64Data: foto_base64,
+      mimeType: foto_mime,
       filename,
-      repId: rep_id,
+      repId: repIdNumber,
       repoNome: repositor.repo_nome
     });
 
-    // Salvar no banco
     const visita = await tursoService.salvarVisita({
-      repId: rep_id,
+      repId: repIdNumber,
       clienteId: cliente_id,
       dataHora,
-      latitude: parseFloat(latitude),
-      longitude: parseFloat(longitude),
+      latitude: latitudeNumber,
+      longitude: longitudeNumber,
+      enderecoResolvido: endereco_resolvido || null,
       driveFileId: driveResult.fileId,
       driveFileUrl: driveResult.webViewLink
     });
 
     res.status(201).json({
-      success: true,
-      message: 'Visita registrada com sucesso',
-      data: {
-        id: visita.id,
-        rep_id,
-        cliente_id,
-        data_hora: dataHora,
-        latitude: parseFloat(latitude),
-        longitude: parseFloat(longitude),
-        drive_file_url: driveResult.webViewLink
-      }
+      ok: true,
+      id: visita.id,
+      drive_file_id: driveResult.fileId,
+      drive_file_url: driveResult.webViewLink
     });
   } catch (error) {
+    if (error instanceof DatabaseNotConfiguredError) {
+      return res.status(503).json({ ok: false, code: error.code });
+    }
+
     console.error('Erro ao registrar visita:', error);
     res.status(500).json({
-      success: false,
-      message: 'Erro ao registrar visita: ' + error.message
+      ok: false,
+      message: 'Erro ao registrar visita',
+      details: error.message
     });
   }
 });
@@ -107,23 +103,40 @@ router.post('/visitas', upload.single('arquivo_foto'), async (req, res) => {
 // Consultar visitas
 router.get('/visitas', async (req, res) => {
   try {
-    const { rep_id, cliente_id, data_inicio, data_fim } = req.query;
+    const { rep_id, data_inicio, data_fim } = req.query;
+
+    if (!rep_id || !data_inicio || !data_fim) {
+      return res.status(400).json({ ok: false, code: 'INVALID_QUERY', message: 'rep_id, data_inicio e data_fim são obrigatórios' });
+    }
+
+    const repIdNumber = Number(rep_id);
+    if (Number.isNaN(repIdNumber)) {
+      return res.status(400).json({ ok: false, code: 'INVALID_REP_ID', message: 'rep_id deve ser numérico' });
+    }
+
+    const dataRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dataRegex.test(data_inicio) || !dataRegex.test(data_fim)) {
+      return res.status(400).json({ ok: false, code: 'INVALID_DATE', message: 'Datas devem estar no formato YYYY-MM-DD' });
+    }
 
     const visitas = await tursoService.listarVisitas({
-      repId: rep_id ? parseInt(rep_id) : null,
-      clienteId: cliente_id,
+      repId: repIdNumber,
       dataInicio: data_inicio,
       dataFim: data_fim
     });
 
     res.json({
-      success: true,
+      ok: true,
       visitas: visitas
     });
   } catch (error) {
+    if (error instanceof DatabaseNotConfiguredError) {
+      return res.status(503).json({ ok: false, code: error.code });
+    }
+
     console.error('Erro ao consultar visitas:', error);
     res.status(500).json({
-      success: false,
+      ok: false,
       message: 'Erro ao consultar visitas: ' + error.message
     });
   }

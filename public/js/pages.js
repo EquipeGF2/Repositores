@@ -2144,7 +2144,9 @@ export const pageTitles = {
     'consulta-alteracoes': 'Consulta de Alterações',
     'consulta-roteiro': 'Consulta de Roteiro',
     'custos-repositor': 'Custos por Repositor',
-    'estrutura-banco-comercial': 'Estrutura do Banco Comercial',
-    'controle-acessos': 'Controle de Acessos',
-    'roteiro-repositor': 'Roteiro do Repositor'
+  'estrutura-banco-comercial': 'Estrutura do Banco Comercial',
+  'controle-acessos': 'Controle de Acessos',
+  'roteiro-repositor': 'Roteiro do Repositor',
+  'registro-rota': 'Registro de Rota',
+  'consulta-visitas': 'Consulta de Visitas'
 };

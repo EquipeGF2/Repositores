@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { config } from './config/env.js';
-import { tursoService } from './services/turso.js';
+import { getDbClient, DatabaseNotConfiguredError } from './config/db.js';
 import registroRotaRoutes from './routes/registro-rota.js';
 
 const app = express();
@@ -23,7 +23,7 @@ app.use(cors({
 }));
 
 // JSON parser
-app.use(express.json());
+app.use(express.json({ limit: '15mb' }));
 
 // URL encoded
 app.use(express.urlencoded({ extended: true }));
@@ -38,12 +38,20 @@ app.use((req, res, next) => {
 // ==================== ROTAS ====================
 
 // Health check
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'OK',
-    timestamp: new Date().toISOString(),
-    environment: config.nodeEnv
-  });
+app.get('/api/health', async (req, res) => {
+  try {
+    const db = getDbClient();
+    await db.execute('SELECT 1');
+
+    res.json({ ok: true });
+  } catch (error) {
+    if (error instanceof DatabaseNotConfiguredError) {
+      return res.status(503).json({ ok: false, code: error.code });
+    }
+
+    console.error('Erro no health check:', error);
+    res.status(500).json({ ok: false, message: 'Erro ao verificar banco' });
+  }
 });
 
 // Rotas de registro de rota
@@ -73,12 +81,6 @@ app.use((err, req, res, next) => {
 async function inicializar() {
   try {
     console.log('🚀 Inicializando servidor...');
-
-    // Conectar ao Turso
-    await tursoService.connect();
-
-    // Criar/verificar tabela de visitas
-    await tursoService.criarTabelaVisitas();
 
     // Iniciar servidor
     app.listen(config.port, () => {

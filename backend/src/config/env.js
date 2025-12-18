@@ -7,23 +7,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 dotenv.config({ path: join(__dirname, '../../.env') });
 
-// Validar variáveis obrigatórias
-const requiredEnvVars = [
-  'PORT',
-  'TURSO_MAIN_URL',
-  'TURSO_MAIN_TOKEN',
-  'DRIVE_VISITAS_ROOT_ID',
-  'EMAIL_USER',
-  'EMAIL_PASSWORD'
-];
-
-for (const varName of requiredEnvVars) {
-  if (!process.env[varName]) {
-    console.error(`❌ Variável de ambiente obrigatória não definida: ${varName}`);
-    console.error('📝 Copie .env.example para .env e preencha os valores.');
-    process.exit(1);
-  }
-}
+const warnMissing = (name) => {
+  console.warn(`⚠️ Variável de ambiente não definida: ${name}`);
+};
 
 // Exportar configurações
 export const config = {
@@ -32,16 +18,14 @@ export const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
 
   turso: {
-    url: process.env.TURSO_MAIN_URL,
-    authToken: process.env.TURSO_MAIN_TOKEN
+    url: process.env.TURSO_DATABASE_URL || process.env.TURSO_MAIN_URL,
+    authToken: process.env.TURSO_AUTH_TOKEN || process.env.TURSO_MAIN_TOKEN
   },
 
   drive: {
-    rootFolderId: process.env.DRIVE_VISITAS_ROOT_ID,
-    serviceAccountKeyPath: process.env.GOOGLE_SERVICE_ACCOUNT_KEY_PATH,
-    serviceAccountKey: process.env.GOOGLE_SERVICE_ACCOUNT_KEY
-      ? JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY)
-      : null
+    rootFolderId: process.env.GOOGLE_DRIVE_FOLDER_ID || process.env.DRIVE_VISITAS_ROOT_ID,
+    clientEmail: process.env.GOOGLE_DRIVE_CLIENT_EMAIL,
+    privateKey: process.env.GOOGLE_DRIVE_PRIVATE_KEY
   },
 
   email: {
@@ -53,5 +37,11 @@ export const config = {
       : []
   }
 };
+
+if (!config.turso.url) warnMissing('TURSO_DATABASE_URL');
+if (!config.turso.authToken) warnMissing('TURSO_AUTH_TOKEN');
+if (!config.drive.rootFolderId) warnMissing('GOOGLE_DRIVE_FOLDER_ID');
+if (!config.drive.clientEmail) warnMissing('GOOGLE_DRIVE_CLIENT_EMAIL');
+if (!config.drive.privateKey) warnMissing('GOOGLE_DRIVE_PRIVATE_KEY');
 
 console.log('✅ Configurações carregadas com sucesso');

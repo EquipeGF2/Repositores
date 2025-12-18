@@ -9,6 +9,41 @@ import { ACL_RECURSOS } from './acl-resources.js';
 import { formatarDataISO, normalizarDataISO, normalizarSupervisor, normalizarTextoCadastro, formatarGrupo, documentoParaBusca, documentoParaExibicao } from './utils.js';
 
 const AUTH_STORAGE_KEY = 'GERMANI_AUTH_USER';
+const API_BASE_URL = (typeof window !== 'undefined' && window.API_BASE_URL) || 'https://repositor-backend.onrender.com';
+
+function exibirErroGlobal(mensagem, detalhe = '') {
+    let banner = document.getElementById('erroGlobalBanner');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'erroGlobalBanner';
+        banner.style.position = 'fixed';
+        banner.style.top = '0';
+        banner.style.left = '0';
+        banner.style.right = '0';
+        banner.style.zIndex = '9999';
+        banner.style.background = '#fef2f2';
+        banner.style.color = '#991b1b';
+        banner.style.padding = '12px 16px';
+        banner.style.boxShadow = '0 2px 6px rgba(0,0,0,0.1)';
+        banner.style.fontWeight = '600';
+        banner.style.fontSize = '14px';
+        banner.style.textAlign = 'center';
+        document.body.appendChild(banner);
+    }
+
+    banner.textContent = detalhe ? `${mensagem}: ${detalhe}` : mensagem;
+}
+
+function registrarTratamentoErrosGlobais() {
+    window.onerror = (msg, src, line, col, err) => {
+        exibirErroGlobal('Erro inesperado', err?.message || msg?.toString());
+    };
+
+    window.onunhandledrejection = (event) => {
+        const detalhe = event?.reason?.message || event?.reason || 'Erro não tratado';
+        exibirErroGlobal('Erro inesperado', detalhe);
+    };
+}
 
 class App {
     constructor() {
@@ -432,7 +467,7 @@ class App {
         });
 
         // Atualiza título
-        this.elements.pageTitle.textContent = pageTitles[pageName] || 'Página';
+        this.elements.pageTitle.textContent = pageTitles[pageName] || 'Registro de Rota';
 
         // Mostra loading
         this.elements.contentBody.innerHTML = `
@@ -4867,11 +4902,12 @@ class App {
     // ==================== REGISTRO DE ROTA ====================
 
     registroRotaState = {
-        backendUrl: 'https://repositor-backend.onrender.com',
+        backendUrl: API_BASE_URL,
         videoStream: null,
         gpsCoords: null,
         fotoCapturada: null,
-        clienteAtual: null
+        clienteAtual: null,
+        enderecoResolvido: null
     };
 
     async inicializarRegistroRota() {
@@ -4990,7 +5026,7 @@ class App {
             }
 
             const result = await response.json();
-            return result.visitas.map(v => v.cli_codigo);
+            return (result.visitas || []).map(v => v.cliente_id);
         } catch (error) {
             console.warn('Erro ao verificar visitas:', error);
             return [];
@@ -5013,6 +5049,18 @@ class App {
         }
     }
 
+    async converterBlobParaBase64(blob) {
+        return await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const base64 = reader.result?.toString().split(',')[1];
+                resolve(base64 || '');
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    }
+
     async abrirModalCaptura(repId, clienteId, clienteNome) {
         this.registroRotaState.clienteAtual = {
             repId,
@@ -5030,6 +5078,7 @@ class App {
         // Resetar estado
         this.registroRotaState.gpsCoords = null;
         this.registroRotaState.fotoCapturada = null;
+        this.registroRotaState.enderecoResolvido = null;
 
         // Atualizar status GPS
         const gpsStatus = document.getElementById('gpsStatus');
@@ -5096,6 +5145,7 @@ class App {
                 // Buscar endereço via geocoding reverso
                 try {
                     const endereco = await this.obterEnderecoPorCoordenadas(position.coords.latitude, position.coords.longitude);
+                    this.registroRotaState.enderecoResolvido = endereco;
                     if (gpsStatus && endereco) {
                         gpsStatus.innerHTML = `
                             <p style="margin: 0; color: #16a34a;">
@@ -5256,8 +5306,8 @@ class App {
 
     async salvarVisita() {
         try {
-            const { repId, clienteId, clienteNome, dataVisita } = this.registroRotaState.clienteAtual;
-            const { gpsCoords, fotoCapturada } = this.registroRotaState;
+            const { repId, clienteId, dataVisita } = this.registroRotaState.clienteAtual;
+            const { gpsCoords, fotoCapturada, enderecoResolvido } = this.registroRotaState;
 
             if (!fotoCapturada) {
                 this.showNotification('Capture uma foto antes de salvar', 'warning');
@@ -5273,19 +5323,26 @@ class App {
             document.getElementById('btnSalvarVisita').disabled = true;
             document.getElementById('btnSalvarVisita').textContent = 'Salvando...';
 
-            // Criar FormData
-            const formData = new FormData();
-            formData.append('rep_id', repId);
-            formData.append('cliente_id', clienteId); // Backend espera cliente_id
-            formData.append('data_hora_cliente', dataVisita); // Backend espera data_hora_cliente
-            formData.append('latitude', gpsCoords.latitude);
-            formData.append('longitude', gpsCoords.longitude);
-            formData.append('arquivo_foto', fotoCapturada, `visita_${clienteId}_${Date.now()}.jpg`); // Backend espera arquivo_foto
+            const fotoBase64 = await this.converterBlobParaBase64(fotoCapturada);
+
+            const payload = {
+                rep_id: repId,
+                cliente_id: clienteId,
+                data_hora: dataVisita || new Date().toISOString(),
+                latitude: gpsCoords.latitude,
+                longitude: gpsCoords.longitude,
+                endereco_resolvido: enderecoResolvido || '',
+                foto_base64: fotoBase64,
+                foto_mime: fotoCapturada.type || 'image/jpeg'
+            };
 
             // Enviar para backend
             const response = await fetch(`${this.registroRotaState.backendUrl}/api/registro-rota/visitas`, {
                 method: 'POST',
-                body: formData
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
             });
 
             if (!response.ok) {
@@ -5340,6 +5397,7 @@ class App {
         this.registroRotaState.clienteAtual = null;
         this.registroRotaState.gpsCoords = null;
         this.registroRotaState.fotoCapturada = null;
+        this.registroRotaState.enderecoResolvido = null;
     }
 
     // ==================== CONSULTA DE VISITAS ====================
@@ -5361,16 +5419,18 @@ class App {
             const dataInicio = document.getElementById('consultaDataInicio')?.value;
             const dataFim = document.getElementById('consultaDataFim')?.value;
 
+            if (!repId) {
+                this.showNotification('Selecione o repositor', 'warning');
+                return;
+            }
+
             if (!dataInicio || !dataFim) {
                 this.showNotification('Informe o período', 'warning');
                 return;
             }
 
             // Montar URL
-            let url = `${this.registroRotaState.backendUrl}/api/registro-rota/visitas?data_inicio=${dataInicio}&data_fim=${dataFim}`;
-            if (repId) {
-                url += `&rep_id=${repId}`;
-            }
+            const url = `${this.registroRotaState.backendUrl}/api/registro-rota/visitas?data_inicio=${dataInicio}&data_fim=${dataFim}&rep_id=${repId}`;
 
             const response = await fetch(url);
 
@@ -5379,7 +5439,7 @@ class App {
             }
 
             const result = await response.json();
-            const visitas = result.visitas;
+            const visitas = result.visitas || [];
 
             // Renderizar resultados
             const container = document.getElementById('visitasContainer');
@@ -5395,23 +5455,25 @@ class App {
                 const item = document.createElement('div');
                 item.className = 'visit-item';
 
-                const dataFormatada = new Date(visita.data_visita + 'T12:00:00').toLocaleDateString('pt-BR');
-                const horaFormatada = visita.data_hora_criacao ? new Date(visita.data_hora_criacao).toLocaleString('pt-BR') : '-';
+                const dataBruta = visita.data_hora || visita.created_at;
+                const dataBase = dataBruta ? (isNaN(Number(dataBruta)) ? new Date(dataBruta) : new Date(Number(dataBruta))) : null;
+                const dataFormatada = dataBase ? dataBase.toLocaleString('pt-BR') : '-';
 
                 item.innerHTML = `
                     <div style="flex: 1;">
-                        <div><strong>${visita.cli_codigo} - ${visita.cli_nome || 'Cliente'}</strong></div>
+                        <div><strong>${visita.cliente_id}</strong></div>
                         <div style="font-size: 0.9em; color: #666; margin-top: 4px;">
-                            📅 ${dataFormatada} | ⏰ ${horaFormatada}
+                            📅 ${dataFormatada}
                         </div>
                         <div style="font-size: 0.9em; color: #666; margin-top: 4px;">
                             📍 GPS: ${visita.latitude}, ${visita.longitude}
                         </div>
-                        ${visita.repositor_nome ? `<div style="font-size: 0.9em; color: #666; margin-top: 4px;">🏢 ${visita.repositor_nome}</div>` : ''}
+                        ${visita.endereco_resolvido ? `<div style="font-size: 0.9em; color: #4b5563; margin-top: 4px;">🏠 ${visita.endereco_resolvido}</div>` : ''}
+                        <div style="font-size: 0.9em; color: #666; margin-top: 4px;">🧑‍🤝‍🧑 Repositor: ${visita.rep_id}</div>
                     </div>
                     <div>
-                        ${visita.foto_drive_url ? `
-                            <a href="${visita.foto_drive_url}" target="_blank" class="btn-small" style="margin-left: 8px;">
+                        ${visita.drive_file_url ? `
+                            <a href="${visita.drive_file_url}" target="_blank" class="btn-small" style="margin-left: 8px;">
                                 🖼️ Ver Foto
                             </a>
                         ` : ''}
@@ -5448,6 +5510,7 @@ class App {
 }
 
 // Inicializa a aplicação
+registrarTratamentoErrosGlobais();
 const app = new App();
 
 // Expõe a instância globalmente para os event handlers inline
