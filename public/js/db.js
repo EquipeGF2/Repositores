@@ -124,11 +124,6 @@ class TursoDatabase {
                 // Coluna já existe, ignorar
             }
 
-            // Remover coluna obsoleta repo_supervisor se existir
-            try {
-                await this.mainClient.execute(`
-            }
-
             // Adicionar coluna rep_representante_codigo se não existir
             try {
                 await this.mainClient.execute(`
