@@ -5056,14 +5056,39 @@ class App {
         }
 
         navigator.geolocation.getCurrentPosition(
-            (position) => {
+            async (position) => {
                 this.registroRotaState.gpsCoords = {
                     latitude: position.coords.latitude,
                     longitude: position.coords.longitude
                 };
+
+                const lat = position.coords.latitude.toFixed(6);
+                const lon = position.coords.longitude.toFixed(6);
+
                 const gpsStatus = document.getElementById('gpsStatus');
                 if (gpsStatus) {
-                    gpsStatus.innerHTML = `<p style="margin: 0; color: #16a34a;">✅ GPS capturado: ${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.toFixed(6)}</p>`;
+                    gpsStatus.innerHTML = `
+                        <p style="margin: 0; color: #16a34a;">
+                            ✅ Coordenadas: ${lat}, ${lon}<br>
+                            <span style="font-size: 0.85em; color: #666;">📍 Carregando endereço...</span>
+                        </p>
+                    `;
+                }
+
+                // Buscar endereço via geocoding reverso
+                try {
+                    const endereco = await this.obterEnderecoPorCoordenadas(position.coords.latitude, position.coords.longitude);
+                    if (gpsStatus && endereco) {
+                        gpsStatus.innerHTML = `
+                            <p style="margin: 0; color: #16a34a;">
+                                ✅ Coordenadas: ${lat}, ${lon}<br>
+                                <span style="font-size: 0.9em; color: #374151;">📍 ${endereco}</span>
+                            </p>
+                        `;
+                    }
+                } catch (error) {
+                    console.warn('Erro ao buscar endereço:', error);
+                    // Mantém apenas as coordenadas se falhar
                 }
             },
             (error) => {
@@ -5079,6 +5104,39 @@ class App {
                 maximumAge: 0
             }
         );
+    }
+
+    async obterEnderecoPorCoordenadas(lat, lon) {
+        try {
+            // Usando API do OpenStreetMap Nominatim (gratuita)
+            const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&addressdetails=1`;
+            const response = await fetch(url, {
+                headers: {
+                    'User-Agent': 'RepositorApp/1.0'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Erro ao buscar endereço');
+            }
+
+            const data = await response.json();
+
+            // Montar endereço formatado
+            const address = data.address || {};
+            const partes = [];
+
+            if (address.road) partes.push(address.road);
+            if (address.house_number) partes.push(address.house_number);
+            if (address.neighbourhood || address.suburb) partes.push(address.neighbourhood || address.suburb);
+            if (address.city || address.town || address.village) partes.push(address.city || address.town || address.village);
+            if (address.state) partes.push(address.state);
+
+            return partes.join(', ') || data.display_name || 'Endereço não encontrado';
+        } catch (error) {
+            console.error('Erro ao buscar endereço:', error);
+            return null;
+        }
     }
 
     async ativarCamera() {
@@ -5200,11 +5258,11 @@ class App {
             // Criar FormData
             const formData = new FormData();
             formData.append('rep_id', repId);
-            formData.append('cli_codigo', clienteId);
-            formData.append('data_visita', dataVisita);
+            formData.append('cliente_id', clienteId); // Backend espera cliente_id
+            formData.append('data_hora_cliente', dataVisita); // Backend espera data_hora_cliente
             formData.append('latitude', gpsCoords.latitude);
             formData.append('longitude', gpsCoords.longitude);
-            formData.append('foto', fotoCapturada, `visita_${clienteId}_${Date.now()}.jpg`);
+            formData.append('arquivo_foto', fotoCapturada, `visita_${clienteId}_${Date.now()}.jpg`); // Backend espera arquivo_foto
 
             // Enviar para backend
             const response = await fetch(`${this.registroRotaState.backendUrl}/api/registro-rota/visitas`, {

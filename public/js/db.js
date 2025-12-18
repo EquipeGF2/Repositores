@@ -96,7 +96,7 @@ class TursoDatabase {
             await this.ensureCustosTables();
 
             this.schemaInitialized = true;
-            console.log('✅ Schema inicializado com sucesso');
+            // Schema inicializado com sucesso
             return true;
         } catch (error) {
             console.error('❌ Erro ao inicializar schema:', error);
@@ -392,7 +392,7 @@ class TursoDatabase {
                 console.error('Erro ao criar tabela cad_mot_alteracoes:', e);
             }
 
-            console.log('✅ Migração concluída');
+            // Migração concluída silenciosamente
         } catch (error) {
             console.error('❌ Erro na migração:', error);
             // Não lançar erro, apenas logar
