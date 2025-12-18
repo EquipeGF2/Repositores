@@ -3087,7 +3087,7 @@ class TursoDatabase {
                         cli.rot_ordem_visita
                     FROM rot_roteiro_cidade rc
                     JOIN rot_roteiro_cliente cli ON cli.rot_cid_id = rc.rot_cid_id
-                    LEFT JOIN cad_cliente c ON c.cli_codigo = cli.rot_cliente_codigo
+                    LEFT JOIN tab_cliente c ON c.cli_codigo = cli.rot_cliente_codigo
                     WHERE rc.rot_repositor_id = ?
                       AND rc.rot_dia_semana = ?
                     ORDER BY
