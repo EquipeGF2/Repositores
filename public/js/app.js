@@ -4876,7 +4876,6 @@ class App {
 
     async inicializarRegistroRota() {
         const btnCarregarRoteiro = document.getElementById('btnCarregarRoteiro');
-        const btnFecharModal = document.getElementById('btnFecharModalCaptura');
         const btnAtivarCamera = document.getElementById('btnAtivarCamera');
         const btnCapturarFoto = document.getElementById('btnCapturarFoto');
         const btnNovaFoto = document.getElementById('btnNovaFoto');
@@ -4884,10 +4883,6 @@ class App {
 
         if (btnCarregarRoteiro) {
             btnCarregarRoteiro.onclick = () => this.carregarRoteiroRepositor();
-        }
-
-        if (btnFecharModal) {
-            btnFecharModal.onclick = () => this.fecharModalCaptura();
         }
 
         if (btnAtivarCamera) {
@@ -4906,28 +4901,16 @@ class App {
             btnSalvarVisita.onclick = () => this.salvarVisita();
         }
 
-        // Carregar lista de repositores
-        try {
-            const repositores = await db.listarRepositores();
-            const select = document.getElementById('repositorRoteiro');
-            if (select) {
-                select.innerHTML = '<option value="">Selecione...</option>';
-                repositores.forEach(r => {
-                    const option = document.createElement('option');
-                    option.value = r.repo_cod;
-                    option.textContent = `${r.repo_cod} - ${r.repo_nome}`;
-                    select.appendChild(option);
-                });
-            }
-        } catch (error) {
-            console.error('Erro ao carregar repositores:', error);
-        }
+        // Carregar lista de repositores (já está no HTML gerado)
     }
 
     async carregarRoteiroRepositor() {
         try {
-            const repId = parseInt(document.getElementById('repositorRoteiro')?.value);
-            const dataVisita = document.getElementById('dataVisita')?.value;
+            const selectRepositor = document.getElementById('registroRepositor');
+            const inputData = document.getElementById('registroData');
+
+            const repId = selectRepositor?.value ? parseInt(selectRepositor.value) : null;
+            const dataVisita = inputData?.value;
 
             if (!repId || !dataVisita) {
                 this.showNotification('Selecione o repositor e a data', 'warning');
@@ -4943,7 +4926,7 @@ class App {
 
             if (!roteiro || roteiro.length === 0) {
                 this.showNotification('Nenhum cliente no roteiro para este dia', 'info');
-                document.getElementById('containerRoteiro').innerHTML = '<p style="text-align:center;color:#999;margin-top:20px;">Nenhum cliente encontrado</p>';
+                document.getElementById('roteiroContainer').innerHTML = '<p style="text-align:center;color:#999;margin-top:20px;">Nenhum cliente encontrado</p>';
                 return;
             }
 
@@ -4951,7 +4934,7 @@ class App {
             const visitasRealizadas = await this.verificarVisitasRealizadas(repId, dataVisita);
 
             // Renderizar roteiro
-            const container = document.getElementById('containerRoteiro');
+            const container = document.getElementById('roteiroContainer');
             container.innerHTML = '';
 
             roteiro.forEach(cliente => {
@@ -5004,11 +4987,11 @@ class App {
             repId,
             clienteId,
             clienteNome,
-            dataVisita: document.getElementById('dataVisita')?.value
+            dataVisita: document.getElementById('registroData')?.value
         };
 
         // Atualizar título do modal
-        const tituloModal = document.querySelector('#modalCaptura h3');
+        const tituloModal = document.getElementById('modalCapturaTitulo');
         if (tituloModal) {
             tituloModal.textContent = `Registrar Visita - ${clienteNome}`;
         }
@@ -5018,23 +5001,33 @@ class App {
         this.registroRotaState.fotoCapturada = null;
 
         // Atualizar status GPS
-        document.getElementById('gpsStatus').innerHTML = '📍 GPS: Aguardando...';
-        document.getElementById('gpsStatus').style.color = '#666';
+        const gpsStatus = document.getElementById('gpsStatus');
+        if (gpsStatus) {
+            gpsStatus.innerHTML = '<p style="margin: 0; color: #6b7280;">Aguardando geolocalização...</p>';
+        }
 
         // Resetar canvas
         const canvas = document.getElementById('canvasCaptura');
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        canvas.style.display = 'none';
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            canvas.style.display = 'none';
+        }
+
+        // Resetar placeholder e vídeo
+        const placeholder = document.getElementById('cameraPlaceholder');
+        const video = document.getElementById('videoPreview');
+        if (placeholder) placeholder.style.display = 'flex';
+        if (video) video.style.display = 'none';
 
         // Resetar botões
-        document.getElementById('btnAtivarCamera').style.display = 'inline-block';
+        document.getElementById('btnAtivarCamera').style.display = 'block';
         document.getElementById('btnCapturarFoto').style.display = 'none';
         document.getElementById('btnNovaFoto').style.display = 'none';
         document.getElementById('btnSalvarVisita').disabled = true;
 
         // Abrir modal
-        document.getElementById('modalCaptura').classList.add('active');
+        document.getElementById('modalCapturarVisita').classList.add('active');
 
         // Iniciar captura de GPS
         this.iniciarCapturaGPS();
@@ -5042,8 +5035,10 @@ class App {
 
     iniciarCapturaGPS() {
         if (!navigator.geolocation) {
-            document.getElementById('gpsStatus').innerHTML = '❌ GPS não disponível';
-            document.getElementById('gpsStatus').style.color = '#dc2626';
+            const gpsStatus = document.getElementById('gpsStatus');
+            if (gpsStatus) {
+                gpsStatus.innerHTML = '<p style="margin: 0; color: #dc2626;">❌ GPS não disponível no dispositivo</p>';
+            }
             return;
         }
 
@@ -5053,13 +5048,17 @@ class App {
                     latitude: position.coords.latitude,
                     longitude: position.coords.longitude
                 };
-                document.getElementById('gpsStatus').innerHTML = `✅ GPS: ${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.toFixed(6)}`;
-                document.getElementById('gpsStatus').style.color = '#16a34a';
+                const gpsStatus = document.getElementById('gpsStatus');
+                if (gpsStatus) {
+                    gpsStatus.innerHTML = `<p style="margin: 0; color: #16a34a;">✅ GPS capturado: ${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.toFixed(6)}</p>`;
+                }
             },
             (error) => {
                 console.error('Erro GPS:', error);
-                document.getElementById('gpsStatus').innerHTML = '❌ GPS: Erro ao capturar';
-                document.getElementById('gpsStatus').style.color = '#dc2626';
+                const gpsStatus = document.getElementById('gpsStatus');
+                if (gpsStatus) {
+                    gpsStatus.innerHTML = '<p style="margin: 0; color: #dc2626;">❌ Erro ao capturar GPS. Verifique as permissões.</p>';
+                }
             },
             {
                 enableHighAccuracy: true,
@@ -5072,6 +5071,7 @@ class App {
     async ativarCamera() {
         try {
             const videoElement = document.getElementById('videoPreview');
+            const placeholder = document.getElementById('cameraPlaceholder');
 
             // Solicitar acesso à câmera
             const stream = await navigator.mediaDevices.getUserMedia({
@@ -5084,11 +5084,17 @@ class App {
 
             this.registroRotaState.videoStream = stream;
             videoElement.srcObject = stream;
-            videoElement.style.display = 'block';
+
+            // Aguardar vídeo carregar antes de exibir
+            videoElement.onloadedmetadata = () => {
+                videoElement.play();
+                videoElement.style.display = 'block';
+                if (placeholder) placeholder.style.display = 'none';
+            };
 
             // Atualizar botões
             document.getElementById('btnAtivarCamera').style.display = 'none';
-            document.getElementById('btnCapturarFoto').style.display = 'inline-block';
+            document.getElementById('btnCapturarFoto').style.display = 'block';
 
             this.showNotification('Câmera ativada', 'success');
         } catch (error) {
@@ -5144,13 +5150,17 @@ class App {
     novaFoto() {
         // Resetar canvas
         const canvas = document.getElementById('canvasCaptura');
-        canvas.style.display = 'none';
+        if (canvas) canvas.style.display = 'none';
+
+        // Mostrar placeholder novamente
+        const placeholder = document.getElementById('cameraPlaceholder');
+        if (placeholder) placeholder.style.display = 'flex';
 
         // Resetar estado
         this.registroRotaState.fotoCapturada = null;
 
         // Atualizar botões
-        document.getElementById('btnAtivarCamera').style.display = 'inline-block';
+        document.getElementById('btnAtivarCamera').style.display = 'block';
         document.getElementById('btnNovaFoto').style.display = 'none';
         document.getElementById('btnSalvarVisita').disabled = true;
     }
@@ -5227,8 +5237,15 @@ class App {
             video.style.display = 'none';
         }
 
+        // Resetar canvas e placeholder
+        const canvas = document.getElementById('canvasCaptura');
+        if (canvas) canvas.style.display = 'none';
+
+        const placeholder = document.getElementById('cameraPlaceholder');
+        if (placeholder) placeholder.style.display = 'flex';
+
         // Fechar modal
-        document.getElementById('modalCaptura').classList.remove('active');
+        document.getElementById('modalCapturarVisita').classList.remove('active');
 
         // Resetar estado
         this.registroRotaState.clienteAtual = null;
