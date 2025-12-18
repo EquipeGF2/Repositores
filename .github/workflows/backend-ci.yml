@@ -1,0 +1,36 @@
+name: Backend CI
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "backend/**"
+
+jobs:
+  backend-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install (ci)
+        run: npm ci
+
+      - name: Express version
+        run: node -p "require('express/package.json').version"
+
+      - name: Require merge-descriptors
+        run: node -e "require('merge-descriptors'); console.log('merge-descriptors OK')"
+
+      - name: Require body-parser
+        run: node -e "require('body-parser'); console.log('body-parser OK')"
