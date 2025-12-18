@@ -68,6 +68,10 @@ router.post('/visitas', async (req, res) => {
       repoNome: repositor.repo_nome
     });
 
+    if (!driveResult?.fileId || !driveResult?.webViewLink) {
+      return res.status(400).json({ ok: false, code: 'DRIVE_NOT_CONFIGURED', message: 'Upload no Drive não disponível' });
+    }
+
     const visita = await tursoService.salvarVisita({
       repId: repIdNumber,
       clienteId: cliente_id,

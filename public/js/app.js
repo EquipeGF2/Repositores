@@ -4982,12 +4982,13 @@ class App {
 
             // Verificar visitas já realizadas
             const visitasRealizadas = await this.verificarVisitasRealizadas(repId, dataVisita);
+            const visitasPorCliente = new Set(visitasRealizadas);
 
             // Renderizar roteiro
             container.innerHTML = '';
 
             roteiro.forEach(cliente => {
-                const visitado = visitasRealizadas.includes(cliente.cli_codigo);
+                const visitado = visitasPorCliente.has(cliente.cli_codigo);
 
                 const item = document.createElement('div');
                 item.className = 'route-item';
@@ -5010,10 +5011,14 @@ class App {
         } catch (error) {
             console.error('Erro ao carregar roteiro:', error);
             this.showNotification('Erro ao carregar roteiro: ' + error.message, 'error');
+            if (container) {
+                container.innerHTML = '<p style="text-align:center;color:#999;margin-top:20px;">Não foi possível carregar o roteiro</p>';
+            }
         }
     }
 
     async verificarVisitasRealizadas(repId, dataVisita) {
+        let visitas = [];
         try {
             const url = `${this.registroRotaState.backendUrl}/api/registro-rota/visitas?rep_id=${repId}&data_inicio=${dataVisita}&data_fim=${dataVisita}`;
             const response = await fetch(url);
@@ -5026,10 +5031,12 @@ class App {
             }
 
             const result = await response.json();
-            return (result.visitas || []).map(v => v.cliente_id);
+            visitas = (result.visitas || []).map(v => v.cliente_id);
         } catch (error) {
             console.warn('Erro ao verificar visitas:', error);
-            return [];
+            this.showNotification('Não foi possível verificar visitas agora. Exibindo roteiro sem status.', 'warning');
+        } finally {
+            return visitas;
         }
     }
 
@@ -5305,6 +5312,8 @@ class App {
     }
 
     async salvarVisita() {
+        const btnSalvar = document.getElementById('btnSalvarVisita');
+
         try {
             const { repId, clienteId, dataVisita } = this.registroRotaState.clienteAtual;
             const { gpsCoords, fotoCapturada, enderecoResolvido } = this.registroRotaState;
@@ -5319,9 +5328,10 @@ class App {
                 return;
             }
 
-            // Desabilitar botão para evitar duplo clique
-            document.getElementById('btnSalvarVisita').disabled = true;
-            document.getElementById('btnSalvarVisita').textContent = 'Salvando...';
+            if (btnSalvar) {
+                btnSalvar.disabled = true;
+                btnSalvar.textContent = 'Salvando...';
+            }
 
             const fotoBase64 = await this.converterBlobParaBase64(fotoCapturada);
 
@@ -5336,7 +5346,6 @@ class App {
                 foto_mime: fotoCapturada.type || 'image/jpeg'
             };
 
-            // Enviar para backend
             const response = await fetch(`${this.registroRotaState.backendUrl}/api/registro-rota/visitas`, {
                 method: 'POST',
                 headers: {
@@ -5350,22 +5359,20 @@ class App {
                 throw new Error(detalhesErro || `Erro ao salvar visita (status ${response.status})`);
             }
 
-            const result = await response.json();
+            await response.json();
 
             this.showNotification('Visita registrada com sucesso!', 'success');
 
-            // Fechar modal
             this.fecharModalCaptura();
-
-            // Recarregar roteiro para atualizar status
             await this.carregarRoteiroRepositor();
         } catch (error) {
             console.error('Erro ao salvar visita:', error);
             this.showNotification('Erro ao salvar: ' + error.message, 'error');
-
-            // Reabilitar botão
-            document.getElementById('btnSalvarVisita').disabled = false;
-            document.getElementById('btnSalvarVisita').textContent = '💾 Salvar Visita';
+        } finally {
+            if (btnSalvar) {
+                btnSalvar.disabled = false;
+                btnSalvar.textContent = '💾 Salvar Visita';
+            }
         }
     }
 
