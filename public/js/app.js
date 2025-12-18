@@ -4919,7 +4919,11 @@ class App {
 
             // Calcular dia da semana (0=Domingo, 1=Segunda, etc.)
             const data = new Date(dataVisita + 'T12:00:00');
-            const diaSemana = data.getDay();
+            const diaNumero = data.getDay();
+
+            // Converter para formato usado no banco (seg, ter, qua, qui, sex, sab, dom)
+            const diasMap = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
+            const diaSemana = diasMap[diaNumero];
 
             // Carregar roteiro do repositor para aquele dia da semana
             const roteiro = await db.carregarRoteiroRepositorDia(repId, diaSemana);
