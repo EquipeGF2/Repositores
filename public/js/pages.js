@@ -1680,6 +1680,261 @@ export const pages = {
         `;
     },
 
+    'registro-rota': async () => {
+        const repositores = await db.getAllRepositors();
+        const repositorOptions = repositores
+            .map(repo => `<option value="${repo.repo_cod}">${repo.repo_cod} - ${repo.repo_nome}</option>`)
+            .join('');
+
+        const hoje = new Date().toISOString().split('T')[0];
+
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">📸 Registro de Rota</h3>
+                        <p class="text-muted" style="margin: 4px 0 0;">
+                            Registre visitas com foto e geolocalização
+                        </p>
+                    </div>
+                </div>
+
+                <div class="card-body">
+                    <div class="filter-bar">
+                        <div class="filter-group">
+                            <label for="registroRepositor">Repositor *</label>
+                            <select id="registroRepositor" required>
+                                <option value="">Selecione...</option>
+                                ${repositorOptions}
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="registroData">Data *</label>
+                            <input type="date" id="registroData" value="${hoje}" required>
+                        </div>
+                        <div class="filter-group" style="display: flex; align-items: flex-end;">
+                            <button class="btn btn-secondary" id="btnCarregarRoteiro">🔍 Carregar Roteiro</button>
+                        </div>
+                    </div>
+
+                    <div id="roteiroContainer" style="margin-top: 1.5rem;">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📋</div>
+                            <p>Selecione um repositor e data para visualizar o roteiro</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal de Captura de Foto + GPS -->
+            <div class="modal" id="modalCapturarVisita">
+                <div class="modal-content" style="max-width: 600px; border-radius: 12px;">
+                    <div class="modal-header">
+                        <h3 id="modalCapturaTitulo">Registrar Visita</h3>
+                        <button class="modal-close" onclick="window.app.fecharModalCaptura()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" id="capturaRepId">
+                        <input type="hidden" id="capturaClienteId">
+                        <input type="hidden" id="capturaClienteNome">
+
+                        <div class="form-group">
+                            <label>Cliente:</label>
+                            <p id="capturaClienteInfo" style="font-weight: 600; color: #374151;"></p>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Localização GPS:</label>
+                            <div id="gpsStatus" style="padding: 12px; background: #f3f4f6; border-radius: 8px; margin-top: 8px;">
+                                <p style="margin: 0; color: #6b7280;">Aguardando geolocalização...</p>
+                            </div>
+                            <input type="hidden" id="capturaLatitude">
+                            <input type="hidden" id="capturaLongitude">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Câmera:</label>
+                            <video id="videoPreview" style="width: 100%; max-height: 300px; border-radius: 8px; background: #000; display: none;"></video>
+                            <canvas id="canvasCaptura" style="width: 100%; max-height: 300px; border-radius: 8px; display: none;"></canvas>
+                            <div id="cameraPlaceholder" style="width: 100%; height: 200px; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                                <p style="color: #6b7280;">📷 Clique em "Ativar Câmera" para iniciar</p>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <button class="btn btn-secondary" id="btnAtivarCamera" style="width: 100%;">📷 Ativar Câmera</button>
+                            <button class="btn btn-primary" id="btnCapturarFoto" style="width: 100%; margin-top: 8px; display: none;">📸 Capturar Foto</button>
+                            <button class="btn btn-secondary" id="btnNovaFoto" style="width: 100%; margin-top: 8px; display: none;">🔄 Tirar Outra Foto</button>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="window.app.fecharModalCaptura()">Cancelar</button>
+                        <button class="btn btn-primary" id="btnSalvarVisita" disabled>💾 Salvar Visita</button>
+                    </div>
+                </div>
+            </div>
+
+            <style>
+                .roteiro-lista {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 12px;
+                }
+
+                .roteiro-item {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 16px;
+                    background: white;
+                    border: 1px solid #e5e7eb;
+                    border-radius: 12px;
+                    transition: all 0.2s ease;
+                }
+
+                .roteiro-item:hover {
+                    border-color: #ef4444;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+                }
+
+                .roteiro-item.visitado {
+                    background: #f0fdf4;
+                    border-color: #86efac;
+                }
+
+                .roteiro-info {
+                    flex: 1;
+                }
+
+                .roteiro-cliente {
+                    font-weight: 600;
+                    font-size: 15px;
+                    color: #111827;
+                    margin-bottom: 4px;
+                }
+
+                .roteiro-endereco {
+                    font-size: 13px;
+                    color: #6b7280;
+                }
+
+                .roteiro-status {
+                    display: inline-flex;
+                    align-items: center;
+                    padding: 6px 12px;
+                    border-radius: 20px;
+                    font-size: 12px;
+                    font-weight: 600;
+                    margin-right: 12px;
+                }
+
+                .roteiro-status.pendente {
+                    background: #fef3c7;
+                    color: #92400e;
+                }
+
+                .roteiro-status.visitado {
+                    background: #d1fae5;
+                    color: #065f46;
+                }
+
+                .btn-registrar {
+                    padding: 8px 16px;
+                    background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                }
+
+                .btn-registrar:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 6px rgba(239, 68, 68, 0.3);
+                }
+
+                .btn-registrar:disabled {
+                    background: #d1d5db;
+                    cursor: not-allowed;
+                    transform: none;
+                }
+
+                .btn-ver-foto {
+                    padding: 8px 16px;
+                    background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%);
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    text-decoration: none;
+                    display: inline-block;
+                }
+
+                .btn-ver-foto:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 6px rgba(100, 116, 139, 0.3);
+                }
+            </style>
+        `;
+    },
+
+    'consulta-visitas': async () => {
+        const repositores = await db.getAllRepositors();
+        const repositorOptions = repositores
+            .map(repo => `<option value="${repo.repo_cod}">${repo.repo_cod} - ${repo.repo_nome}</option>`)
+            .join('');
+
+        const hoje = new Date().toISOString().split('T')[0];
+        const umMesAtras = new Date();
+        umMesAtras.setMonth(umMesAtras.getMonth() - 1);
+        const dataInicio = umMesAtras.toISOString().split('T')[0];
+
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">🔍 Consulta de Visitas</h3>
+                        <p class="text-muted" style="margin: 4px 0 0;">
+                            Visualize o histórico de visitas registradas
+                        </p>
+                    </div>
+                </div>
+
+                <div class="card-body">
+                    <div class="filter-bar" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+                        <div class="filter-group">
+                            <label for="consultaRepositor">Repositor</label>
+                            <select id="consultaRepositor">
+                                <option value="">Todos</option>
+                                ${repositorOptions}
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="consultaDataInicio">Data Início</label>
+                            <input type="date" id="consultaDataInicio" value="${dataInicio}">
+                        </div>
+                        <div class="filter-group">
+                            <label for="consultaDataFim">Data Fim</label>
+                            <input type="date" id="consultaDataFim" value="${hoje}">
+                        </div>
+                        <div class="filter-group" style="display: flex; align-items: flex-end;">
+                            <button class="btn btn-secondary" id="btnConsultarVisitas" style="width: 100%;">🔍 Consultar</button>
+                        </div>
+                    </div>
+
+                    <div id="visitasContainer" style="margin-top: 1.5rem;">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📋</div>
+                            <p>Clique em "Consultar" para visualizar as visitas</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
     'estrutura-banco-comercial': async () => {
         const resultado = await db.getEstruturaBancoComercial();
 
