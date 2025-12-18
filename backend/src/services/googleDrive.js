@@ -1,5 +1,5 @@
 import { google } from 'googleapis';
-import { readFileSync } from 'fs';
+import { Readable } from 'stream';
 import { config } from '../config/env.js';
 
 class GoogleDriveService {
@@ -13,19 +13,14 @@ class GoogleDriveService {
     if (this.auth) return;
 
     try {
-      let credentials;
-
-      // Tentar carregar do JSON diretamente (variável de ambiente)
-      if (config.drive.serviceAccountKey) {
-        credentials = config.drive.serviceAccountKey;
-      }
-      // Caso contrário, carregar do arquivo
-      else if (config.drive.serviceAccountKeyPath) {
-        const keyFile = readFileSync(config.drive.serviceAccountKeyPath, 'utf8');
-        credentials = JSON.parse(keyFile);
-      } else {
+      if (!this.isConfigured()) {
         throw new Error('Credenciais do Google Drive não configuradas');
       }
+
+      const credentials = {
+        client_email: config.drive.clientEmail,
+        private_key: config.drive.privateKey.replace(/\\n/g, '\n')
+      };
 
       this.auth = new google.auth.GoogleAuth({
         credentials,
@@ -39,6 +34,10 @@ class GoogleDriveService {
       console.error('❌ Erro ao autenticar no Google Drive:', error.message);
       throw error;
     }
+  }
+
+  isConfigured() {
+    return Boolean(config.drive.clientEmail && config.drive.privateKey && config.drive.rootFolderId);
   }
 
   async criarPastaRepositor(repId, repoNome) {
@@ -93,7 +92,7 @@ class GoogleDriveService {
     }
   }
 
-  async uploadFoto({ buffer, filename, repId, repoNome }) {
+  async uploadFotoBase64({ base64Data, mimeType, filename, repId, repoNome }) {
     await this.authenticate();
 
     try {
@@ -107,8 +106,8 @@ class GoogleDriveService {
       };
 
       const media = {
-        mimeType: 'image/jpeg',
-        body: buffer
+        mimeType,
+        body: Readable.from(Buffer.from(base64Data, 'base64'))
       };
 
       const file = await this.drive.files.create({
