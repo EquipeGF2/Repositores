@@ -111,7 +111,6 @@ class TursoDatabase {
                 await this.mainClient.execute(`
                     ALTER TABLE cad_repositor ADD COLUMN repo_vinculo TEXT DEFAULT 'repositor'
                 `);
-                console.log('✅ Coluna repo_vinculo adicionada');
             } catch (e) {
                 // Coluna já existe, ignorar
             }
@@ -121,7 +120,6 @@ class TursoDatabase {
                 await this.mainClient.execute(`
                     ALTER TABLE cad_repositor ADD COLUMN rep_supervisor TEXT
                 `);
-                console.log('✅ Coluna rep_supervisor adicionada');
             } catch (e) {
                 // Coluna já existe, ignorar
             }
@@ -129,11 +127,6 @@ class TursoDatabase {
             // Remover coluna obsoleta repo_supervisor se existir
             try {
                 await this.mainClient.execute(`
-                    ALTER TABLE cad_repositor DROP COLUMN IF EXISTS repo_supervisor
-                `);
-                console.log('🧹 Coluna repo_supervisor removida');
-            } catch (e) {
-                console.warn('Aviso ao remover repo_supervisor:', e?.message || e);
             }
 
             // Adicionar coluna rep_representante_codigo se não existir
@@ -141,7 +134,6 @@ class TursoDatabase {
                 await this.mainClient.execute(`
                     ALTER TABLE cad_repositor ADD COLUMN rep_representante_codigo TEXT
                 `);
-                console.log('✅ Coluna rep_representante_codigo adicionada');
             } catch (e) {
                 // Coluna já existe, ignorar
             }
@@ -151,7 +143,6 @@ class TursoDatabase {
                 await this.mainClient.execute(`
                     ALTER TABLE cad_repositor ADD COLUMN rep_representante_nome TEXT
                 `);
-                console.log('✅ Coluna rep_representante_nome adicionada');
             } catch (e) {
                 // Coluna já existe, ignorar
             }
@@ -161,7 +152,6 @@ class TursoDatabase {
                 await this.mainClient.execute(`
                     ALTER TABLE cad_repositor ADD COLUMN rep_contato_telefone TEXT
                 `);
-                console.log('✅ Coluna rep_contato_telefone adicionada');
             } catch (e) {
                 // Coluna já existe, ignorar
             }
@@ -171,7 +161,6 @@ class TursoDatabase {
                 await this.mainClient.execute(`
                     ALTER TABLE cad_repositor ADD COLUMN rep_email TEXT
                 `);
-                console.log('✅ Coluna rep_email adicionada');
             } catch (e) {
                 // Coluna já existe, ignorar
             }
@@ -181,7 +170,6 @@ class TursoDatabase {
                 await this.mainClient.execute(`
                     ALTER TABLE cad_repositor ADD COLUMN rep_telefone TEXT
                 `);
-                console.log('✅ Coluna rep_telefone adicionada');
             } catch (e) {
                 // Coluna já existe, ignorar
             }
@@ -201,7 +189,6 @@ class TursoDatabase {
                 await this.mainClient.execute(`
                     ALTER TABLE rot_roteiro_cliente ADD COLUMN rot_venda_centralizada INTEGER DEFAULT 0
                 `);
-                console.log('✅ Coluna rot_venda_centralizada adicionada');
             } catch (e) {
                 // Coluna já existe, ignorar
             }
@@ -210,7 +197,6 @@ class TursoDatabase {
                 await this.mainClient.execute(`
                     ALTER TABLE rot_roteiro_cliente ADD COLUMN rot_possui_rateio INTEGER DEFAULT 0
                 `);
-                console.log('✅ Coluna rot_possui_rateio adicionada');
             } catch (e) {
                 // Coluna já existe, ignorar
             }
@@ -248,7 +234,6 @@ class TursoDatabase {
             // Remover tabela cad_supervisor descontinuada
             try {
                 await this.mainClient.execute('DROP TABLE IF EXISTS cad_supervisor');
-                console.log('🧹 Tabela cad_supervisor removida');
             } catch (e) {
                 console.warn('Aviso ao remover cad_supervisor:', e?.message || e);
             }
@@ -258,7 +243,6 @@ class TursoDatabase {
                 await this.mainClient.execute(`
                     ALTER TABLE cad_repositor ADD COLUMN dias_trabalhados TEXT DEFAULT 'seg,ter,qua,qui,sex'
                 `);
-                console.log('✅ Coluna dias_trabalhados adicionada');
             } catch (e) {
                 // Coluna já existe, ignorar
             }
@@ -268,7 +252,6 @@ class TursoDatabase {
                 await this.mainClient.execute(`
                     ALTER TABLE cad_repositor ADD COLUMN jornada TEXT DEFAULT 'integral'
                 `);
-                console.log('✅ Coluna jornada adicionada');
             } catch (e) {
                 // Coluna já existe, ignorar
             }
@@ -278,7 +261,6 @@ class TursoDatabase {
                 await this.mainClient.execute(`
                     ALTER TABLE cad_repositor ADD COLUMN rep_jornada_tipo TEXT DEFAULT 'INTEGRAL'
                 `);
-                console.log('✅ Coluna rep_jornada_tipo adicionada');
 
                 try {
                     await this.mainClient.execute(`
@@ -379,7 +361,7 @@ class TursoDatabase {
                             hist_usuario TEXT
                         )
                     `);
-                    console.log('✅ Tabela hist_repositor criada com nova estrutura');
+                    // Tabela hist_repositor verificada
                 }
             } catch (e) {
                 console.error('Erro ao criar/migrar hist_repositor:', e);
@@ -393,7 +375,7 @@ class TursoDatabase {
                         mot_descricao TEXT NOT NULL UNIQUE
                     )
                 `);
-                console.log('✅ Tabela cad_mot_alteracoes criada');
+                // Tabela cad_mot_alteracoes verificada
 
                 // Inserir motivos padrão se a tabela estiver vazia
                 const checkMotivos = await this.mainClient.execute(`SELECT COUNT(*) as total FROM cad_mot_alteracoes`);
@@ -606,7 +588,7 @@ class TursoDatabase {
                 ON cc_custos_repositor_mensal (cc_rep_id)
             `);
 
-            console.log('✅ Tabela cc_custos_repositor_mensal criada com sucesso');
+            // Tabela cc_custos_repositor_mensal verificada
         } catch (error) {
             console.error('Erro ao criar tabelas de custos:', error);
             throw error;
