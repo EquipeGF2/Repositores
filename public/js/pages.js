@@ -1876,6 +1876,84 @@ export const pages = {
                     transform: translateY(-2px);
                     box-shadow: 0 4px 6px rgba(100, 116, 139, 0.3);
                 }
+
+                /* Estilos para roteiro dinâmico */
+                .route-item {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 16px;
+                    background: white;
+                    border: 1px solid #e5e7eb;
+                    border-radius: 12px;
+                    margin-bottom: 12px;
+                    transition: all 0.2s ease;
+                }
+
+                .route-item:hover {
+                    border-color: #ef4444;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+                }
+
+                .route-item-info {
+                    flex: 1;
+                }
+
+                .route-item-name {
+                    font-weight: 600;
+                    font-size: 15px;
+                    color: #111827;
+                    margin-bottom: 4px;
+                }
+
+                .route-item-address {
+                    font-size: 13px;
+                    color: #6b7280;
+                }
+
+                .route-item-actions {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                }
+
+                .route-status {
+                    display: inline-flex;
+                    align-items: center;
+                    padding: 6px 12px;
+                    border-radius: 20px;
+                    font-size: 12px;
+                    font-weight: 600;
+                }
+
+                .status-pending {
+                    background: #fef3c7;
+                    color: #92400e;
+                }
+
+                .status-visited {
+                    background: #d1fae5;
+                    color: #065f46;
+                }
+
+                .btn-small {
+                    padding: 8px 16px;
+                    background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    font-size: 13px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                    text-decoration: none;
+                    display: inline-block;
+                }
+
+                .btn-small:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 6px rgba(239, 68, 68, 0.3);
+                }
             </style>
         `;
     },
@@ -1932,6 +2010,25 @@ export const pages = {
                     </div>
                 </div>
             </div>
+
+            <style>
+                .visit-item {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 16px;
+                    background: white;
+                    border: 1px solid #e5e7eb;
+                    border-radius: 12px;
+                    margin-bottom: 12px;
+                    transition: all 0.2s ease;
+                }
+
+                .visit-item:hover {
+                    border-color: #ef4444;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+                }
+            </style>
         `;
     },
 

@@ -470,6 +470,10 @@ class App {
                 await this.inicializarCustosRepositor();
             } else if (pageName === 'custos-grid') {
                 await this.inicializarCustosGrid();
+            } else if (pageName === 'registro-rota') {
+                await this.inicializarRegistroRota();
+            } else if (pageName === 'consulta-visitas') {
+                await this.inicializarConsultaVisitas();
             }
         } catch (error) {
             console.error('Erro ao carregar página:', error);
@@ -4857,6 +4861,467 @@ class App {
         } catch (error) {
             console.error('Erro ao importar Excel:', error);
             this.showNotification('Erro ao importar: ' + error.message, 'error');
+        }
+    }
+
+    // ==================== REGISTRO DE ROTA ====================
+
+    registroRotaState = {
+        backendUrl: 'https://repositor-backend.onrender.com',
+        videoStream: null,
+        gpsCoords: null,
+        fotoCapturada: null,
+        clienteAtual: null
+    };
+
+    async inicializarRegistroRota() {
+        const btnCarregarRoteiro = document.getElementById('btnCarregarRoteiro');
+        const btnFecharModal = document.getElementById('btnFecharModalCaptura');
+        const btnAtivarCamera = document.getElementById('btnAtivarCamera');
+        const btnCapturarFoto = document.getElementById('btnCapturarFoto');
+        const btnNovaFoto = document.getElementById('btnNovaFoto');
+        const btnSalvarVisita = document.getElementById('btnSalvarVisita');
+
+        if (btnCarregarRoteiro) {
+            btnCarregarRoteiro.onclick = () => this.carregarRoteiroRepositor();
+        }
+
+        if (btnFecharModal) {
+            btnFecharModal.onclick = () => this.fecharModalCaptura();
+        }
+
+        if (btnAtivarCamera) {
+            btnAtivarCamera.onclick = () => this.ativarCamera();
+        }
+
+        if (btnCapturarFoto) {
+            btnCapturarFoto.onclick = () => this.capturarFoto();
+        }
+
+        if (btnNovaFoto) {
+            btnNovaFoto.onclick = () => this.novaFoto();
+        }
+
+        if (btnSalvarVisita) {
+            btnSalvarVisita.onclick = () => this.salvarVisita();
+        }
+
+        // Carregar lista de repositores
+        try {
+            const repositores = await db.listarRepositores();
+            const select = document.getElementById('repositorRoteiro');
+            if (select) {
+                select.innerHTML = '<option value="">Selecione...</option>';
+                repositores.forEach(r => {
+                    const option = document.createElement('option');
+                    option.value = r.repo_cod;
+                    option.textContent = `${r.repo_cod} - ${r.repo_nome}`;
+                    select.appendChild(option);
+                });
+            }
+        } catch (error) {
+            console.error('Erro ao carregar repositores:', error);
+        }
+    }
+
+    async carregarRoteiroRepositor() {
+        try {
+            const repId = parseInt(document.getElementById('repositorRoteiro')?.value);
+            const dataVisita = document.getElementById('dataVisita')?.value;
+
+            if (!repId || !dataVisita) {
+                this.showNotification('Selecione o repositor e a data', 'warning');
+                return;
+            }
+
+            // Calcular dia da semana (0=Domingo, 1=Segunda, etc.)
+            const data = new Date(dataVisita + 'T12:00:00');
+            const diaSemana = data.getDay();
+
+            // Carregar roteiro do repositor para aquele dia da semana
+            const roteiro = await db.carregarRoteiroRepositorDia(repId, diaSemana);
+
+            if (!roteiro || roteiro.length === 0) {
+                this.showNotification('Nenhum cliente no roteiro para este dia', 'info');
+                document.getElementById('containerRoteiro').innerHTML = '<p style="text-align:center;color:#999;margin-top:20px;">Nenhum cliente encontrado</p>';
+                return;
+            }
+
+            // Verificar visitas já realizadas
+            const visitasRealizadas = await this.verificarVisitasRealizadas(repId, dataVisita);
+
+            // Renderizar roteiro
+            const container = document.getElementById('containerRoteiro');
+            container.innerHTML = '';
+
+            roteiro.forEach(cliente => {
+                const visitado = visitasRealizadas.includes(cliente.cli_codigo);
+
+                const item = document.createElement('div');
+                item.className = 'route-item';
+                item.innerHTML = `
+                    <div class="route-item-info">
+                        <div class="route-item-name">${cliente.cli_codigo} - ${cliente.cli_nome}</div>
+                        <div class="route-item-address">${cliente.cli_cidade || ''} - ${cliente.cli_estado || ''}</div>
+                    </div>
+                    <div class="route-item-actions">
+                        <span class="route-status ${visitado ? 'status-visited' : 'status-pending'}">
+                            ${visitado ? 'Visitado' : 'Pendente'}
+                        </span>
+                        ${!visitado ? `<button onclick="app.abrirModalCaptura(${repId}, ${cliente.cli_codigo}, '${cliente.cli_nome.replace(/'/g, '\\\'')}')" class="btn-small">📸 Registrar</button>` : ''}
+                    </div>
+                `;
+                container.appendChild(item);
+            });
+
+            this.showNotification(`${roteiro.length} cliente(s) no roteiro`, 'success');
+        } catch (error) {
+            console.error('Erro ao carregar roteiro:', error);
+            this.showNotification('Erro ao carregar roteiro: ' + error.message, 'error');
+        }
+    }
+
+    async verificarVisitasRealizadas(repId, dataVisita) {
+        try {
+            const url = `${this.registroRotaState.backendUrl}/api/registro-rota/visitas?rep_id=${repId}&data_inicio=${dataVisita}&data_fim=${dataVisita}`;
+            const response = await fetch(url);
+
+            if (!response.ok) {
+                console.warn('Erro ao verificar visitas:', response.status);
+                return [];
+            }
+
+            const result = await response.json();
+            return result.visitas.map(v => v.cli_codigo);
+        } catch (error) {
+            console.warn('Erro ao verificar visitas:', error);
+            return [];
+        }
+    }
+
+    async abrirModalCaptura(repId, clienteId, clienteNome) {
+        this.registroRotaState.clienteAtual = {
+            repId,
+            clienteId,
+            clienteNome,
+            dataVisita: document.getElementById('dataVisita')?.value
+        };
+
+        // Atualizar título do modal
+        const tituloModal = document.querySelector('#modalCaptura h3');
+        if (tituloModal) {
+            tituloModal.textContent = `Registrar Visita - ${clienteNome}`;
+        }
+
+        // Resetar estado
+        this.registroRotaState.gpsCoords = null;
+        this.registroRotaState.fotoCapturada = null;
+
+        // Atualizar status GPS
+        document.getElementById('gpsStatus').innerHTML = '📍 GPS: Aguardando...';
+        document.getElementById('gpsStatus').style.color = '#666';
+
+        // Resetar canvas
+        const canvas = document.getElementById('canvasCaptura');
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        canvas.style.display = 'none';
+
+        // Resetar botões
+        document.getElementById('btnAtivarCamera').style.display = 'inline-block';
+        document.getElementById('btnCapturarFoto').style.display = 'none';
+        document.getElementById('btnNovaFoto').style.display = 'none';
+        document.getElementById('btnSalvarVisita').disabled = true;
+
+        // Abrir modal
+        document.getElementById('modalCaptura').classList.add('active');
+
+        // Iniciar captura de GPS
+        this.iniciarCapturaGPS();
+    }
+
+    iniciarCapturaGPS() {
+        if (!navigator.geolocation) {
+            document.getElementById('gpsStatus').innerHTML = '❌ GPS não disponível';
+            document.getElementById('gpsStatus').style.color = '#dc2626';
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                this.registroRotaState.gpsCoords = {
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude
+                };
+                document.getElementById('gpsStatus').innerHTML = `✅ GPS: ${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.toFixed(6)}`;
+                document.getElementById('gpsStatus').style.color = '#16a34a';
+            },
+            (error) => {
+                console.error('Erro GPS:', error);
+                document.getElementById('gpsStatus').innerHTML = '❌ GPS: Erro ao capturar';
+                document.getElementById('gpsStatus').style.color = '#dc2626';
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0
+            }
+        );
+    }
+
+    async ativarCamera() {
+        try {
+            const videoElement = document.getElementById('videoPreview');
+
+            // Solicitar acesso à câmera
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: 'environment', // Preferir câmera traseira
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                }
+            });
+
+            this.registroRotaState.videoStream = stream;
+            videoElement.srcObject = stream;
+            videoElement.style.display = 'block';
+
+            // Atualizar botões
+            document.getElementById('btnAtivarCamera').style.display = 'none';
+            document.getElementById('btnCapturarFoto').style.display = 'inline-block';
+
+            this.showNotification('Câmera ativada', 'success');
+        } catch (error) {
+            console.error('Erro ao ativar câmera:', error);
+            this.showNotification('Erro ao ativar câmera: ' + error.message, 'error');
+        }
+    }
+
+    capturarFoto() {
+        try {
+            const video = document.getElementById('videoPreview');
+            const canvas = document.getElementById('canvasCaptura');
+            const ctx = canvas.getContext('2d');
+
+            // Ajustar canvas para tamanho do vídeo
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+
+            // Desenhar frame do vídeo no canvas
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // Converter canvas para blob
+            canvas.toBlob((blob) => {
+                this.registroRotaState.fotoCapturada = blob;
+
+                // Mostrar canvas, esconder vídeo
+                canvas.style.display = 'block';
+                video.style.display = 'none';
+
+                // Parar stream
+                if (this.registroRotaState.videoStream) {
+                    this.registroRotaState.videoStream.getTracks().forEach(track => track.stop());
+                    this.registroRotaState.videoStream = null;
+                }
+
+                // Atualizar botões
+                document.getElementById('btnCapturarFoto').style.display = 'none';
+                document.getElementById('btnNovaFoto').style.display = 'inline-block';
+
+                // Habilitar salvar se GPS ok
+                if (this.registroRotaState.gpsCoords) {
+                    document.getElementById('btnSalvarVisita').disabled = false;
+                }
+
+                this.showNotification('Foto capturada', 'success');
+            }, 'image/jpeg', 0.85);
+        } catch (error) {
+            console.error('Erro ao capturar foto:', error);
+            this.showNotification('Erro ao capturar foto: ' + error.message, 'error');
+        }
+    }
+
+    novaFoto() {
+        // Resetar canvas
+        const canvas = document.getElementById('canvasCaptura');
+        canvas.style.display = 'none';
+
+        // Resetar estado
+        this.registroRotaState.fotoCapturada = null;
+
+        // Atualizar botões
+        document.getElementById('btnAtivarCamera').style.display = 'inline-block';
+        document.getElementById('btnNovaFoto').style.display = 'none';
+        document.getElementById('btnSalvarVisita').disabled = true;
+    }
+
+    async salvarVisita() {
+        try {
+            const { repId, clienteId, clienteNome, dataVisita } = this.registroRotaState.clienteAtual;
+            const { gpsCoords, fotoCapturada } = this.registroRotaState;
+
+            if (!fotoCapturada) {
+                this.showNotification('Capture uma foto antes de salvar', 'warning');
+                return;
+            }
+
+            if (!gpsCoords) {
+                this.showNotification('Aguarde a captura do GPS', 'warning');
+                return;
+            }
+
+            // Desabilitar botão para evitar duplo clique
+            document.getElementById('btnSalvarVisita').disabled = true;
+            document.getElementById('btnSalvarVisita').textContent = 'Salvando...';
+
+            // Criar FormData
+            const formData = new FormData();
+            formData.append('rep_id', repId);
+            formData.append('cli_codigo', clienteId);
+            formData.append('data_visita', dataVisita);
+            formData.append('latitude', gpsCoords.latitude);
+            formData.append('longitude', gpsCoords.longitude);
+            formData.append('foto', fotoCapturada, `visita_${clienteId}_${Date.now()}.jpg`);
+
+            // Enviar para backend
+            const response = await fetch(`${this.registroRotaState.backendUrl}/api/registro-rota/visitas`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Erro ao salvar visita');
+            }
+
+            const result = await response.json();
+
+            this.showNotification('Visita registrada com sucesso!', 'success');
+
+            // Fechar modal
+            this.fecharModalCaptura();
+
+            // Recarregar roteiro para atualizar status
+            await this.carregarRoteiroRepositor();
+        } catch (error) {
+            console.error('Erro ao salvar visita:', error);
+            this.showNotification('Erro ao salvar: ' + error.message, 'error');
+
+            // Reabilitar botão
+            document.getElementById('btnSalvarVisita').disabled = false;
+            document.getElementById('btnSalvarVisita').textContent = '💾 Salvar Visita';
+        }
+    }
+
+    fecharModalCaptura() {
+        // Parar stream se ativo
+        if (this.registroRotaState.videoStream) {
+            this.registroRotaState.videoStream.getTracks().forEach(track => track.stop());
+            this.registroRotaState.videoStream = null;
+        }
+
+        // Resetar vídeo
+        const video = document.getElementById('videoPreview');
+        if (video) {
+            video.srcObject = null;
+            video.style.display = 'none';
+        }
+
+        // Fechar modal
+        document.getElementById('modalCaptura').classList.remove('active');
+
+        // Resetar estado
+        this.registroRotaState.clienteAtual = null;
+        this.registroRotaState.gpsCoords = null;
+        this.registroRotaState.fotoCapturada = null;
+    }
+
+    // ==================== CONSULTA DE VISITAS ====================
+
+    async inicializarConsultaVisitas() {
+        const btnConsultar = document.getElementById('btnConsultarVisitas');
+
+        if (btnConsultar) {
+            btnConsultar.onclick = () => this.consultarVisitas();
+        }
+
+        // Carregar lista de repositores (já está no HTML)
+        // Datas já estão definidas no HTML
+    }
+
+    async consultarVisitas() {
+        try {
+            const repId = document.getElementById('consultaRepositor')?.value;
+            const dataInicio = document.getElementById('consultaDataInicio')?.value;
+            const dataFim = document.getElementById('consultaDataFim')?.value;
+
+            if (!dataInicio || !dataFim) {
+                this.showNotification('Informe o período', 'warning');
+                return;
+            }
+
+            // Montar URL
+            let url = `${this.registroRotaState.backendUrl}/api/registro-rota/visitas?data_inicio=${dataInicio}&data_fim=${dataFim}`;
+            if (repId) {
+                url += `&rep_id=${repId}`;
+            }
+
+            const response = await fetch(url);
+
+            if (!response.ok) {
+                throw new Error('Erro ao consultar visitas');
+            }
+
+            const result = await response.json();
+            const visitas = result.visitas;
+
+            // Renderizar resultados
+            const container = document.getElementById('visitasContainer');
+
+            if (visitas.length === 0) {
+                container.innerHTML = '<p style="text-align:center;color:#999;margin-top:20px;">Nenhuma visita encontrada</p>';
+                return;
+            }
+
+            container.innerHTML = '';
+
+            visitas.forEach(visita => {
+                const item = document.createElement('div');
+                item.className = 'visit-item';
+
+                const dataFormatada = new Date(visita.data_visita + 'T12:00:00').toLocaleDateString('pt-BR');
+                const horaFormatada = visita.data_hora_criacao ? new Date(visita.data_hora_criacao).toLocaleString('pt-BR') : '-';
+
+                item.innerHTML = `
+                    <div style="flex: 1;">
+                        <div><strong>${visita.cli_codigo} - ${visita.cli_nome || 'Cliente'}</strong></div>
+                        <div style="font-size: 0.9em; color: #666; margin-top: 4px;">
+                            📅 ${dataFormatada} | ⏰ ${horaFormatada}
+                        </div>
+                        <div style="font-size: 0.9em; color: #666; margin-top: 4px;">
+                            📍 GPS: ${visita.latitude}, ${visita.longitude}
+                        </div>
+                        ${visita.repositor_nome ? `<div style="font-size: 0.9em; color: #666; margin-top: 4px;">🏢 ${visita.repositor_nome}</div>` : ''}
+                    </div>
+                    <div>
+                        ${visita.foto_drive_url ? `
+                            <a href="${visita.foto_drive_url}" target="_blank" class="btn-small" style="margin-left: 8px;">
+                                🖼️ Ver Foto
+                            </a>
+                        ` : ''}
+                        <a href="https://www.google.com/maps?q=${visita.latitude},${visita.longitude}" target="_blank" class="btn-small" style="margin-left: 8px;">
+                            🗺️ Ver Mapa
+                        </a>
+                    </div>
+                `;
+
+                container.appendChild(item);
+            });
+
+            this.showNotification(`${visitas.length} visita(s) encontrada(s)`, 'success');
+        } catch (error) {
+            console.error('Erro ao consultar visitas:', error);
+            this.showNotification('Erro ao consultar: ' + error.message, 'error');
         }
     }
 

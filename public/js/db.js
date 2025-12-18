@@ -3072,6 +3072,37 @@ class TursoDatabase {
             throw error;
         }
     }
+
+    // ==================== REGISTRO DE ROTA ====================
+
+    async carregarRoteiroRepositorDia(repositorId, diaSemana) {
+        try {
+            const resultado = await this.mainClient.execute({
+                sql: `
+                    SELECT DISTINCT
+                        c.cli_codigo,
+                        c.cli_nome,
+                        c.cli_cidade,
+                        c.cli_estado,
+                        cli.rot_ordem_visita
+                    FROM rot_roteiro_cidade rc
+                    JOIN rot_roteiro_cliente cli ON cli.rot_cid_id = rc.rot_cid_id
+                    LEFT JOIN cad_cliente c ON c.cli_codigo = cli.rot_cliente_codigo
+                    WHERE rc.rot_repositor_id = ?
+                      AND rc.rot_dia_semana = ?
+                    ORDER BY
+                        rc.rot_ordem_cidade,
+                        COALESCE(cli.rot_ordem_visita, cli.rot_cli_id)
+                `,
+                args: [repositorId, diaSemana.toString()]
+            });
+
+            return resultado.rows || [];
+        } catch (error) {
+            console.error('Erro ao carregar roteiro do repositor:', error);
+            throw error;
+        }
+    }
 }
 
 export const db = new TursoDatabase();
