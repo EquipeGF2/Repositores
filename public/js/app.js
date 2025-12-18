@@ -4983,7 +4983,9 @@ class App {
             const response = await fetch(url);
 
             if (!response.ok) {
-                console.warn('Erro ao verificar visitas:', response.status);
+                const detalhesErro = await this.extrairMensagemErro(response);
+                console.warn('Erro ao verificar visitas:', response.status, detalhesErro);
+                this.showNotification(`Não foi possível verificar visitas (status ${response.status}). ${detalhesErro || 'Tente novamente em instantes.'}`, 'warning');
                 return [];
             }
 
@@ -4992,6 +4994,22 @@ class App {
         } catch (error) {
             console.warn('Erro ao verificar visitas:', error);
             return [];
+        }
+    }
+
+    async extrairMensagemErro(response) {
+        try {
+            const contentType = response.headers.get('content-type') || '';
+
+            if (contentType.includes('application/json')) {
+                const data = await response.json();
+                return data.message || JSON.stringify(data);
+            }
+
+            return await response.text();
+        } catch (err) {
+            console.warn('Não foi possível obter detalhes do erro da API:', err);
+            return '';
         }
     }
 
@@ -5271,8 +5289,8 @@ class App {
             });
 
             if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.message || 'Erro ao salvar visita');
+                const detalhesErro = await this.extrairMensagemErro(response);
+                throw new Error(detalhesErro || `Erro ao salvar visita (status ${response.status})`);
             }
 
             const result = await response.json();
