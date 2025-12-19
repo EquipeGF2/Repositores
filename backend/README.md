@@ -379,3 +379,53 @@ CREATE TABLE cc_registro_visita (
 ## 📄 Licença
 
 Projeto privado - Germani Alimentos / Equipe GF2
+
+---
+
+## 📁 Módulo de Documentos (Turso + Google Drive)
+
+### Tabelas
+- **cc_documento_tipos**: catálogo de tipos (colunas prefixo `dct_`).
+- **cc_documentos**: metadados de uploads por repositor (prefixo `doc_`).
+- **cc_repositor_drive**: mapeia cada repositor para suas pastas no Drive (prefixo `rpd_`).
+
+Uma migração SQL em `backend/migrations/2024-10-12_documentos.sql` cria as tabelas, índices e popula os tipos padrão:
+- `atestado` – Atestado Médico
+- `despesa` – Reembolso de Despesas
+- `visita` – Registro de Visita
+
+### Variáveis de ambiente adicionais
+Configure no Worker/servidor antes de habilitar o upload:
+
+```
+GOOGLE_SERVICE_ACCOUNT_EMAIL=conta@projeto.iam.gserviceaccount.com
+GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+GOOGLE_DRIVE_SCOPE=https://www.googleapis.com/auth/drive.file
+GOOGLE_DRIVE_SHARED_DRIVE_ID= # opcional, se usar drive compartilhado
+```
+
+O backend deve validar o `repositor_id`, descobrir as pastas em `cc_repositor_drive` e salvar o arquivo em `rpd_drive_documentos_folder_id` com nome `<codigoTipo>_ddmmaa_hhmm.ext` (timezone America/Sao_Paulo, garantindo sufixo incremental em colisão).
+
+### Aplicando a migração no Turso
+Como `SKIP_MIGRATIONS` costuma estar habilitado em produção, execute manualmente pelo CLI do Turso:
+
+```bash
+cd backend
+npx @turso/turso shell "$TURSO_MAIN_URL" --auth-token "$TURSO_MAIN_TOKEN" < migrations/2024-10-12_documentos.sql
+```
+
+Confirme depois com:
+```bash
+npx @turso/turso shell "$TURSO_MAIN_URL" --auth-token "$TURSO_MAIN_TOKEN" "PRAGMA table_info('cc_documentos');"
+```
+
+### Checklist rápido de segurança
+- Aceitar apenas extensões: jpg, jpeg, png, pdf, xls, xlsx, csv (doc/docx opcionais).
+- Sanitizar nome original e gerar nome de Drive padronizado.
+- Limitar tamanho (ex.: 10MB) e validar também no frontend.
+- Registrar erros e respostas JSON consistentes.
+
+### Próximos passos sugeridos
+- Implementar endpoints `/v1/documentos/*` no Worker (listar tipos ativos, criar tipos, listar documentos por repositor, upload multipart salvando Drive + Turso).
+- Criar tela "Documentos" no frontend com formulário, lista e feedback de envio.
+- Documentar secrets no GitHub/Cloudflare e mapear `cc_repositor_drive` para cada repositor.
