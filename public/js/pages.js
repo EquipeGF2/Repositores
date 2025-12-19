@@ -2306,7 +2306,7 @@ export const pages = {
             <div class="card">
                 <div class="card-header">
                     <div>
-                        <h3 class="card-title">📄 Documentos de Viagem</h3>
+                        <h3 class="card-title">📄 Registro de Documentos</h3>
                         <p class="text-muted" style="margin: 4px 0 0;">
                             Gerencie documentos de despesas, visitas, atestados e outros
                         </p>
@@ -2316,8 +2316,8 @@ export const pages = {
                 <div class="card-body">
                     <!-- Upload de Documento -->
                     <div class="doc-upload-section">
-                        <h4 style="margin-bottom: 16px; color: #374151; font-size: 16px;">📤 Novo Documento</h4>
-                        <div class="filter-bar">
+                        <h4 style="margin-bottom: 20px; color: #374151; font-size: 16px; font-weight: 600;">📤 Novo Documento</h4>
+                        <div class="doc-form-grid">
                             <div class="filter-group">
                                 <label for="uploadRepositor">Repositor *</label>
                                 <select id="uploadRepositor" required>
@@ -2326,12 +2326,12 @@ export const pages = {
                                 </select>
                             </div>
                             <div class="filter-group">
-                                <label for="uploadTipo">Tipo *</label>
+                                <label for="uploadTipo">Tipo de Documento *</label>
                                 <select id="uploadTipo" required>
                                     <option value="">Carregando...</option>
                                 </select>
                             </div>
-                            <div class="filter-group">
+                            <div class="filter-group doc-file-input">
                                 <label for="uploadArquivo">Arquivo *</label>
                                 <input type="file" id="uploadArquivo" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt,.zip" required>
                             </div>
@@ -2339,9 +2339,9 @@ export const pages = {
                                 <label for="uploadObservacao">Observação</label>
                                 <input type="text" id="uploadObservacao" placeholder="Opcional">
                             </div>
-                            <div class="filter-group" style="display: flex; align-items: flex-end;">
-                                <button class="btn btn-primary" id="btnUploadDocumento">📤 Enviar</button>
-                            </div>
+                        </div>
+                        <div style="margin-top: 20px; display: flex; justify-content: flex-end;">
+                            <button class="btn btn-primary" id="btnUploadDocumento" style="min-width: 160px;">📤 Enviar Documento</button>
                         </div>
                     </div>
 
@@ -2349,8 +2349,8 @@ export const pages = {
 
                     <!-- Filtros de Consulta -->
                     <div class="doc-filter-section">
-                        <h4 style="margin-bottom: 16px; color: #374151; font-size: 16px;">🔍 Consultar Documentos</h4>
-                        <div class="filter-bar">
+                        <h4 style="margin-bottom: 20px; color: #374151; font-size: 16px; font-weight: 600;">🔍 Consultar Documentos</h4>
+                        <div class="doc-form-grid">
                             <div class="filter-group">
                                 <label for="filtroRepositor">Repositor *</label>
                                 <select id="filtroRepositor" required>
@@ -2359,9 +2359,9 @@ export const pages = {
                                 </select>
                             </div>
                             <div class="filter-group">
-                                <label for="filtroTipo">Tipo</label>
+                                <label for="filtroTipo">Tipo de Documento</label>
                                 <select id="filtroTipo">
-                                    <option value="">Todos</option>
+                                    <option value="">Todos os tipos</option>
                                 </select>
                             </div>
                             <div class="filter-group">
@@ -2372,9 +2372,9 @@ export const pages = {
                                 <label for="filtroDataFim">Data Final</label>
                                 <input type="date" id="filtroDataFim" value="${hoje}">
                             </div>
-                            <div class="filter-group" style="display: flex; align-items: flex-end;">
-                                <button class="btn btn-secondary" id="btnFiltrarDocumentos">🔍 Filtrar</button>
-                            </div>
+                        </div>
+                        <div style="margin-top: 20px; display: flex; justify-content: flex-end;">
+                            <button class="btn btn-secondary" id="btnFiltrarDocumentos" style="min-width: 160px;">🔍 Buscar Documentos</button>
                         </div>
                     </div>
 
@@ -2397,9 +2397,19 @@ export const pages = {
             <style>
                 .doc-upload-section, .doc-filter-section {
                     background: #f9fafb;
-                    padding: 20px;
+                    padding: 24px;
                     border-radius: 12px;
                     border: 1px solid #e5e7eb;
+                }
+
+                .doc-form-grid {
+                    display: grid;
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: 16px;
+                }
+
+                .doc-file-input {
+                    grid-column: 1 / -1;
                 }
 
                 .doc-item {
@@ -2514,6 +2524,10 @@ export const pages = {
                         flex-direction: column;
                     }
 
+                    .doc-form-grid {
+                        grid-template-columns: 1fr;
+                    }
+
                     .doc-item {
                         flex-direction: column;
                         align-items: flex-start;
@@ -2552,5 +2566,5 @@ export const pageTitles = {
   'roteiro-repositor': 'Roteiro do Repositor',
   'registro-rota': 'Registro de Rota',
   'consulta-visitas': 'Consulta de Visitas',
-  'documentos': 'Documentos de Viagem'
+  'documentos': 'Registro de Documentos'
 };

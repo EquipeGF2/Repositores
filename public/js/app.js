@@ -6010,10 +6010,16 @@ class App {
     async carregarTiposDocumentos() {
         try {
             const response = await fetch(`${API_BASE_URL}/api/documentos/tipos`);
-            if (!response.ok) throw new Error('Erro ao carregar tipos');
+
+            if (!response.ok) {
+                console.error('Erro HTTP ao carregar tipos:', response.status);
+                throw new Error(`Erro ao carregar tipos: ${response.status}`);
+            }
 
             const data = await response.json();
             this.documentosState.tipos = data.tipos || [];
+
+            console.log('Tipos de documentos carregados:', this.documentosState.tipos.length);
 
             // Preencher selects
             const selectUpload = document.getElementById('uploadTipo');
@@ -6029,7 +6035,19 @@ class App {
                     this.documentosState.tipos.map(t => `<option value="${t.dct_id}">${t.dct_nome}</option>`).join('');
             }
         } catch (error) {
-            console.error('Erro ao carregar tipos:', error);
+            console.error('Erro ao carregar tipos de documentos:', error);
+            this.showNotification('Erro ao carregar tipos de documentos. Verifique sua conexão.', 'error');
+
+            // Fallback: deixar selects vazios mas funcionais
+            const selectUpload = document.getElementById('uploadTipo');
+            const selectFiltro = document.getElementById('filtroTipo');
+
+            if (selectUpload) {
+                selectUpload.innerHTML = '<option value="">Erro ao carregar tipos</option>';
+            }
+            if (selectFiltro) {
+                selectFiltro.innerHTML = '<option value="">Todos</option>';
+            }
         }
     }
 

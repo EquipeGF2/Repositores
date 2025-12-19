@@ -216,15 +216,23 @@ class TursoService {
     const result = await this.execute(sql, [repId, dataInicio, dataFim]);
 
     return result.rows.map((row) => {
-      const status = row.status || (row.checkout_at ? 'FECHADA' : 'ABERTA');
+      // Mapear status para o formato esperado pelo frontend
+      let statusFinal = 'sem_checkin';
+      if (row.checkin_at && !row.checkout_at) {
+        statusFinal = 'em_atendimento';
+      } else if (row.checkout_at) {
+        statusFinal = 'finalizado';
+      }
+
       return {
         cliente_id: normalizeClienteId(row.cliente_id),
         checkin_data_hora: row.checkin_at,
         checkout_data_hora: row.checkout_at,
-        status: status.toLowerCase(),
+        status: statusFinal,
         tempo_minutos: row.tempo_minutos,
         endereco_cliente: row.endereco_cliente,
-        ultimo_endereco_registro: row.ultimo_endereco_registro
+        ultimo_endereco_registro: row.ultimo_endereco_registro,
+        sessao_id: row.sessao_id
       };
     });
   }
