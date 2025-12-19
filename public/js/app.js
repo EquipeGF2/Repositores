@@ -5786,6 +5786,28 @@ class App {
         document.getElementById('modalAtividadesTitulo').textContent = clienteNome || 'Atividades';
         document.getElementById('atividadesClienteInfo').textContent = `${clienteIdNorm} • ${clienteNome}`;
 
+        // Configurar evento para mostrar/esconder campo de quantidade de pontos extras
+        const checkboxPontosExtras = document.getElementById('atv_pontos_extras');
+        const grupoPontosExtras = document.getElementById('grupo_qtd_pontos_extras');
+
+        const togglePontosExtras = () => {
+            if (checkboxPontosExtras.checked) {
+                grupoPontosExtras.style.display = 'block';
+            } else {
+                grupoPontosExtras.style.display = 'none';
+                document.getElementById('atv_qtd_pontos_extras').value = '';
+            }
+        };
+
+        // Remover listener anterior se existir
+        checkboxPontosExtras.removeEventListener('change', checkboxPontosExtras._toggleHandler);
+        // Adicionar novo listener
+        checkboxPontosExtras._toggleHandler = togglePontosExtras;
+        checkboxPontosExtras.addEventListener('change', togglePontosExtras);
+
+        // Inicializar estado correto do campo
+        togglePontosExtras();
+
         document.getElementById('modalAtividades').classList.add('active');
     }
 

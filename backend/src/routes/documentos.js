@@ -460,6 +460,12 @@ router.post('/upload-multiplo', upload.array('arquivos', 10), async (req, res) =
           parentFolderId: tipoFolderId
         });
 
+        // Log dos valores antes do INSERT
+        console.log(`📋 Valores para INSERT do arquivo ${arquivo.originalname}:`);
+        console.log(`   data_ref: "${data_ref}" (tipo: ${typeof data_ref}, length: ${data_ref.length})`);
+        console.log(`   hora_ref: "${hora_ref}" (tipo: ${typeof hora_ref})`);
+        console.log(`   ddmmaa: "${ddmmaa}", hhmm: "${hhmm}"`);
+
         // Salvar no banco
         const insertResult = await tursoService.execute(
           `INSERT INTO cc_documentos (
