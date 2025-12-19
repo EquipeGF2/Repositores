@@ -510,6 +510,8 @@ class App {
                 await this.inicializarRegistroRota();
             } else if (pageName === 'consulta-visitas') {
                 await this.inicializarConsultaVisitas();
+            } else if (pageName === 'documentos') {
+                await this.inicializarDocumentos();
             }
         } catch (error) {
             console.error('Erro ao carregar página:', error);
@@ -5976,6 +5978,282 @@ class App {
         } catch (error) {
             console.error('Erro ao consultar visitas:', error);
             this.showNotification('Erro ao consultar: ' + error.message, 'error');
+        }
+    }
+
+    // ==================== DOCUMENTOS ====================
+
+    documentosState = {
+        tipos: [],
+        documentosSelecionados: new Set()
+    };
+
+    async inicializarDocumentos() {
+        try {
+            // Carregar tipos de documentos
+            await this.carregarTiposDocumentos();
+
+            // Configurar event listeners
+            const btnUpload = document.getElementById('btnUploadDocumento');
+            const btnFiltrar = document.getElementById('btnFiltrarDocumentos');
+            const btnDownloadZip = document.getElementById('btnDownloadZip');
+
+            if (btnUpload) btnUpload.onclick = () => this.uploadDocumento();
+            if (btnFiltrar) btnFiltrar.onclick = () => this.filtrarDocumentos();
+            if (btnDownloadZip) btnDownloadZip.onclick = () => this.downloadZip();
+        } catch (error) {
+            console.error('Erro ao inicializar documentos:', error);
+            this.showNotification('Erro ao inicializar módulo de documentos', 'error');
+        }
+    }
+
+    async carregarTiposDocumentos() {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/documentos/tipos`);
+            if (!response.ok) throw new Error('Erro ao carregar tipos');
+
+            const data = await response.json();
+            this.documentosState.tipos = data.tipos || [];
+
+            // Preencher selects
+            const selectUpload = document.getElementById('uploadTipo');
+            const selectFiltro = document.getElementById('filtroTipo');
+
+            if (selectUpload) {
+                selectUpload.innerHTML = '<option value="">Selecione...</option>' +
+                    this.documentosState.tipos.map(t => `<option value="${t.dct_id}">${t.dct_nome}</option>`).join('');
+            }
+
+            if (selectFiltro) {
+                selectFiltro.innerHTML = '<option value="">Todos</option>' +
+                    this.documentosState.tipos.map(t => `<option value="${t.dct_id}">${t.dct_nome}</option>`).join('');
+            }
+        } catch (error) {
+            console.error('Erro ao carregar tipos:', error);
+        }
+    }
+
+    async uploadDocumento() {
+        try {
+            const repositorId = document.getElementById('uploadRepositor').value;
+            const tipoId = document.getElementById('uploadTipo').value;
+            const arquivo = document.getElementById('uploadArquivo').files[0];
+            const observacao = document.getElementById('uploadObservacao').value;
+
+            if (!repositorId || !tipoId || !arquivo) {
+                this.showNotification('Preencha todos os campos obrigatórios', 'warning');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('repositor_id', repositorId);
+            formData.append('dct_id', tipoId);
+            formData.append('arquivo', arquivo);
+            if (observacao) formData.append('observacao', observacao);
+
+            this.showNotification('Enviando documento...', 'info');
+
+            const response = await fetch(`${API_BASE_URL}/api/documentos/upload`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Erro ao fazer upload');
+            }
+
+            const data = await response.json();
+            this.showNotification('Documento enviado com sucesso!', 'success');
+
+            // Limpar formulário
+            document.getElementById('uploadArquivo').value = '';
+            document.getElementById('uploadObservacao').value = '';
+
+            // Recarregar lista se filtro estiver ativo
+            if (document.getElementById('filtroRepositor').value) {
+                await this.filtrarDocumentos();
+            }
+        } catch (error) {
+            console.error('Erro ao fazer upload:', error);
+            this.showNotification('Erro ao enviar documento: ' + error.message, 'error');
+        }
+    }
+
+    async filtrarDocumentos() {
+        try {
+            const repositorId = document.getElementById('filtroRepositor').value;
+            const tipoId = document.getElementById('filtroTipo').value;
+            const dataInicio = document.getElementById('filtroDataInicio').value;
+            const dataFim = document.getElementById('filtroDataFim').value;
+
+            if (!repositorId) {
+                this.showNotification('Selecione um repositor', 'warning');
+                return;
+            }
+
+            const params = new URLSearchParams({
+                repositor_id: repositorId
+            });
+            if (tipoId) params.append('dct_id', tipoId);
+            if (dataInicio) params.append('date_from', dataInicio);
+            if (dataFim) params.append('date_to', dataFim);
+
+            const response = await fetch(`${API_BASE_URL}/api/documentos?${params.toString()}`);
+            if (!response.ok) throw new Error('Erro ao consultar documentos');
+
+            const data = await response.json();
+            this.renderizarDocumentos(data.documentos || []);
+        } catch (error) {
+            console.error('Erro ao filtrar documentos:', error);
+            this.showNotification('Erro ao consultar documentos: ' + error.message, 'error');
+        }
+    }
+
+    renderizarDocumentos(documentos) {
+        const container = document.getElementById('documentosContainer');
+        if (!container) return;
+
+        this.documentosState.documentosSelecionados.clear();
+        this.atualizarContadorSelecionados();
+
+        if (documentos.length === 0) {
+            container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📄</div><p>Nenhum documento encontrado</p></div>';
+            return;
+        }
+
+        container.innerHTML = `
+            <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="selecionarTodos" class="doc-checkbox">
+                    <span style="font-weight: 600; color: #374151;">Selecionar Todos</span>
+                </label>
+            </div>
+        `;
+
+        const selecionarTodos = document.getElementById('selecionarTodos');
+        if (selecionarTodos) {
+            selecionarTodos.onchange = () => this.toggleSelecionarTodos(documentos);
+        }
+
+        documentos.forEach(doc => {
+            const item = document.createElement('div');
+            item.className = 'doc-item';
+            item.id = `doc-${doc.doc_id}`;
+
+            const dataFormatada = doc.doc_data_ref ?
+                new Date(doc.doc_data_ref + 'T12:00:00').toLocaleDateString('pt-BR') : '-';
+
+            item.innerHTML = `
+                <input type="checkbox" class="doc-checkbox" data-doc-id="${doc.doc_id}">
+                <div class="doc-info">
+                    <div class="doc-nome">${doc.doc_nome_drive}</div>
+                    <div class="doc-meta">
+                        <span class="doc-tipo-badge">${doc.dct_nome || 'Sem tipo'}</span>
+                        <span style="margin-left: 12px;">📅 ${dataFormatada}</span>
+                        ${doc.doc_observacao ? `<span style="margin-left: 12px;">💬 ${doc.doc_observacao}</span>` : ''}
+                    </div>
+                </div>
+                <div class="doc-actions">
+                    <button class="btn-doc-download" onclick="app.downloadDocumento('${doc.doc_id}')">
+                        📥 Download
+                    </button>
+                </div>
+            `;
+
+            const checkbox = item.querySelector('.doc-checkbox');
+            checkbox.onchange = () => this.toggleDocumento(doc.doc_id, checkbox.checked, item);
+
+            container.appendChild(item);
+        });
+
+        this.showNotification(`${documentos.length} documento(s) encontrado(s)`, 'success');
+    }
+
+    toggleDocumento(docId, selected, item) {
+        if (selected) {
+            this.documentosState.documentosSelecionados.add(docId);
+            item.classList.add('selected');
+        } else {
+            this.documentosState.documentosSelecionados.delete(docId);
+            item.classList.remove('selected');
+        }
+        this.atualizarContadorSelecionados();
+    }
+
+    toggleSelecionarTodos(documentos) {
+        const selecionarTodos = document.getElementById('selecionarTodos');
+        const checkboxes = document.querySelectorAll('.doc-item .doc-checkbox');
+
+        checkboxes.forEach((checkbox, index) => {
+            checkbox.checked = selecionarTodos.checked;
+            const docId = checkbox.getAttribute('data-doc-id');
+            const item = document.getElementById(`doc-${docId}`);
+            this.toggleDocumento(docId, selecionarTodos.checked, item);
+        });
+    }
+
+    atualizarContadorSelecionados() {
+        const contador = document.getElementById('contadorSelecionados');
+        const acoesLote = document.getElementById('acoesLote');
+        const total = this.documentosState.documentosSelecionados.size;
+
+        if (contador) {
+            contador.textContent = `${total} documento${total !== 1 ? 's' : ''} selecionado${total !== 1 ? 's' : ''}`;
+        }
+
+        if (acoesLote) {
+            acoesLote.style.display = total > 0 ? 'flex' : 'none';
+        }
+    }
+
+    async downloadDocumento(docId) {
+        try {
+            window.open(`${API_BASE_URL}/api/documentos/${docId}/download`, '_blank');
+        } catch (error) {
+            console.error('Erro ao fazer download:', error);
+            this.showNotification('Erro ao fazer download', 'error');
+        }
+    }
+
+    async downloadZip() {
+        try {
+            const docIds = Array.from(this.documentosState.documentosSelecionados);
+
+            if (docIds.length === 0) {
+                this.showNotification('Selecione ao menos um documento', 'warning');
+                return;
+            }
+
+            if (docIds.length > 50) {
+                this.showNotification('Limite de 50 documentos por download', 'warning');
+                return;
+            }
+
+            this.showNotification('Preparando download...', 'info');
+
+            const response = await fetch(`${API_BASE_URL}/api/documentos/download-zip`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ doc_ids: docIds })
+            });
+
+            if (!response.ok) throw new Error('Erro ao gerar ZIP');
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `documentos_${new Date().getTime()}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            a.remove();
+
+            this.showNotification('Download iniciado!', 'success');
+        } catch (error) {
+            console.error('Erro ao fazer download em lote:', error);
+            this.showNotification('Erro ao fazer download em lote: ' + error.message, 'error');
         }
     }
 

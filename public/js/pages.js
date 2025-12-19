@@ -2289,6 +2289,247 @@ export const pages = {
                 </div>
             </div>
         `;
+    },
+
+    'documentos': async () => {
+        const repositores = await db.getAllRepositors();
+        const repositorOptions = repositores
+            .map(repo => `<option value="${repo.repo_cod}">${repo.repo_cod} - ${repo.repo_nome}</option>`)
+            .join('');
+
+        const hoje = new Date().toISOString().split('T')[0];
+        const umMesAtras = new Date();
+        umMesAtras.setMonth(umMesAtras.getMonth() - 1);
+        const dataInicio = umMesAtras.toISOString().split('T')[0];
+
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">📄 Documentos de Viagem</h3>
+                        <p class="text-muted" style="margin: 4px 0 0;">
+                            Gerencie documentos de despesas, visitas, atestados e outros
+                        </p>
+                    </div>
+                </div>
+
+                <div class="card-body">
+                    <!-- Upload de Documento -->
+                    <div class="doc-upload-section">
+                        <h4 style="margin-bottom: 16px; color: #374151; font-size: 16px;">📤 Novo Documento</h4>
+                        <div class="filter-bar">
+                            <div class="filter-group">
+                                <label for="uploadRepositor">Repositor *</label>
+                                <select id="uploadRepositor" required>
+                                    <option value="">Selecione...</option>
+                                    ${repositorOptions}
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="uploadTipo">Tipo *</label>
+                                <select id="uploadTipo" required>
+                                    <option value="">Carregando...</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="uploadArquivo">Arquivo *</label>
+                                <input type="file" id="uploadArquivo" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt,.zip" required>
+                            </div>
+                            <div class="filter-group">
+                                <label for="uploadObservacao">Observação</label>
+                                <input type="text" id="uploadObservacao" placeholder="Opcional">
+                            </div>
+                            <div class="filter-group" style="display: flex; align-items: flex-end;">
+                                <button class="btn btn-primary" id="btnUploadDocumento">📤 Enviar</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr style="margin: 24px 0; border: none; border-top: 1px solid #e5e7eb;">
+
+                    <!-- Filtros de Consulta -->
+                    <div class="doc-filter-section">
+                        <h4 style="margin-bottom: 16px; color: #374151; font-size: 16px;">🔍 Consultar Documentos</h4>
+                        <div class="filter-bar">
+                            <div class="filter-group">
+                                <label for="filtroRepositor">Repositor *</label>
+                                <select id="filtroRepositor" required>
+                                    <option value="">Selecione...</option>
+                                    ${repositorOptions}
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="filtroTipo">Tipo</label>
+                                <select id="filtroTipo">
+                                    <option value="">Todos</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="filtroDataInicio">Data Inicial</label>
+                                <input type="date" id="filtroDataInicio" value="${dataInicio}">
+                            </div>
+                            <div class="filter-group">
+                                <label for="filtroDataFim">Data Final</label>
+                                <input type="date" id="filtroDataFim" value="${hoje}">
+                            </div>
+                            <div class="filter-group" style="display: flex; align-items: flex-end;">
+                                <button class="btn btn-secondary" id="btnFiltrarDocumentos">🔍 Filtrar</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Ações em Lote -->
+                    <div id="acoesLote" style="display: none; margin-top: 16px; padding: 12px; background: #f9fafb; border-radius: 8px; display: flex; align-items: center; justify-content: space-between;">
+                        <span id="contadorSelecionados" style="font-weight: 600; color: #374151;">0 documentos selecionados</span>
+                        <button class="btn btn-primary" id="btnDownloadZip">📦 Download ZIP</button>
+                    </div>
+
+                    <!-- Lista de Documentos -->
+                    <div id="documentosContainer" style="margin-top: 1.5rem;">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📄</div>
+                            <p>Selecione um repositor e clique em Filtrar para visualizar documentos</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <style>
+                .doc-upload-section, .doc-filter-section {
+                    background: #f9fafb;
+                    padding: 20px;
+                    border-radius: 12px;
+                    border: 1px solid #e5e7eb;
+                }
+
+                .doc-item {
+                    display: flex;
+                    align-items: center;
+                    gap: 16px;
+                    padding: 16px;
+                    background: white;
+                    border: 1px solid #e5e7eb;
+                    border-radius: 12px;
+                    margin-bottom: 12px;
+                    transition: all 0.2s ease;
+                }
+
+                .doc-item:hover {
+                    border-color: #ef4444;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+                }
+
+                .doc-item.selected {
+                    background: #fef2f2;
+                    border-color: #ef4444;
+                }
+
+                .doc-checkbox {
+                    width: 20px;
+                    height: 20px;
+                    cursor: pointer;
+                    accent-color: #ef4444;
+                }
+
+                .doc-info {
+                    flex: 1;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                }
+
+                .doc-nome {
+                    font-weight: 600;
+                    font-size: 15px;
+                    color: #111827;
+                }
+
+                .doc-meta {
+                    font-size: 13px;
+                    color: #6b7280;
+                }
+
+                .doc-tipo-badge {
+                    display: inline-flex;
+                    align-items: center;
+                    padding: 4px 10px;
+                    border-radius: 12px;
+                    font-size: 12px;
+                    font-weight: 600;
+                    background: #fee2e2;
+                    color: #991b1b;
+                }
+
+                .doc-actions {
+                    display: flex;
+                    gap: 8px;
+                }
+
+                .btn-doc-download {
+                    padding: 8px 16px;
+                    background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    font-size: 13px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                }
+
+                .btn-doc-download:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3);
+                }
+
+                input[type="file"] {
+                    padding: 8px 12px;
+                    border: 1px solid #d1d5db;
+                    border-radius: 8px;
+                    background: white;
+                    cursor: pointer;
+                }
+
+                input[type="file"]:hover {
+                    border-color: #ef4444;
+                }
+
+                #acoesLote {
+                    animation: slideDown 0.3s ease;
+                }
+
+                @keyframes slideDown {
+                    from {
+                        opacity: 0;
+                        transform: translateY(-10px);
+                    }
+                    to {
+                        opacity: 1;
+                        transform: translateY(0);
+                    }
+                }
+
+                @media (max-width: 768px) {
+                    .filter-bar {
+                        flex-direction: column;
+                    }
+
+                    .doc-item {
+                        flex-direction: column;
+                        align-items: flex-start;
+                    }
+
+                    .doc-actions {
+                        width: 100%;
+                        flex-direction: column;
+                    }
+
+                    .btn-doc-download {
+                        width: 100%;
+                    }
+                }
+            </style>
+        `;
     }
 };
 
@@ -2310,5 +2551,6 @@ export const pageTitles = {
   'controle-acessos': 'Controle de Acessos',
   'roteiro-repositor': 'Roteiro do Repositor',
   'registro-rota': 'Registro de Rota',
-  'consulta-visitas': 'Consulta de Visitas'
+  'consulta-visitas': 'Consulta de Visitas',
+  'documentos': 'Documentos de Viagem'
 };
