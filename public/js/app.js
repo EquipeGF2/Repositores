@@ -4907,7 +4907,9 @@ class App {
         gpsCoords: null,
         fotoCapturada: null,
         clienteAtual: null,
-        enderecoResolvido: null
+        enderecoResolvido: null,
+        resumoVisitas: new Map(),
+        tipoRegistro: 'campanha'
     };
 
     async inicializarRegistroRota() {
@@ -4971,8 +4973,12 @@ class App {
         const diasMap = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
         const diaSemana = diasMap[diaNumero];
 
-        // Carregar roteiro do repositor para aquele dia da semana
-        const roteiro = await db.carregarRoteiroRepositorDia(repId, diaSemana);
+        const normalizeClienteId = (v) => String(v ?? '').trim().replace(/\.0$/, '');
+
+        const [roteiro, resumo] = await Promise.all([
+            db.carregarRoteiroRepositorDia(repId, diaSemana),
+            this.buscarResumoVisitas(repId, dataVisita)
+        ]);
 
         if (!roteiro || roteiro.length === 0) {
             this.showNotification('Nenhum cliente no roteiro para este dia', 'info');
@@ -4980,14 +4986,9 @@ class App {
             return;
         }
 
-        // Helpers
-        const normalizeClienteId = (v) => String(v ?? '').trim().replace(/\.0$/, '');
+        const mapaResumo = new Map((resumo || []).map((item) => [normalizeClienteId(item.cliente_id), item]));
+        this.registroRotaState.resumoVisitas = mapaResumo;
 
-        // Verificar visitas já realizadas (e normalizar)
-        const visitasRealizadas = await this.verificarVisitasRealizadas(repId, dataVisita);
-        const visitasPorCliente = new Set((visitasRealizadas || []).map(normalizeClienteId));
-
-        // Renderizar roteiro
         container.innerHTML = '';
 
         roteiro.forEach(cliente => {
@@ -5004,29 +5005,49 @@ class App {
 
             const enderecoTexto = enderecoPartes.join(', ');
             const linhaEndereco = [cidadeUF, enderecoTexto].filter(Boolean).join(' • ');
+            const enderecoCadastro = [cidadeUF, enderecoTexto].filter(Boolean).join(' - ');
 
-            const visitado = visitasPorCliente.has(cliId);
+            const statusCliente = mapaResumo.get(cliId);
+            const statusClasse = statusCliente?.status === 'em_atendimento'
+                ? 'status-visited'
+                : statusCliente?.status === 'finalizado'
+                    ? 'status-visited'
+                    : 'status-pending';
 
-            const item = document.createElement('div');
-            item.className = 'route-item';
+            const statusTexto = statusCliente?.status === 'em_atendimento'
+                ? 'Em atendimento'
+                : statusCliente?.status === 'finalizado'
+                    ? `Finalizado${statusCliente.tempo_minutos ? ` ${String(statusCliente.tempo_minutos).padStart(2, '0')} min` : ''}`
+                    : 'Pendente';
+
+            const tempoTexto = statusCliente?.tempo_minutos != null
+                ? `<div class="route-item-time">⏱️ ${statusCliente.tempo_minutos} min</div>`
+                : '';
 
             const nomeEsc = cliNome.replace(/'/g, "\\'");
             const endEsc = linhaEndereco.replace(/'/g, "\\'");
+            const cadastroEsc = enderecoCadastro.replace(/'/g, "\\'");
 
+            const btnCheckin = `<button onclick="app.abrirModalCaptura(${repId}, '${cliId}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkin', '${cadastroEsc}')" class="btn-small">✅ Check-in</button>`;
+            const btnCheckout = `<button onclick="app.abrirModalCaptura(${repId}, '${cliId}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkout', '${cadastroEsc}')" class="btn-small">🚪 Checkout</button>`;
+            const btnCampanha = `<button onclick="app.abrirModalCaptura(${repId}, '${cliId}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'campanha', '${cadastroEsc}')" class="btn-small">🎯 Campanha</button>`;
+
+            const haSessaoAberta = statusCliente?.status === 'em_atendimento';
+            const botoes = haSessaoAberta
+                ? `${btnCheckout}${btnCampanha}`
+                : `${btnCheckin}${btnCampanha}`;
+
+            const item = document.createElement('div');
+            item.className = 'route-item';
             item.innerHTML = `
                 <div class="route-item-info">
                     <div class="route-item-name">${cliId} - ${cliNome}</div>
                     <div class="route-item-address">${linhaEndereco}</div>
+                    ${tempoTexto}
                 </div>
                 <div class="route-item-actions">
-                    <span class="route-status ${visitado ? 'status-visited' : 'status-pending'}">
-                        ${visitado ? 'Visitado' : 'Pendente'}
-                    </span>
-                    ${
-                        !visitado
-                        ? `<button onclick="app.abrirModalCaptura(${repId}, '${cliId}', '${nomeEsc}', '${endEsc}', '${dataVisita}')" class="btn-small">📸 Registrar</button>`
-                        : ''
-                    }
+                    <span class="route-status ${statusClasse}">${statusTexto}</span>
+                    ${botoes}
                 </div>
             `;
             container.appendChild(item);
@@ -5042,30 +5063,22 @@ class App {
     }
 }
 
-
-    async verificarVisitasRealizadas(repId, dataVisita) {
-        let visitas = [];
+    async buscarResumoVisitas(repId, dataVisita) {
         try {
-            const url = `${this.registroRotaState.backendUrl}/api/registro-rota/visitas?rep_id=${repId}&data_inicio=${dataVisita}&data_fim=${dataVisita}`;
+            const url = `${this.registroRotaState.backendUrl}/api/registro-rota/visitas?rep_id=${repId}&data_inicio=${dataVisita}&data_fim=${dataVisita}&modo=resumo`;
             const response = await fetch(url);
-
             if (!response.ok) {
-                const detalhesErro = await this.extrairMensagemErro(response);
-                console.warn('Erro ao verificar visitas:', response.status, detalhesErro);
-                this.showNotification(`Não foi possível verificar visitas (status ${response.status}). ${detalhesErro || 'Tente novamente em instantes.'}`, 'warning');
+                console.warn('Erro ao buscar resumo de visitas:', response.status);
                 return [];
             }
-
             const result = await response.json();
-            const normalizeClienteId = (v) => String(v ?? '').trim().replace(/\.0$/, '');
-            visitas = (result.visitas || []).map(v => normalizeClienteId(v.cliente_id));
+            return result.visitas || [];
         } catch (error) {
-            console.warn('Erro ao verificar visitas:', error);
-            this.showNotification('Não foi possível verificar visitas agora. Exibindo roteiro sem status.', 'warning');
-        } finally {
-            return visitas;
+            console.warn('Erro ao buscar resumo de visitas:', error);
+            return [];
         }
     }
+
 
     async extrairMensagemErro(response) {
         try {
@@ -5095,24 +5108,53 @@ class App {
         });
     }
 
-    async abrirModalCaptura(repId, clienteId, clienteNome, enderecoLinha = null, dataVisitaParam = null) {
+    async abrirModalCaptura(repId, clienteId, clienteNome, enderecoLinha = null, dataVisitaParam = null, tipoRegistro = 'campanha', enderecoCadastro = '') {
     const normalizeClienteId = (v) => String(v ?? '').trim().replace(/\.0$/, '');
 
     const clienteIdNorm = normalizeClienteId(clienteId);
     const dataInput = document.getElementById('registroData')?.value;
+    const statusCliente = this.registroRotaState.resumoVisitas.get(clienteIdNorm);
+
+    const tipoPadrao = tipoRegistro || (statusCliente?.status === 'em_atendimento' ? 'checkout' : 'checkin');
+    this.registroRotaState.tipoRegistro = tipoPadrao;
 
     this.registroRotaState.clienteAtual = {
         repId: Number(repId),
         clienteId: clienteIdNorm,                // SEM .0
         clienteNome: String(clienteNome || ''),
         enderecoLinha: enderecoLinha ? String(enderecoLinha) : null,
-        dataVisita: dataVisitaParam || dataInput // YYYY-MM-DD
+        dataVisita: dataVisitaParam || dataInput, // YYYY-MM-DD
+        statusCliente,
+        clienteEndereco: enderecoCadastro || enderecoLinha
     };
 
     // Atualizar título do modal
     const tituloModal = document.getElementById('modalCapturaTitulo');
     if (tituloModal) {
         tituloModal.textContent = `Registrar Visita - ${this.registroRotaState.clienteAtual.clienteNome}`;
+    }
+
+    // Ajustar seleção de tipo
+    const radios = document.querySelectorAll('input[name="tipoRegistro"]');
+    const aviso = document.getElementById('avisoTipoRegistro');
+    const haSessaoAberta = statusCliente?.status === 'em_atendimento';
+
+    radios.forEach((radio) => {
+        const valor = radio.value;
+        if (valor === 'checkin') {
+            radio.disabled = haSessaoAberta;
+        } else if (valor === 'checkout') {
+            radio.disabled = !haSessaoAberta;
+        } else {
+            radio.disabled = false;
+        }
+        radio.checked = valor === tipoPadrao || (!haSessaoAberta && valor === 'checkin' && tipoPadrao === 'checkin');
+    });
+
+    if (aviso) {
+        aviso.textContent = haSessaoAberta
+            ? 'Check-out habilitado porque há um check-in em andamento. Campanha sempre disponível.'
+            : 'Inicie com check-in; campanhas podem ser feitas a qualquer momento.';
     }
 
     // Resetar estado
@@ -5421,6 +5463,8 @@ class App {
         const clienteId = normalizeClienteId(atual.clienteId);
         const clienteNome = String(atual.clienteNome || '');
         const dataVisita = String(atual.dataVisita || '').trim(); // esperado YYYY-MM-DD
+        const tipoRegistro = (document.querySelector('input[name="tipoRegistro"]:checked')?.value || this.registroRotaState.tipoRegistro || 'campanha').toLowerCase();
+        const statusCliente = atual.statusCliente;
 
         const gpsCoords = this.registroRotaState.gpsCoords;
         const fotoCapturada = this.registroRotaState.fotoCapturada;
@@ -5439,33 +5483,43 @@ class App {
             return;
         }
 
+        if (tipoRegistro === 'checkout' && (!statusCliente || statusCliente.status !== 'em_atendimento')) {
+            this.showNotification('Realize o check-in antes de registrar o checkout.', 'warning');
+            return;
+        }
+
+        if (tipoRegistro === 'checkin' && statusCliente?.status === 'em_atendimento') {
+            this.showNotification('Já existe um check-in em aberto para este cliente.', 'warning');
+            return;
+        }
+
         if (btnSalvar) {
             btnSalvar.disabled = true;
             btnSalvar.textContent = 'Salvando...';
         }
 
-        // ✅ data_hora com hora REAL (evita UTC-date-only virar 21:00 do dia anterior)
-        const now = new Date();
-        let dtLocal;
-
-        if (/^\d{4}-\d{2}-\d{2}$/.test(dataVisita)) {
-            const [y, m, d] = dataVisita.split('-').map(Number);
-            dtLocal = new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds(), 0);
-        } else {
-            dtLocal = now;
-        }
-
-        const dataHoraISO = dtLocal.toISOString(); // backend/DB consistente
+        const dtLocal = new Date();
+        const dataHoraISO = dtLocal.toISOString(); // sempre horário real
 
         // ✅ carimbo (foto + coords + endereço + data/hora)
         const latTxt = Number(gpsCoords.latitude).toFixed(6);
         const lonTxt = Number(gpsCoords.longitude).toFixed(6);
 
-        const dataTxt = `${pad2(dtLocal.getDate())}/${pad2(dtLocal.getMonth() + 1)}/${dtLocal.getFullYear()} ${pad2(dtLocal.getHours())}:${pad2(dtLocal.getMinutes())}`;
+        const formatter = new Intl.DateTimeFormat('pt-BR', {
+            timeZone: 'America/Sao_Paulo',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        const parts = Object.fromEntries(formatter.formatToParts(dtLocal).map((p) => [p.type, p.value]));
+        const dataTxt = `${parts.day}/${parts.month}/${parts.year} ${parts.hour}:${parts.minute}`;
 
         const linhasCarimbo = [
             `Cliente: ${clienteId} - ${clienteNome}`,
-            `Data/Hora: ${dataTxt}`,
+            `Tipo: ${tipoRegistro.toUpperCase()}`,
+            `Data/Hora: ${dataTxt} (America/Sao_Paulo)`,
             `GPS: ${latTxt}, ${lonTxt}`,
             enderecoResolvido ? `Endereço: ${enderecoResolvido}` : 'Endereço: (não informado)'
         ];
@@ -5477,14 +5531,17 @@ class App {
             rep_id: repId,
             cliente_id: clienteId,                 // SEM .0 e como string
             data_hora: dataHoraISO,                // ISO com hora real
+            data_planejada: dataVisita || null,
             latitude: Number(gpsCoords.latitude),
             longitude: Number(gpsCoords.longitude),
             endereco_resolvido: enderecoResolvido || null,
             foto_base64: fotoBase64,               // base64 "raw"
             foto_mime: 'image/jpeg',
+            tipo: tipoRegistro,
 
             // extras “forward compatible” (se o backend quiser usar p/ nome do arquivo)
             cliente_nome: clienteNome,
+            cliente_endereco: atual.clienteEndereco || null,
             foto_padrao_nome: 'DDMMAA_HHMM_IDCLIENTE.SEQ_NOMECLIENTE.JPG'
         };
 
@@ -5547,6 +5604,12 @@ class App {
         this.registroRotaState.gpsCoords = null;
         this.registroRotaState.fotoCapturada = null;
         this.registroRotaState.enderecoResolvido = null;
+        this.registroRotaState.tipoRegistro = 'campanha';
+
+        const radioCampanha = document.getElementById('tipoRegistroCampanha');
+        if (radioCampanha) {
+            radioCampanha.checked = true;
+        }
     }
 
     // ==================== CONSULTA DE VISITAS ====================
@@ -5592,6 +5655,10 @@ class App {
 
             // Renderizar resultados
             const container = document.getElementById('visitasContainer');
+            if (!container) {
+                console.warn('Container de visitas não encontrado. Abortando renderização.');
+                return;
+            }
 
             if (visitas.length === 0) {
                 container.innerHTML = '<p style="text-align:center;color:#999;margin-top:20px;">Nenhuma visita encontrada</p>';
@@ -5606,18 +5673,21 @@ class App {
 
                 const dataBruta = visita.data_hora || visita.created_at;
                 const dataBase = dataBruta ? (isNaN(Number(dataBruta)) ? new Date(dataBruta) : new Date(Number(dataBruta))) : null;
-                const dataFormatada = dataBase ? dataBase.toLocaleString('pt-BR') : '-';
+                const dataFormatada = dataBase ? dataBase.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '-';
+                const tipo = (visita.rv_tipo || visita.tipo || 'campanha').toUpperCase();
+                const tempoTexto = visita.tempo_minutos != null ? `<span style="margin-left:6px;">⏱️ ${visita.tempo_minutos} min</span>` : '';
 
                 item.innerHTML = `
                     <div style="flex: 1;">
-                        <div><strong>${visita.cliente_id}</strong></div>
+                        <div><strong>${visita.cliente_id}</strong> <span style="font-size:0.85em;color:#ef4444;font-weight:700;">${tipo}</span>${tempoTexto}</div>
                         <div style="font-size: 0.9em; color: #666; margin-top: 4px;">
                             📅 ${dataFormatada}
                         </div>
                         <div style="font-size: 0.9em; color: #666; margin-top: 4px;">
-                            📍 GPS: ${visita.latitude}, ${visita.longitude}
+                            🏘️ Endereço cliente: ${visita.rv_endereco_cliente || visita.endereco_cliente || 'Não informado'}
                         </div>
-                        ${visita.endereco_resolvido ? `<div style="font-size: 0.9em; color: #4b5563; margin-top: 4px;">🏠 ${visita.endereco_resolvido}</div>` : ''}
+                        ${visita.endereco_resolvido ? `<div style="font-size: 0.9em; color: #4b5563; margin-top: 4px;">📍 Registro: ${visita.endereco_resolvido}</div>` : ''}
+                        <div style="font-size: 0.9em; color: #666; margin-top: 4px;">GPS: ${visita.latitude}, ${visita.longitude}</div>
                         <div style="font-size: 0.9em; color: #666; margin-top: 4px;">🧑‍🤝‍🧑 Repositor: ${visita.rep_id}</div>
                     </div>
                     <div>

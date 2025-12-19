@@ -1,9 +1,12 @@
 import express from 'express';
-import { tursoService, DatabaseNotConfiguredError } from '../services/turso.js';
+import crypto from 'node:crypto';
+import { tursoService, DatabaseNotConfiguredError, normalizeClienteId } from '../services/turso.js';
 import { googleDriveService, OAuthNotConfiguredError } from '../services/googleDrive.js';
 import { emailService } from '../services/email.js';
 
 const router = express.Router();
+const TIME_ZONE = 'America/Sao_Paulo';
+const RV_TIPOS = ['checkin', 'checkout', 'campanha'];
 
 /**
  * Sanitiza BigInt para JSON (Express/JSON.stringify não serializa BigInt)
@@ -21,30 +24,102 @@ function sanitizeForJson(value) {
   return value;
 }
 
-/**
- * Normaliza data_hora (aceita ISO string ou number/epoch)
- * Retorna ISO string
- */
-function normalizeDataHoraToIso(input) {
-  if (!input) return new Date().toISOString();
+function sanitizeNomeCliente(nome) {
+  const normalized = String(nome || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9]+/g, '_')
+    .replace(/_{2,}/g, '_')
+    .replace(/^_|_$/g, '')
+    .toUpperCase();
 
-  // number (epoch ms ou seconds)
-  if (typeof input === 'number') {
-    // se vier em segundos, converte para ms (heurística simples)
-    const ms = input < 10_000_000_000 ? input * 1000 : input;
-    const d = new Date(ms);
-    if (Number.isNaN(d.getTime())) return null;
-    return d.toISOString();
-  }
+  return normalized.substring(0, 60) || 'CLIENTE';
+}
 
-  // string
-  if (typeof input === 'string') {
+function parseDataHoraOrNow(input) {
+  if (input) {
     const d = new Date(input);
-    if (Number.isNaN(d.getTime())) return null;
-    return d.toISOString();
+    if (!Number.isNaN(d.getTime())) {
+      return d.toISOString();
+    }
+  }
+  return new Date().toISOString();
+}
+
+function getTimeZoneOffsetMs(timeZone, date) {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+
+  const parts = Object.fromEntries(dtf.formatToParts(date).map((p) => [p.type, p.value]));
+  const asUTC = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour),
+    Number(parts.minute),
+    Number(parts.second)
+  );
+
+  return asUTC - date.getTime();
+}
+
+function localDateTimeToUtcIso(dateStr, hour = 0, minute = 0, second = 0, ms = 0) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const guess = Date.UTC(y, (m || 1) - 1, d || 1, hour, minute, second, ms);
+  const offset = getTimeZoneOffsetMs(TIME_ZONE, new Date(guess));
+  const finalUtc = guess - offset;
+  return new Date(finalUtc).toISOString();
+}
+
+function buildUtcRangeFromLocalDates(dataInicio, dataFim) {
+  return {
+    inicioIso: localDateTimeToUtcIso(dataInicio, 0, 0, 0, 0),
+    fimIso: localDateTimeToUtcIso(dataFim, 23, 59, 59, 999)
+  };
+}
+
+function formatDataHoraLocal(dataIso) {
+  const formatter = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: TIME_ZONE,
+    year: '2-digit',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(new Date(dataIso)).map((p) => [p.type, p.value]));
+  return {
+    ddmmaa: `${parts.day}${parts.month}${parts.year}`,
+    hhmm: `${parts.hour}${parts.minute}`
+  };
+}
+
+function validarDataPlanejada(dataPlanejada) {
+  if (!dataPlanejada) return null;
+  const regex = /^\d{4}-\d{2}-\d{2}$/;
+  return regex.test(dataPlanejada) ? dataPlanejada : null;
+}
+
+async function garantirNomeCampanhaUnico(folderId, nomeBase) {
+  let contador = 1;
+  let nomeFinal = nomeBase;
+
+  while (await googleDriveService.findFileInFolderByName(folderId, nomeFinal)) {
+    contador += 1;
+    const sufixo = `_${String(contador).padStart(2, '0')}`;
+    const [semExtensao, ext] = nomeBase.split('.');
+    nomeFinal = `${semExtensao}${sufixo}.${ext || 'jpg'}`;
   }
 
-  return null;
+  return nomeFinal;
 }
 
 // ==================== POST /api/registro-rota/visitas ====================
@@ -59,10 +134,13 @@ router.post('/visitas', async (req, res) => {
       longitude,
       endereco_resolvido,
       foto_base64,
-      foto_mime
+      foto_mime,
+      cliente_nome,
+      cliente_endereco,
+      tipo,
+      data_planejada
     } = req.body;
 
-    // data_hora agora é opcional (se não vier, geramos)
     if (!rep_id || !cliente_id || !foto_base64) {
       return res.status(400).json({
         ok: false,
@@ -82,69 +160,105 @@ router.post('/visitas', async (req, res) => {
       return res.status(400).json({ ok: false, message: 'Latitude e longitude são obrigatórias', code: 'LOCATION_REQUIRED' });
     }
 
-    const dataHoraIso = normalizeDataHoraToIso(data_hora);
-    if (!dataHoraIso) {
-      return res.status(400).json({ ok: false, code: 'INVALID_DATE', message: 'data_hora inválida (use ISO ou timestamp)' });
-    }
+    const dataHoraIso = parseDataHoraOrNow(data_hora);
+    const rvTipo = RV_TIPOS.includes(String(tipo).toLowerCase()) ? String(tipo).toLowerCase() : 'campanha';
+    const clienteIdNorm = normalizeClienteId(cliente_id);
+    const dataPlanejadaValida = validarDataPlanejada(data_planejada);
 
     const repositor = await tursoService.obterRepositor(repIdNumber);
     if (!repositor) {
       return res.status(404).json({ ok: false, message: 'Repositor não encontrado', code: 'REPOSITOR_NOT_FOUND' });
     }
 
-    // Evitar duplicidade (mantendo o contrato existente do service)
-    const existente = await tursoService.verificarVisitaExistente(repIdNumber, cliente_id, dataHoraIso);
-    if (existente) {
-      return res.status(409).json({ ok: false, message: 'Visita já registrada para este cliente nesta data', code: 'VISIT_EXISTS' });
-    }
-
     if (!googleDriveService.isConfigured()) {
       return res.status(400).json({ ok: false, code: 'OAUTH_NOT_CONFIGURED', startUrl: '/api/google/oauth/start' });
     }
 
-    // Normaliza mime (se não vier, assume JPEG)
+    let sessaoId = null;
+    let tempoTrabalhoMin = null;
+
+    if (rvTipo === 'checkin') {
+      const aberta = await tursoService.buscarSessaoAberta(repIdNumber, clienteIdNorm);
+      if (aberta) {
+        return res.status(409).json({ ok: false, code: 'SESSAO_ABERTA', message: 'Já existe check-in em aberto para este cliente.' });
+      }
+      sessaoId = crypto.randomUUID();
+    }
+
+    if (rvTipo === 'checkout') {
+      const aberta = await tursoService.buscarSessaoAberta(repIdNumber, clienteIdNorm);
+      if (!aberta) {
+        return res.status(409).json({ ok: false, code: 'CHECKIN_NAO_ENCONTRADO', message: 'Não há check-in em aberto para este cliente.' });
+      }
+      sessaoId = aberta.rv_sessao_id || `sessao-${aberta.id}`;
+      tempoTrabalhoMin = Math.round((new Date(dataHoraIso).getTime() - new Date(aberta.data_hora).getTime()) / 60000);
+    }
+
     const mimeType = foto_mime || 'image/jpeg';
+    const parentFolderId = rvTipo === 'campanha'
+      ? await googleDriveService.ensureCampanhaFolder(repIdNumber, repositor.repo_nome)
+      : await googleDriveService.criarPastaRepositor(repIdNumber, repositor.repo_nome);
 
-    const now = new Date(dataHoraIso);
-    const dia = now.toISOString().split('T')[0].replace(/-/g, '');
-    const hora = now.toTimeString().split(' ')[0].replace(/:/g, '');
-    const filename = `${dia}_${cliente_id}_${hora}.jpg`;
-
-    const driveResult = await googleDriveService.uploadFotoBase64({
+    const uploadResult = await googleDriveService.uploadFotoBase64({
       base64Data: foto_base64,
       mimeType,
-      filename,
+      filename: `tmp_${Date.now()}.jpg`,
       repId: repIdNumber,
-      repoNome: repositor.repo_nome
+      repoNome: repositor.repo_nome,
+      parentFolderId
     });
 
-    if (!driveResult?.fileId || !driveResult?.webViewLink) {
+    if (!uploadResult?.fileId || !uploadResult?.webViewLink) {
       return res.status(400).json({ ok: false, code: 'DRIVE_UPLOAD_UNAVAILABLE', message: 'Upload no Drive não disponível' });
     }
 
-    const visita = await tursoService.salvarVisita({
+    const visita = await tursoService.salvarVisitaDetalhada({
       repId: repIdNumber,
-      clienteId: cliente_id,
+      clienteId: clienteIdNorm,
       dataHora: dataHoraIso,
       latitude: latitudeNumber,
       longitude: longitudeNumber,
       enderecoResolvido: endereco_resolvido || null,
-      driveFileId: driveResult.fileId,
-      driveFileUrl: driveResult.webViewLink
+      driveFileId: uploadResult.fileId,
+      driveFileUrl: uploadResult.webViewLink,
+      rvTipo,
+      rvSessaoId: sessaoId,
+      rvDataPlanejada: dataPlanejadaValida,
+      rvEnderecoCliente: cliente_endereco || null,
+      rvPastaDriveId: parentFolderId
     });
 
-    // ✅ Aqui está o ponto crítico: visita.id pode vir BigInt → sanitizar antes de responder
+    const nomeClienteSanitizado = sanitizeNomeCliente(cliente_nome || cliente_id);
+    const partesData = formatDataHoraLocal(dataHoraIso);
+
+    let nomeFinal = uploadResult.filename;
+
+    if (rvTipo === 'campanha') {
+      const baseNome = `${clienteIdNorm}_${nomeClienteSanitizado}_${partesData.ddmmaa}.jpg`;
+      nomeFinal = await garantirNomeCampanhaUnico(parentFolderId, baseNome);
+    } else {
+      const prefixo = rvTipo === 'checkin' ? 'CHECKIN' : 'CHECKOUT';
+      nomeFinal = `${prefixo}_${partesData.ddmmaa}_${partesData.hhmm}_${clienteIdNorm}.${visita.id}_${nomeClienteSanitizado}.jpg`;
+    }
+
+    const renameResult = await googleDriveService.renameFile(uploadResult.fileId, nomeFinal);
+
     const payload = {
       ok: true,
       id: visita?.id ?? null,
       rep_id: repIdNumber,
-      cliente_id,
+      cliente_id: clienteIdNorm,
       data_hora: dataHoraIso,
       latitude: latitudeNumber,
       longitude: longitudeNumber,
       endereco_resolvido: endereco_resolvido || null,
-      drive_file_id: driveResult.fileId,
-      drive_file_url: driveResult.webViewLink
+      drive_file_id: renameResult.fileId,
+      drive_file_url: renameResult.webViewLink,
+      tipo: rvTipo,
+      sessao_id: sessaoId,
+      data_planejada: dataPlanejadaValida,
+      tempo_trabalho_min: tempoTrabalhoMin,
+      rv_endereco_cliente: cliente_endereco || null
     };
 
     return res.status(201).json(sanitizeForJson(payload));
@@ -170,7 +284,7 @@ router.post('/visitas', async (req, res) => {
 // Consultar visitas
 router.get('/visitas', async (req, res) => {
   try {
-    const { rep_id, data_inicio, data_fim } = req.query;
+    const { rep_id, data_inicio, data_fim, modo = 'detalhado' } = req.query;
 
     if (!rep_id || !data_inicio || !data_fim) {
       return res.status(400).json({ ok: false, code: 'INVALID_QUERY', message: 'rep_id, data_inicio e data_fim são obrigatórios' });
@@ -186,12 +300,18 @@ router.get('/visitas', async (req, res) => {
       return res.status(400).json({ ok: false, code: 'INVALID_DATE', message: 'Datas devem estar no formato YYYY-MM-DD' });
     }
 
-    const visitas = await tursoService.listarVisitasPorRepEPeriodo(repIdNumber, data_inicio, data_fim);
+    const { inicioIso, fimIso } = buildUtcRangeFromLocalDates(data_inicio, data_fim);
+
+    const modoNormalizado = String(modo || '').toLowerCase();
+    const visitas = modoNormalizado === 'resumo'
+      ? await tursoService.listarResumoVisitas({ repId: repIdNumber, inicioIso, fimIso })
+      : await tursoService.listarVisitasDetalhadas({ repId: repIdNumber, inicioIso, fimIso });
 
     return res.json(
       sanitizeForJson({
         ok: true,
-        visitas
+        visitas,
+        modo: modoNormalizado
       })
     );
   } catch (error) {
@@ -218,7 +338,10 @@ router.post('/disparar-resumo', async (req, res) => {
     const dataRef = data_referencia || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     // Buscar visitas do dia
-    const visitas = await tursoService.listarVisitasPorPeriodo(dataRef, dataRef);
+    const visitas = await tursoService.listarVisitasPorPeriodo({
+      inicioIso: localDateTimeToUtcIso(dataRef, 0, 0, 0, 0),
+      fimIso: localDateTimeToUtcIso(dataRef, 23, 59, 59, 999)
+    });
 
     // Enviar e-mail
     const result = await emailService.enviarResumoVisitasDia(dataRef, visitas);

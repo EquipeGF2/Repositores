@@ -15,6 +15,7 @@ class GoogleDriveService {
     this.drive = null;
     this.auth = null;
     this.folderCache = new Map(); // Cache de pastas dos repositores
+    this.subfolderCache = new Map(); // Cache de subpastas (ex.: campanha)
   }
 
   async authenticate() {
@@ -98,12 +99,53 @@ class GoogleDriveService {
     }
   }
 
-  async uploadFotoBase64({ base64Data, mimeType, filename, repId, repoNome }) {
+  async createFolderIfNotExists(parentId, folderName) {
+    await this.authenticate();
+
+    const cacheKey = `${parentId}::${folderName}`;
+    if (this.subfolderCache.has(cacheKey)) {
+      return this.subfolderCache.get(cacheKey);
+    }
+
+    try {
+      const searchResponse = await this.drive.files.list({
+        q: `name='${folderName}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+        fields: 'files(id, name)',
+        spaces: 'drive'
+      });
+
+      if (searchResponse.data.files.length > 0) {
+        const folderId = searchResponse.data.files[0].id;
+        this.subfolderCache.set(cacheKey, folderId);
+        return folderId;
+      }
+
+      const folderMetadata = {
+        name: folderName,
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: [parentId]
+      };
+
+      const folder = await this.drive.files.create({
+        requestBody: folderMetadata,
+        fields: 'id, name'
+      });
+
+      const folderId = folder.data.id;
+      this.subfolderCache.set(cacheKey, folderId);
+      return folderId;
+    } catch (error) {
+      console.error('❌ Erro ao criar subpasta no Drive:', error.message);
+      throw error;
+    }
+  }
+
+  async uploadFotoBase64({ base64Data, mimeType, filename, repId, repoNome, parentFolderId }) {
     await this.authenticate();
 
     try {
       // Obter/criar pasta do repositor
-      const folderId = await this.criarPastaRepositor(repId, repoNome);
+      const folderId = parentFolderId || await this.criarPastaRepositor(repId, repoNome);
 
       const base64WithoutPrefix = base64Data.replace(/^data:.*;base64,/, '');
       const buffer = Buffer.from(base64WithoutPrefix, 'base64');
@@ -156,6 +198,39 @@ class GoogleDriveService {
     }
 
     return `https://drive.google.com/drive/folders/${folderId}`;
+  }
+
+  async renameFile(fileId, newName) {
+    await this.authenticate();
+
+    const updated = await this.drive.files.update({
+      fileId,
+      requestBody: { name: newName },
+      fields: 'id, name, webViewLink'
+    });
+
+    return {
+      fileId: updated.data.id,
+      filename: updated.data.name,
+      webViewLink: updated.data.webViewLink
+    };
+  }
+
+  async findFileInFolderByName(parentId, name) {
+    await this.authenticate();
+
+    const res = await this.drive.files.list({
+      q: `name='${name}' and '${parentId}' in parents and trashed=false`,
+      fields: 'files(id, name)',
+      spaces: 'drive'
+    });
+
+    return res.data.files?.[0] || null;
+  }
+
+  async ensureCampanhaFolder(repId, repoNome) {
+    const root = await this.criarPastaRepositor(repId, repoNome);
+    return this.createFolderIfNotExists(root, 'CAMPANHA');
   }
 
   slugify(text) {
