@@ -1764,7 +1764,147 @@ export const pages = {
                 </div>
             </div>
 
+            <!-- Modal de Atividades -->
+            <div class="modal" id="modalAtividades">
+                <div class="modal-content" style="max-width: 600px;">
+                    <div class="modal-header">
+                        <div>
+                            <h3 id="modalAtividadesTitulo">Atividades</h3>
+                            <p id="atividadesClienteInfo" style="color: #666; font-size: 14px; margin: 4px 0 0;"></p>
+                        </div>
+                        <button class="modal-close" onclick="window.app.fecharModalAtividades()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div style="display: flex; flex-direction: column; gap: 20px;">
+                            <!-- Quantidade de Frentes -->
+                            <div class="form-group">
+                                <label for="atv_qtd_frentes">Quantidade de Frentes *</label>
+                                <input type="number" id="atv_qtd_frentes" min="1" placeholder="Ex: 3" required>
+                            </div>
+
+                            <!-- Merchandising -->
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="atv_merchandising">
+                                    <span>Usou Merchandising</span>
+                                </label>
+                            </div>
+
+                            <!-- Checklist de Serviços -->
+                            <div class="form-group">
+                                <label style="margin-bottom: 12px; display: block; font-weight: 600;">Atividades Realizadas * (marque ao menos uma)</label>
+                                <div style="display: flex; flex-direction: column; gap: 8px;">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="atv_abastecimento">
+                                        <span>Abastecimento</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="atv_espaco_loja">
+                                        <span>Espaço Loja</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="atv_ruptura_loja">
+                                        <span>Ruptura Loja</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="atv_pontos_extras">
+                                        <span>Pontos Extras</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Quantidade Pontos Extras (condicional) -->
+                            <div class="form-group" id="grupo_qtd_pontos_extras" style="display: none;">
+                                <label for="atv_qtd_pontos_extras">Quantidade de Pontos Extras *</label>
+                                <input type="number" id="atv_qtd_pontos_extras" min="1" placeholder="Ex: 5">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="window.app.fecharModalAtividades()">Cancelar</button>
+                        <button class="btn btn-primary" onclick="window.app.salvarAtividades()">💾 Salvar</button>
+                    </div>
+                </div>
+            </div>
+
+            <script>
+                // Mostrar/esconder campo de quantidade de pontos extras
+                document.addEventListener('DOMContentLoaded', function() {
+                    const checkboxPontosExtras = document.getElementById('atv_pontos_extras');
+                    const grupoPontosExtras = document.getElementById('grupo_qtd_pontos_extras');
+
+                    if (checkboxPontosExtras && grupoPontosExtras) {
+                        checkboxPontosExtras.addEventListener('change', function() {
+                            grupoPontosExtras.style.display = this.checked ? 'block' : 'none';
+                            if (!this.checked) {
+                                document.getElementById('atv_qtd_pontos_extras').value = '';
+                            }
+                        });
+                    }
+                });
+            </script>
+
             <style>
+                .checkbox-label {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    cursor: pointer;
+                    padding: 8px;
+                    border-radius: 6px;
+                    transition: background 0.2s;
+                }
+
+                .checkbox-label:hover {
+                    background: #f9fafb;
+                }
+
+                .checkbox-label input[type="checkbox"] {
+                    width: 18px;
+                    height: 18px;
+                    cursor: pointer;
+                    accent-color: #ef4444;
+                }
+
+                .checkbox-label span {
+                    font-size: 14px;
+                    color: #374151;
+                }
+
+                .btn-atividades {
+                    background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%) !important;
+                }
+
+                .btn-atividades:hover {
+                    box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3) !important;
+                }
+
+                .form-group {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 8px;
+                }
+
+                .form-group label {
+                    font-weight: 600;
+                    font-size: 14px;
+                    color: #374151;
+                }
+
+                .form-group input[type="number"] {
+                    padding: 10px 12px;
+                    border: 1px solid #d1d5db;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    transition: border-color 0.2s;
+                }
+
+                .form-group input[type="number"]:focus {
+                    outline: none;
+                    border-color: #ef4444;
+                    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+                }
+
                 .roteiro-lista {
                     display: flex;
                     flex-direction: column;
