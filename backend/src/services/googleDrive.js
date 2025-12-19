@@ -2,6 +2,14 @@ import { google } from 'googleapis';
 import { Readable } from 'stream';
 import { config } from '../config/env.js';
 
+export class OAuthNotConfiguredError extends Error {
+  constructor(message = 'OAuth do Google não configurado') {
+    super(message);
+    this.name = 'OAuthNotConfiguredError';
+    this.code = 'OAUTH_NOT_CONFIGURED';
+  }
+}
+
 class GoogleDriveService {
   constructor() {
     this.drive = null;
@@ -14,18 +22,10 @@ class GoogleDriveService {
 
     try {
       if (!this.isConfigured()) {
-        throw new Error('Credenciais do Google Drive não configuradas');
+        throw new OAuthNotConfiguredError();
       }
 
-      const credentials = {
-        client_email: config.drive.clientEmail,
-        private_key: config.drive.privateKey.replace(/\\n/g, '\n')
-      };
-
-      this.auth = new google.auth.GoogleAuth({
-        credentials,
-        scopes: ['https://www.googleapis.com/auth/drive.file']
-      });
+      this.auth = this.createOAuthClient();
 
       this.drive = google.drive({ version: 'v3', auth: this.auth });
 
@@ -37,7 +37,13 @@ class GoogleDriveService {
   }
 
   isConfigured() {
-    return Boolean(config.drive.clientEmail && config.drive.privateKey && config.drive.rootFolderId);
+    return Boolean(
+      config.drive.rootFolderId &&
+      config.oauth.refreshToken &&
+      config.oauth.clientId &&
+      config.oauth.clientSecret &&
+      config.oauth.redirectUri
+    );
   }
 
   async criarPastaRepositor(repId, repoNome) {
@@ -99,6 +105,9 @@ class GoogleDriveService {
       // Obter/criar pasta do repositor
       const folderId = await this.criarPastaRepositor(repId, repoNome);
 
+      const base64WithoutPrefix = base64Data.replace(/^data:.*;base64,/, '');
+      const buffer = Buffer.from(base64WithoutPrefix, 'base64');
+
       // Fazer upload do arquivo
       const fileMetadata = {
         name: filename,
@@ -107,13 +116,13 @@ class GoogleDriveService {
 
       const media = {
         mimeType,
-        body: Readable.from(Buffer.from(base64Data, 'base64'))
+        body: Readable.from(buffer)
       };
 
       const file = await this.drive.files.create({
         requestBody: fileMetadata,
         media: media,
-        fields: 'id, name, webViewLink'
+        fields: 'id, webViewLink'
       });
 
       // Tornar o arquivo acessível via link
@@ -158,6 +167,23 @@ class GoogleDriveService {
       .replace(/[^A-Z0-9\s]/g, '')
       .replace(/\s+/g, '_')
       .substring(0, 50);
+  }
+
+  createOAuthClient() {
+    const { clientId, clientSecret, redirectUri, refreshToken } = config.oauth;
+
+    if (!clientId || !clientSecret || !redirectUri) {
+      throw new OAuthNotConfiguredError('Client ID, Client Secret ou Redirect URI não configurados');
+    }
+
+    if (!refreshToken) {
+      throw new OAuthNotConfiguredError('Refresh token do OAuth não configurado');
+    }
+
+    const oauthClient = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+    oauthClient.setCredentials({ refresh_token: refreshToken });
+
+    return oauthClient;
   }
 }
 

@@ -1,6 +1,6 @@
 import express from 'express';
 import { tursoService, DatabaseNotConfiguredError } from '../services/turso.js';
-import { googleDriveService } from '../services/googleDrive.js';
+import { googleDriveService, OAuthNotConfiguredError } from '../services/googleDrive.js';
 import { emailService } from '../services/email.js';
 
 const router = express.Router();
@@ -52,7 +52,7 @@ router.post('/visitas', async (req, res) => {
     }
 
     if (!googleDriveService.isConfigured()) {
-      return res.status(400).json({ ok: false, code: 'DRIVE_NOT_CONFIGURED', message: 'Google Drive não configurado' });
+      return res.status(400).json({ ok: false, code: 'OAUTH_NOT_CONFIGURED', startUrl: '/api/google/oauth/start' });
     }
 
     const now = new Date(dataHora);
@@ -69,7 +69,7 @@ router.post('/visitas', async (req, res) => {
     });
 
     if (!driveResult?.fileId || !driveResult?.webViewLink) {
-      return res.status(400).json({ ok: false, code: 'DRIVE_NOT_CONFIGURED', message: 'Upload no Drive não disponível' });
+      return res.status(400).json({ ok: false, code: 'DRIVE_UPLOAD_UNAVAILABLE', message: 'Upload no Drive não disponível' });
     }
 
     const visita = await tursoService.salvarVisita({
@@ -90,6 +90,10 @@ router.post('/visitas', async (req, res) => {
       drive_file_url: driveResult.webViewLink
     });
   } catch (error) {
+    if (error instanceof OAuthNotConfiguredError) {
+      return res.status(400).json({ ok: false, code: error.code, startUrl: '/api/google/oauth/start', message: error.message });
+    }
+
     if (error instanceof DatabaseNotConfiguredError) {
       return res.status(503).json({ ok: false, code: error.code, message: error.message });
     }

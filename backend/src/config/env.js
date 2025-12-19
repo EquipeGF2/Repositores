@@ -28,9 +28,14 @@ export const config = {
   },
 
   drive: {
-    rootFolderId: process.env.GOOGLE_DRIVE_FOLDER_ID || process.env.DRIVE_VISITAS_ROOT_ID,
-    clientEmail: process.env.GOOGLE_DRIVE_CLIENT_EMAIL,
-    privateKey: process.env.GOOGLE_DRIVE_PRIVATE_KEY
+    rootFolderId: process.env.GOOGLE_DRIVE_FOLDER_ID || process.env.DRIVE_VISITAS_ROOT_ID
+  },
+
+  oauth: {
+    clientId: process.env.GOOGLE_OAUTH_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+    redirectUri: process.env.GOOGLE_OAUTH_REDIRECT_URI,
+    refreshToken: process.env.GOOGLE_OAUTH_REFRESH_TOKEN
   },
 
   email: {
@@ -46,7 +51,8 @@ export const config = {
 if (!config.turso.url) warnMissing('TURSO_DATABASE_URL');
 if (!config.turso.authToken) warnMissing('TURSO_AUTH_TOKEN');
 if (!config.drive.rootFolderId) warnMissing('GOOGLE_DRIVE_FOLDER_ID');
-if (!config.drive.clientEmail) warnMissing('GOOGLE_DRIVE_CLIENT_EMAIL');
-if (!config.drive.privateKey) warnMissing('GOOGLE_DRIVE_PRIVATE_KEY');
+if (!config.oauth.clientId) warnMissing('GOOGLE_OAUTH_CLIENT_ID');
+if (!config.oauth.clientSecret) warnMissing('GOOGLE_OAUTH_CLIENT_SECRET');
+if (!config.oauth.redirectUri) warnMissing('GOOGLE_OAUTH_REDIRECT_URI');
 
 console.log('✅ Configurações carregadas com sucesso');

@@ -3,6 +3,7 @@ import cors from 'cors';
 import { config } from './config/env.js';
 import { getDbClient, initDbClient, DatabaseNotConfiguredError } from './config/db.js';
 import registroRotaRoutes from './routes/registro-rota.js';
+import googleOAuthRoutes from './routes/google-oauth.js';
 
 const app = express();
 
@@ -56,6 +57,7 @@ app.get('/api/health', async (req, res) => {
 
 // Rotas de registro de rota
 app.use('/api/registro-rota', registroRotaRoutes);
+app.use('/api/google/oauth', googleOAuthRoutes);
 
 // Rota 404
 app.use((req, res) => {
