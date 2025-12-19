@@ -5997,10 +5997,22 @@ class App {
             const btnUpload = document.getElementById('btnUploadDocumento');
             const btnFiltrar = document.getElementById('btnFiltrarDocumentos');
             const btnDownloadZip = document.getElementById('btnDownloadZip');
+            const inputArquivo = document.getElementById('uploadArquivo');
 
             if (btnUpload) btnUpload.onclick = () => this.uploadDocumento();
             if (btnFiltrar) btnFiltrar.onclick = () => this.filtrarDocumentos();
             if (btnDownloadZip) btnDownloadZip.onclick = () => this.downloadZip();
+
+            // Mostrar arquivos selecionados
+            if (inputArquivo) {
+                inputArquivo.onchange = (e) => {
+                    const qtd = e.target.files.length;
+                    const span = document.getElementById('arquivosSelecionados');
+                    if (span) {
+                        span.textContent = qtd > 0 ? `${qtd} arquivo(s) selecionado(s)` : '';
+                    }
+                };
+            }
         } catch (error) {
             console.error('Erro ao inicializar documentos:', error);
             this.showNotification('Erro ao inicializar módulo de documentos', 'error');
@@ -6055,10 +6067,10 @@ class App {
         try {
             const repositorId = document.getElementById('uploadRepositor').value;
             const tipoId = document.getElementById('uploadTipo').value;
-            const arquivo = document.getElementById('uploadArquivo').files[0];
+            const arquivos = document.getElementById('uploadArquivo').files;
             const observacao = document.getElementById('uploadObservacao').value;
 
-            if (!repositorId || !tipoId || !arquivo) {
+            if (!repositorId || !tipoId || arquivos.length === 0) {
                 this.showNotification('Preencha todos os campos obrigatórios', 'warning');
                 return;
             }
@@ -6066,27 +6078,46 @@ class App {
             const formData = new FormData();
             formData.append('repositor_id', repositorId);
             formData.append('dct_id', tipoId);
-            formData.append('arquivo', arquivo);
+
+            // Adicionar todos os arquivos
+            for (let i = 0; i < arquivos.length; i++) {
+                formData.append('arquivos', arquivos[i]);
+            }
+
             if (observacao) formData.append('observacao', observacao);
 
-            this.showNotification('Enviando documento...', 'info');
+            const qtdArquivos = arquivos.length;
+            this.showNotification(`Enviando ${qtdArquivos} documento(s)...`, 'info');
 
-            const response = await fetch(`${API_BASE_URL}/api/documentos/upload`, {
+            const response = await fetch(`${API_BASE_URL}/api/documentos/upload-multiplo`, {
                 method: 'POST',
                 body: formData
             });
 
             if (!response.ok) {
                 const error = await response.json();
-                throw new Error(error.message || 'Erro ao fazer upload');
+                throw new Error(error.message || error.error || 'Erro ao fazer upload');
             }
 
             const data = await response.json();
-            this.showNotification('Documento enviado com sucesso!', 'success');
+
+            if (data.erros && data.erros.length > 0) {
+                this.showNotification(
+                    `Upload concluído: ${data.sucesso} sucesso, ${data.erros.length} erros. Verifique o console.`,
+                    'warning'
+                );
+                console.warn('Erros no upload:', data.erros);
+            } else {
+                this.showNotification(
+                    `${qtdArquivos} documento(s) enviado(s) com sucesso!`,
+                    'success'
+                );
+            }
 
             // Limpar formulário
             document.getElementById('uploadArquivo').value = '';
             document.getElementById('uploadObservacao').value = '';
+            document.getElementById('arquivosSelecionados').textContent = '';
 
             // Recarregar lista se filtro estiver ativo
             if (document.getElementById('filtroRepositor').value) {
@@ -6094,7 +6125,7 @@ class App {
             }
         } catch (error) {
             console.error('Erro ao fazer upload:', error);
-            this.showNotification('Erro ao enviar documento: ' + error.message, 'error');
+            this.showNotification('Erro ao enviar documento(s): ' + error.message, 'error');
         }
     }
 

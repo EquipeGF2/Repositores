@@ -208,28 +208,186 @@ router.get('/', async (req, res) => {
 // POST /api/documentos/upload - Upload de documento
 router.post('/upload', upload.single('arquivo'), async (req, res) => {
   try {
+    console.log('📤 Iniciando upload de documento...');
+    console.log('Body:', req.body);
+    console.log('Arquivo:', req.file ? { name: req.file.originalname, size: req.file.size } : 'nenhum');
+
     const { repositor_id, dct_id, dct_codigo, observacao } = req.body;
     const arquivo = req.file;
 
     if (!repositor_id || (!dct_id && !dct_codigo)) {
+      console.log('❌ Erro: repositor_id ou dct_id ausente');
       return res.status(400).json({ ok: false, message: 'repositor_id e dct_id (ou dct_codigo) são obrigatórios' });
     }
 
     if (!arquivo) {
+      console.log('❌ Erro: arquivo ausente');
       return res.status(400).json({ ok: false, message: 'Arquivo é obrigatório' });
     }
 
     const ext = arquivo.originalname.substring(arquivo.originalname.lastIndexOf('.')).toLowerCase();
     if (!EXTENSOES_PERMITIDAS.includes(ext)) {
+      console.log('❌ Erro: extensão não permitida:', ext);
       return res.status(400).json({ ok: false, message: 'Extensão de arquivo não permitida' });
     }
 
+    console.log('✅ Validações iniciais OK');
+
     // Buscar tipo
+    console.log('🔍 Buscando tipo de documento...');
     const tipoQuery = dct_id
       ? 'SELECT * FROM cc_documento_tipos WHERE dct_id = ?'
       : 'SELECT * FROM cc_documento_tipos WHERE dct_codigo = ?';
     const tipoArgs = dct_id ? [parseInt(dct_id)] : [dct_codigo];
     const tipoResult = await tursoService.execute(tipoQuery, tipoArgs);
+
+    if (tipoResult.rows.length === 0) {
+      console.log('❌ Erro: tipo não encontrado');
+      return res.status(404).json({ ok: false, message: 'Tipo de documento não encontrado' });
+    }
+
+    const tipo = tipoResult.rows[0];
+    console.log('✅ Tipo encontrado:', tipo.dct_nome);
+
+    // Buscar repositor
+    console.log('🔍 Buscando repositor...');
+    const repoResult = await tursoService.execute(
+      'SELECT * FROM cad_repositor WHERE repo_cod = ?',
+      [parseInt(repositor_id)]
+    );
+
+    if (repoResult.rows.length === 0) {
+      console.log('❌ Erro: repositor não encontrado');
+      return res.status(404).json({ ok: false, message: 'Repositor não encontrado' });
+    }
+
+    const repositor = repoResult.rows[0];
+    console.log('✅ Repositor encontrado:', repositor.repo_nome);
+
+    // Garantir estrutura de pastas
+    console.log('📁 Garantindo estrutura de pastas...');
+    const { documentosFolderId } = await ensureRepositorFolders(
+      parseInt(repositor_id),
+      repositor.repo_nome
+    );
+    console.log('✅ Pasta documentos:', documentosFolderId);
+
+    const tipoFolderId = await ensureTipoFolder(
+      parseInt(repositor_id),
+      tipo.dct_id,
+      tipo.dct_nome,
+      documentosFolderId
+    );
+    console.log('✅ Pasta tipo:', tipoFolderId);
+
+    // Gerar nome do arquivo
+    const agora = new Date().toISOString();
+    const { ddmmaa, hhmm, data_ref, hora_ref } = formatarDataHoraLocal(agora);
+    let nomeBase = `${tipo.dct_codigo}_${ddmmaa}_${hhmm}${ext}`;
+
+    // Verificar se já existe arquivo com mesmo nome e gerar sufixo se necessário
+    console.log('🔍 Verificando arquivos existentes...');
+    const arquivosExistentes = await googleDriveService.listarArquivosPorPasta(tipoFolderId);
+    let contador = 2;
+    let nomeFinal = nomeBase;
+
+    while (arquivosExistentes.some(a => a.name === nomeFinal)) {
+      const sufixo = `_${String(contador).padStart(2, '0')}`;
+      nomeFinal = `${tipo.dct_codigo}_${ddmmaa}_${hhmm}${sufixo}${ext}`;
+      contador++;
+    }
+    console.log('✅ Nome final:', nomeFinal);
+
+    // Upload no Drive
+    console.log('☁️  Fazendo upload no Drive...');
+    const uploadResult = await googleDriveService.uploadArquivo({
+      buffer: arquivo.buffer,
+      mimeType: arquivo.mimetype,
+      filename: nomeFinal,
+      parentFolderId: tipoFolderId
+    });
+    console.log('✅ Upload concluído:', uploadResult.fileId);
+
+    // Salvar no banco
+    console.log('💾 Salvando no banco de dados...');
+    const insertResult = await tursoService.execute(
+      `INSERT INTO cc_documentos (
+        doc_repositor_id, doc_dct_id, doc_nome_original, doc_nome_drive,
+        doc_ext, doc_mime, doc_tamanho, doc_observacao, doc_data_ref, doc_hora_ref,
+        doc_drive_file_id, doc_drive_folder_id, doc_status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ENVIADO')`,
+      [
+        parseInt(repositor_id),
+        tipo.dct_id,
+        arquivo.originalname,
+        nomeFinal,
+        ext,
+        arquivo.mimetype,
+        arquivo.size,
+        observacao || null,
+        data_ref,
+        hora_ref,
+        uploadResult.fileId,
+        tipoFolderId
+      ]
+    );
+
+    const docId = insertResult.lastInsertRowid;
+    console.log('✅ Documento salvo com ID:', docId.toString());
+
+    res.status(201).json(sanitizeBigInt({
+      ok: true,
+      doc_id: docId.toString(),
+      nome_drive: nomeFinal,
+      drive_file_id: uploadResult.fileId,
+      drive_file_url: uploadResult.webViewLink
+    }));
+  } catch (error) {
+    console.error('❌ Erro detalhado ao fazer upload de documento:', error);
+    console.error('Stack:', error.stack);
+    res.status(500).json({
+      ok: false,
+      message: 'Erro ao fazer upload de documento',
+      error: error.message
+    });
+  }
+});
+
+// POST /api/documentos/upload-multiplo - Upload de múltiplos documentos
+router.post('/upload-multiplo', upload.array('arquivos', 10), async (req, res) => {
+  try {
+    console.log('📤 Iniciando upload múltiplo de documentos...');
+    const { repositor_id, dct_id, observacao } = req.body;
+    const arquivos = req.files;
+
+    if (!repositor_id || !dct_id) {
+      console.log('❌ Erro: repositor_id ou dct_id ausente');
+      return res.status(400).json({ ok: false, message: 'repositor_id e dct_id são obrigatórios' });
+    }
+
+    if (!arquivos || arquivos.length === 0) {
+      console.log('❌ Erro: nenhum arquivo enviado');
+      return res.status(400).json({ ok: false, message: 'Pelo menos um arquivo é obrigatório' });
+    }
+
+    console.log(`📁 Recebidos ${arquivos.length} arquivo(s)`);
+
+    // Validar extensões
+    for (const arquivo of arquivos) {
+      const ext = arquivo.originalname.substring(arquivo.originalname.lastIndexOf('.')).toLowerCase();
+      if (!EXTENSOES_PERMITIDAS.includes(ext)) {
+        return res.status(400).json({
+          ok: false,
+          message: `Extensão não permitida: ${ext} (arquivo: ${arquivo.originalname})`
+        });
+      }
+    }
+
+    // Buscar tipo
+    const tipoResult = await tursoService.execute(
+      'SELECT * FROM cc_documento_tipos WHERE dct_id = ?',
+      [parseInt(dct_id)]
+    );
 
     if (tipoResult.rows.length === 0) {
       return res.status(404).json({ ok: false, message: 'Tipo de documento não encontrado' });
@@ -262,65 +420,98 @@ router.post('/upload', upload.single('arquivo'), async (req, res) => {
       documentosFolderId
     );
 
-    // Gerar nome do arquivo
-    const agora = new Date().toISOString();
-    const { ddmmaa, hhmm, data_ref, hora_ref } = formatarDataHoraLocal(agora);
-    let nomeBase = `${tipo.dct_codigo}_${ddmmaa}_${hhmm}${ext}`;
-
-    // Verificar se já existe arquivo com mesmo nome e gerar sufixo se necessário
+    // Listar arquivos existentes uma única vez
     const arquivosExistentes = await googleDriveService.listarArquivosPorPasta(tipoFolderId);
-    let contador = 2;
-    let nomeFinal = nomeBase;
+    const nomesUsados = new Set(arquivosExistentes.map(a => a.name));
 
-    while (arquivosExistentes.some(a => a.name === nomeFinal)) {
-      const sufixo = `_${String(contador).padStart(2, '0')}`;
-      nomeFinal = `${tipo.dct_codigo}_${ddmmaa}_${hhmm}${sufixo}${ext}`;
-      contador++;
+    const resultados = [];
+    const erros = [];
+
+    // Processar cada arquivo
+    for (const arquivo of arquivos) {
+      try {
+        const ext = arquivo.originalname.substring(arquivo.originalname.lastIndexOf('.')).toLowerCase();
+        const agora = new Date().toISOString();
+        const { ddmmaa, hhmm, data_ref, hora_ref } = formatarDataHoraLocal(agora);
+        let nomeBase = `${tipo.dct_codigo}_${ddmmaa}_${hhmm}${ext}`;
+
+        // Gerar nome único
+        let contador = 2;
+        let nomeFinal = nomeBase;
+
+        while (nomesUsados.has(nomeFinal)) {
+          const sufixo = `_${String(contador).padStart(2, '0')}`;
+          nomeFinal = `${tipo.dct_codigo}_${ddmmaa}_${hhmm}${sufixo}${ext}`;
+          contador++;
+        }
+
+        nomesUsados.add(nomeFinal);
+
+        // Upload no Drive
+        const uploadResult = await googleDriveService.uploadArquivo({
+          buffer: arquivo.buffer,
+          mimeType: arquivo.mimetype,
+          filename: nomeFinal,
+          parentFolderId: tipoFolderId
+        });
+
+        // Salvar no banco
+        const insertResult = await tursoService.execute(
+          `INSERT INTO cc_documentos (
+            doc_repositor_id, doc_dct_id, doc_nome_original, doc_nome_drive,
+            doc_ext, doc_mime, doc_tamanho, doc_observacao, doc_data_ref, doc_hora_ref,
+            doc_drive_file_id, doc_drive_folder_id, doc_status
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ENVIADO')`,
+          [
+            parseInt(repositor_id),
+            tipo.dct_id,
+            arquivo.originalname,
+            nomeFinal,
+            ext,
+            arquivo.mimetype,
+            arquivo.size,
+            observacao || null,
+            data_ref,
+            hora_ref,
+            uploadResult.fileId,
+            tipoFolderId
+          ]
+        );
+
+        resultados.push({
+          original: arquivo.originalname,
+          doc_id: insertResult.lastInsertRowid.toString(),
+          nome_drive: nomeFinal,
+          drive_file_id: uploadResult.fileId
+        });
+
+        console.log(`✅ Arquivo processado: ${arquivo.originalname} -> ${nomeFinal}`);
+      } catch (error) {
+        console.error(`❌ Erro ao processar ${arquivo.originalname}:`, error);
+        erros.push({
+          arquivo: arquivo.originalname,
+          erro: error.message
+        });
+      }
     }
 
-    // Upload no Drive
-    const uploadResult = await googleDriveService.uploadArquivo({
-      buffer: arquivo.buffer,
-      mimeType: arquivo.mimetype,
-      filename: nomeFinal,
-      parentFolderId: tipoFolderId
-    });
-
-    // Salvar no banco
-    const insertResult = await tursoService.execute(
-      `INSERT INTO cc_documentos (
-        doc_repositor_id, doc_dct_id, doc_nome_original, doc_nome_drive,
-        doc_ext, doc_mime, doc_tamanho, doc_observacao, doc_data_ref, doc_hora_ref,
-        doc_drive_file_id, doc_drive_folder_id, doc_status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ENVIADO')`,
-      [
-        parseInt(repositor_id),
-        tipo.dct_id,
-        arquivo.originalname,
-        nomeFinal,
-        ext,
-        arquivo.mimetype,
-        arquivo.size,
-        observacao || null,
-        data_ref,
-        hora_ref,
-        uploadResult.fileId,
-        tipoFolderId
-      ]
-    );
-
-    const docId = insertResult.lastInsertRowid;
+    console.log(`✅ Upload múltiplo concluído: ${resultados.length} sucesso, ${erros.length} erros`);
 
     res.status(201).json(sanitizeBigInt({
       ok: true,
-      doc_id: docId.toString(),
-      nome_drive: nomeFinal,
-      drive_file_id: uploadResult.fileId,
-      drive_file_url: uploadResult.webViewLink
+      total: arquivos.length,
+      sucesso: resultados.length,
+      erros: erros.length,
+      resultados,
+      erros: erros.length > 0 ? erros : undefined
     }));
   } catch (error) {
-    console.error('Erro ao fazer upload de documento:', error);
-    res.status(500).json({ ok: false, message: 'Erro ao fazer upload de documento' });
+    console.error('❌ Erro ao fazer upload múltiplo:', error);
+    res.status(500).json({
+      ok: false,
+      message: 'Erro ao fazer upload múltiplo',
+      error: error.message
+    });
   }
 });
 

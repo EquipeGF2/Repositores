@@ -2332,8 +2332,9 @@ export const pages = {
                                 </select>
                             </div>
                             <div class="filter-group doc-file-input">
-                                <label for="uploadArquivo">Arquivo *</label>
-                                <input type="file" id="uploadArquivo" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt,.zip" required>
+                                <label for="uploadArquivo">Arquivos * <span style="font-size: 12px; color: #6b7280;">(múltiplos permitidos)</span></label>
+                                <input type="file" id="uploadArquivo" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt,.zip" multiple required>
+                                <span id="arquivosSelecionados" style="font-size: 13px; color: #6b7280; margin-top: 4px;"></span>
                             </div>
                             <div class="filter-group">
                                 <label for="uploadObservacao">Observação</label>
