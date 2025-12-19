@@ -189,6 +189,31 @@ class GoogleDriveService {
     }
   }
 
+  async listarArquivosPorPasta(parentId) {
+    await this.authenticate();
+    let pageToken = undefined;
+    const arquivos = [];
+
+    try {
+      do {
+        const response = await this.drive.files.list({
+          q: `'${parentId}' in parents and trashed=false`,
+          fields: 'nextPageToken, files(id, name)',
+          spaces: 'drive',
+          pageToken
+        });
+
+        arquivos.push(...(response.data.files || []));
+        pageToken = response.data.nextPageToken;
+      } while (pageToken);
+
+      return arquivos;
+    } catch (error) {
+      console.error('❌ Erro ao listar arquivos:', error.message);
+      throw error;
+    }
+  }
+
   async obterLinkPasta(repId) {
     await this.authenticate();
 

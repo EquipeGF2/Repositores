@@ -28,9 +28,10 @@ function sanitizeNomeCliente(nome) {
   const normalized = String(nome || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^A-Za-z0-9]+/g, '_')
+    .replace(/\s+/g, '_')
+    .replace(/[^A-Za-z0-9_]+/g, '')
     .replace(/_{2,}/g, '_')
-    .replace(/^_|_$/g, '')
+    .replace(/^_+|_+$/g, '')
     .toUpperCase();
 
   return normalized.substring(0, 60) || 'CLIENTE';
@@ -44,6 +45,27 @@ function parseDataHoraOrNow(input) {
     }
   }
   return new Date().toISOString();
+}
+
+async function gerarNomeCampanha({ parentFolderId, clienteIdNorm, nomeClienteSanitizado, partesData }) {
+  const base = `${clienteIdNorm}_${nomeClienteSanitizado}_${partesData.ddmmaa}`;
+  const arquivos = await googleDriveService.listarArquivosPorPasta(parentFolderId);
+
+  let maiorSufixo = 1;
+  const regex = new RegExp(`^${base}(?:_(\\d{2}))?\\.jpg$`, 'i');
+
+  for (const arquivo of arquivos) {
+    const match = regex.exec(arquivo.name || '');
+    if (match) {
+      const sufixo = match[1] ? Number(match[1]) : 1;
+      if (Number.isFinite(sufixo)) {
+        maiorSufixo = Math.max(maiorSufixo, sufixo + 1);
+      }
+    }
+  }
+
+  const sufixoFinal = maiorSufixo > 1 ? `_${String(maiorSufixo).padStart(2, '0')}` : '';
+  return `${base}${sufixoFinal}.jpg`;
 }
 
 function dataLocalIso(isoDate) {
@@ -180,11 +202,11 @@ router.post('/visitas', async (req, res) => {
       return res.status(400).json({ ok: false, code: 'TIPO_INVALIDO', message: 'Tipo de registro inválido' });
     }
 
-    const dataHoraIso = new Date().toISOString();
+    const dataHoraRegistro = new Date().toISOString();
     const rvTipo = tipoNormalizado;
     const clienteIdNorm = normalizeClienteId(cliente_id);
     const dataPlanejadaValida = validarDataPlanejada(data_planejada);
-    const dataReferencia = dataPlanejadaValida || dataLocalIso(dataHoraIso);
+    const dataReferencia = dataPlanejadaValida || dataLocalIso(dataHoraRegistro);
     const { inicioIso, fimIso } = buildUtcRangeFromLocalDates(dataReferencia, dataReferencia);
 
     const repositor = await tursoService.obterRepositor(repIdNumber);
@@ -225,7 +247,7 @@ router.post('/visitas', async (req, res) => {
         return res.status(409).json({ ok: false, code: 'CHECKOUT_EXISTENTE', message: 'Check-out já registrado para este cliente no dia.' });
       }
       sessaoId = checkinExistente.rv_sessao_id || `sessao-${checkinExistente.id}`;
-      tempoTrabalhoMin = Math.round((new Date(dataHoraIso).getTime() - new Date(checkinExistente.data_hora).getTime()) / 60000);
+      tempoTrabalhoMin = Math.round((new Date(dataHoraRegistro).getTime() - new Date(checkinExistente.data_hora).getTime()) / 60000);
     }
 
     if (rvTipo === 'campanha') {
@@ -235,6 +257,7 @@ router.post('/visitas', async (req, res) => {
       if (checkoutExistente) {
         return res.status(409).json({ ok: false, code: 'CAMPANHA_APOS_CHECKOUT', message: 'Campanha não permitida após o check-out.' });
       }
+      sessaoId = checkinExistente.rv_sessao_id || `sessao-${checkinExistente.id}`;
     }
 
     const mimeType = foto_mime || 'image/jpeg';
@@ -242,10 +265,26 @@ router.post('/visitas', async (req, res) => {
       ? await googleDriveService.ensureCampanhaFolder(repIdNumber, repositor.repo_nome)
       : await googleDriveService.criarPastaRepositor(repIdNumber, repositor.repo_nome);
 
+    const nomeClienteSanitizado = sanitizeNomeCliente(cliente_nome || cliente_id);
+    const partesData = formatDataHoraLocal(dataHoraRegistro);
+
+    let nomeFinal = '';
+    if (rvTipo === 'campanha') {
+      nomeFinal = await gerarNomeCampanha({
+        parentFolderId,
+        clienteIdNorm,
+        nomeClienteSanitizado,
+        partesData
+      });
+    } else {
+      const prefixo = rvTipo === 'checkin' ? 'in' : 'out';
+      nomeFinal = `${prefixo}_${partesData.ddmmaa}_${partesData.hhmm}_${clienteIdNorm}_${nomeClienteSanitizado}.jpg`;
+    }
+
     const uploadResult = await googleDriveService.uploadFotoBase64({
       base64Data: foto_base64,
       mimeType,
-      filename: `tmp_${Date.now()}.jpg`,
+      filename: nomeFinal,
       repId: repIdNumber,
       repoNome: repositor.repo_nome,
       parentFolderId
@@ -258,7 +297,7 @@ router.post('/visitas', async (req, res) => {
     const visita = await tursoService.salvarVisitaDetalhada({
       repId: repIdNumber,
       clienteId: clienteIdNorm,
-      dataHora: dataHoraIso,
+      dataHora: dataHoraRegistro,
       latitude: latitudeNumber,
       longitude: longitudeNumber,
       enderecoResolvido: enderecoSnapshot,
@@ -269,35 +308,27 @@ router.post('/visitas', async (req, res) => {
       rvDataPlanejada: dataReferencia,
       rvClienteNome: cliente_nome || cliente_id,
       rvEnderecoCliente: cliente_endereco || null,
-      rvPastaDriveId: parentFolderId
+      rvPastaDriveId: parentFolderId,
+      rvDataHoraRegistro: dataHoraRegistro,
+      rvEnderecoRegistro: enderecoSnapshot,
+      rvDriveFileId: uploadResult.fileId,
+      rvDriveFileUrl: uploadResult.webViewLink,
+      rvLatitude: latitudeNumber,
+      rvLongitude: longitudeNumber
     });
-
-    const nomeClienteSanitizado = sanitizeNomeCliente(cliente_nome || cliente_id);
-    const partesData = formatDataHoraLocal(dataHoraIso);
-
-    let nomeFinal = uploadResult.filename;
-
-    if (rvTipo === 'campanha') {
-      const baseNome = `${clienteIdNorm}_${nomeClienteSanitizado}_${partesData.ddmmaa}.jpg`;
-      nomeFinal = await garantirNomeCampanhaUnico(parentFolderId, baseNome);
-    } else {
-      const prefixo = rvTipo === 'checkin' ? 'in' : 'out';
-      nomeFinal = `${prefixo}_${partesData.ddmmaa}_${partesData.hhmm}_${clienteIdNorm}_${nomeClienteSanitizado}.jpg`;
-    }
-
-    const renameResult = await googleDriveService.renameFile(uploadResult.fileId, nomeFinal);
 
     const payload = {
       ok: true,
       id: visita?.id ?? null,
       rep_id: repIdNumber,
       cliente_id: clienteIdNorm,
-      data_hora: dataHoraIso,
+      data_hora: dataHoraRegistro,
+      data_hora_registro: dataHoraRegistro,
       latitude: latitudeNumber,
       longitude: longitudeNumber,
       endereco_resolvido: enderecoSnapshot,
-      drive_file_id: renameResult.fileId,
-      drive_file_url: renameResult.webViewLink,
+      drive_file_id: uploadResult.fileId,
+      drive_file_url: uploadResult.webViewLink,
       tipo: rvTipo,
       sessao_id: sessaoId,
       data_planejada: dataReferencia,
@@ -358,7 +389,17 @@ router.get('/visitas', async (req, res) => {
           fimIso
         });
 
-        return res.json(sanitizeForJson({ ok: true, resumo, visitas: resumo, modo: modoNormalizado }));
+        const resumoFormatado = resumo.map((item) => ({
+          cliente_id: item.cliente_id,
+          checkin_at: item.checkin_data_hora,
+          checkout_at: item.checkout_data_hora,
+          status: item.status,
+          tempo_minutos: item.tempo_minutos,
+          endereco_cliente: item.endereco_cliente,
+          ultimo_endereco_registro: item.ultimo_endereco_registro
+        }));
+
+        return res.json(sanitizeForJson({ ok: true, resumo: resumoFormatado, visitas: resumoFormatado, modo: modoNormalizado }));
       } catch (errorResumo) {
         console.error('Erro ao gerar resumo de visitas:', errorResumo?.stack || errorResumo);
         return res.status(200).json({ ok: true, resumo: [], visitas: [], modo: modoNormalizado });

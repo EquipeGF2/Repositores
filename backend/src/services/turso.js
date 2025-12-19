@@ -6,8 +6,13 @@ function normalizeClienteId(clienteId) {
 
 class TursoService {
   constructor() {
+    this.schemaEnsured = false;
     try {
       this.client = getDbClient();
+      this.schemaEnsured = false;
+      this.ensureRegistroVisitaSchema().catch((err) => {
+        console.warn('⚠️  Falha ao garantir schema de registro de visita:', err?.message || err);
+      });
     } catch (error) {
       if (error instanceof DatabaseNotConfiguredError) {
         this.client = null;
@@ -55,14 +60,21 @@ class TursoService {
     rvDataPlanejada,
     rvClienteNome,
     rvEnderecoCliente,
-    rvPastaDriveId
+    rvPastaDriveId,
+    rvDataHoraRegistro,
+    rvEnderecoRegistro,
+    rvDriveFileId,
+    rvDriveFileUrl,
+    rvLatitude,
+    rvLongitude
   }) {
     const sql = `
       INSERT INTO cc_registro_visita (
         rep_id, cliente_id, data_hora, latitude, longitude,
         endereco_resolvido, drive_file_id, drive_file_url,
-        rv_tipo, rv_sessao_id, rv_data_planejada, rv_cliente_nome, rv_endereco_cliente, rv_pasta_drive_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        rv_tipo, rv_sessao_id, rv_data_planejada, rv_cliente_nome, rv_endereco_cliente, rv_pasta_drive_id,
+        rv_data_hora_registro, rv_endereco_registro, rv_drive_file_id, rv_drive_file_url, rv_latitude, rv_longitude
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const result = await this.execute(sql, [
@@ -79,7 +91,13 @@ class TursoService {
       rvDataPlanejada,
       rvClienteNome,
       rvEnderecoCliente,
-      rvPastaDriveId
+      rvPastaDriveId,
+      rvDataHoraRegistro,
+      rvEnderecoRegistro,
+      rvDriveFileId,
+      rvDriveFileUrl,
+      rvLatitude,
+      rvLongitude
     ]);
 
     const insertedId = result.lastInsertRowid;
@@ -91,7 +109,8 @@ class TursoService {
     const sql = `
       SELECT id, rep_id, cliente_id, data_hora, latitude, longitude, endereco_resolvido,
              drive_file_id, drive_file_url, created_at,
-             rv_tipo, rv_sessao_id, rv_data_planejada, rv_cliente_nome, rv_endereco_cliente, rv_pasta_drive_id
+             rv_tipo, rv_sessao_id, rv_data_planejada, rv_cliente_nome, rv_endereco_cliente, rv_pasta_drive_id,
+             rv_data_hora_registro, rv_endereco_registro, rv_drive_file_id, rv_drive_file_url, rv_latitude, rv_longitude
       FROM cc_registro_visita
       WHERE rep_id = ?
         AND data_hora BETWEEN ? AND ?
@@ -106,7 +125,8 @@ class TursoService {
     const sql = `
       SELECT id, rep_id, cliente_id, data_hora, latitude, longitude, endereco_resolvido,
              drive_file_id, drive_file_url, created_at,
-             rv_tipo, rv_sessao_id, rv_data_planejada, rv_cliente_nome, rv_endereco_cliente, rv_pasta_drive_id
+             rv_tipo, rv_sessao_id, rv_data_planejada, rv_cliente_nome, rv_endereco_cliente, rv_pasta_drive_id,
+             rv_data_hora_registro, rv_endereco_registro, rv_drive_file_id, rv_drive_file_url, rv_latitude, rv_longitude
       FROM cc_registro_visita
       WHERE data_hora BETWEEN ? AND ?
       ORDER BY data_hora ASC
@@ -118,7 +138,7 @@ class TursoService {
 
   async listarResumoVisitas({ repId, dataInicio, dataFim, inicioIso, fimIso }) {
     const sql = `
-      SELECT cliente_id, rv_tipo, data_hora, endereco_resolvido, rv_endereco_cliente
+      SELECT cliente_id, rv_tipo, data_hora, endereco_resolvido, rv_endereco_cliente, rv_data_hora_registro, rv_endereco_registro
       FROM cc_registro_visita
       WHERE rep_id = ?
         AND (
@@ -145,18 +165,21 @@ class TursoService {
       }
 
       const info = mapa.get(clienteId);
+      const registroData = row.rv_data_hora_registro || row.data_hora;
+      const enderecoRegistro = row.rv_endereco_registro || row.endereco_resolvido;
+
       if (row.rv_tipo === 'checkin' && !info.checkin_data_hora) {
-        info.checkin_data_hora = row.data_hora;
+        info.checkin_data_hora = registroData;
       }
       if (row.rv_tipo === 'checkout' && !info.checkout_data_hora) {
-        info.checkout_data_hora = row.data_hora;
+        info.checkout_data_hora = registroData;
       }
 
       if (!info.endereco_cliente && row.rv_endereco_cliente) {
         info.endereco_cliente = row.rv_endereco_cliente;
       }
 
-      info.ultimo_endereco_registro = row.endereco_resolvido || info.ultimo_endereco_registro;
+      info.ultimo_endereco_registro = enderecoRegistro || info.ultimo_endereco_registro;
     }
 
     return Array.from(mapa.values()).map((item) => {
@@ -238,14 +261,22 @@ class TursoService {
     return result.rows;
   }
 
-  async ensureSchemaRegistroRota() {
+  async ensureRegistroVisitaSchema() {
+    if (this.schemaEnsured) return;
     const client = this.getClient();
     const alteracoes = [
-      "ALTER TABLE cc_registro_visita ADD COLUMN rv_tipo TEXT DEFAULT 'campanha'",
-      'ALTER TABLE cc_registro_visita ADD COLUMN rv_data_planejada TEXT NULL',
-      'ALTER TABLE cc_registro_visita ADD COLUMN rv_cliente_nome TEXT NULL',
-      'ALTER TABLE cc_registro_visita ADD COLUMN rv_endereco_cliente TEXT NULL',
-      'ALTER TABLE cc_registro_visita ADD COLUMN rv_pasta_drive_id TEXT NULL'
+      "ALTER TABLE cc_registro_visita ADD COLUMN rv_sessao_id TEXT",
+      "ALTER TABLE cc_registro_visita ADD COLUMN rv_tipo TEXT",
+      "ALTER TABLE cc_registro_visita ADD COLUMN rv_data_planejada TEXT",
+      "ALTER TABLE cc_registro_visita ADD COLUMN rv_data_hora_registro TEXT",
+      "ALTER TABLE cc_registro_visita ADD COLUMN rv_cliente_nome TEXT",
+      "ALTER TABLE cc_registro_visita ADD COLUMN rv_endereco_cliente TEXT",
+      "ALTER TABLE cc_registro_visita ADD COLUMN rv_endereco_registro TEXT",
+      "ALTER TABLE cc_registro_visita ADD COLUMN rv_drive_file_id TEXT",
+      "ALTER TABLE cc_registro_visita ADD COLUMN rv_drive_file_url TEXT",
+      "ALTER TABLE cc_registro_visita ADD COLUMN rv_latitude REAL",
+      "ALTER TABLE cc_registro_visita ADD COLUMN rv_longitude REAL",
+      "ALTER TABLE cc_registro_visita ADD COLUMN rv_pasta_drive_id TEXT"
     ];
 
     for (const sql of alteracoes) {
@@ -260,8 +291,8 @@ class TursoService {
     }
 
     const indices = [
-      'CREATE INDEX IF NOT EXISTS idx_registro_rota_rep_cli_data_tipo ON cc_registro_visita (rep_id, cliente_id, rv_data_planejada, rv_tipo)',
-      'CREATE INDEX IF NOT EXISTS idx_registro_rota_rep_data ON cc_registro_visita (rep_id, rv_data_planejada)'
+      'CREATE INDEX IF NOT EXISTS idx_rv_rep_data ON cc_registro_visita(rep_id, rv_data_planejada)',
+      'CREATE INDEX IF NOT EXISTS idx_rv_rep_cli_data_tipo ON cc_registro_visita(rep_id, cliente_id, rv_data_planejada, rv_tipo)'
     ];
 
     for (const sql of indices) {
@@ -271,6 +302,12 @@ class TursoService {
         console.warn('⚠️  Erro ao criar índice de registro de rota:', error.message || error);
       }
     }
+
+    this.schemaEnsured = true;
+  }
+
+  async ensureSchemaRegistroRota() {
+    await this.ensureRegistroVisitaSchema();
   }
 }
 

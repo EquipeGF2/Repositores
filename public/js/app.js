@@ -5142,11 +5142,6 @@ class App {
         tituloModal.textContent = `Registrar Visita - ${this.registroRotaState.clienteAtual.clienteNome}`;
     }
 
-    const aviso = document.getElementById('avisoTipoRegistro');
-    if (aviso) {
-        aviso.textContent = `Tipo selecionado: ${tipoPadrao.toUpperCase()}`;
-    }
-
     // Resetar estado
     this.registroRotaState.gpsCoords = null;
     this.registroRotaState.fotoCapturada = null;
@@ -5178,13 +5173,16 @@ class App {
     const btnNova = document.getElementById('btnNovaFoto');
     const btnSalvar = document.getElementById('btnSalvarVisita');
 
-    if (btnAtivar) btnAtivar.style.display = 'block';
-    if (btnCapturar) btnCapturar.style.display = 'none';
+    if (btnAtivar) btnAtivar.style.display = 'none';
+    if (btnCapturar) btnCapturar.style.display = 'block';
     if (btnNova) btnNova.style.display = 'none';
     if (btnSalvar) btnSalvar.disabled = true;
 
     // Abrir modal
     document.getElementById('modalCapturarVisita').classList.add('active');
+
+    // Ativar câmera automaticamente (gesto de usuário já ocorreu ao abrir o modal)
+    this.ativarCamera();
 
     // Iniciar captura de GPS
     this.iniciarCapturaGPS();
@@ -5347,9 +5345,10 @@ class App {
                     this.registroRotaState.videoStream = null;
                 }
 
-                // Atualizar botões
-                document.getElementById('btnCapturarFoto').style.display = 'none';
-                document.getElementById('btnNovaFoto').style.display = 'inline-block';
+            // Atualizar botões
+            document.getElementById('btnCapturarFoto').style.display = 'none';
+            const btnNova = document.getElementById('btnNovaFoto');
+            if (btnNova) btnNova.style.display = 'none';
 
                 // Habilitar salvar se GPS ok
                 if (this.registroRotaState.gpsCoords) {
