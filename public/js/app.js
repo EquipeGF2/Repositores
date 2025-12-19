@@ -5039,13 +5039,14 @@ class App {
             const cadastroEsc = enderecoCadastro.replace(/'/g, "\\'");
 
             const btnCheckin = `<button onclick="app.abrirModalCaptura(${repId}, '${cliId}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkin', '${cadastroEsc}')" class="btn-small">✅ Check-in</button>`;
+            const btnAtividades = `<button onclick="app.abrirModalAtividades(${repId}, '${cliId}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-atividades">📋 Atividades</button>`;
             const btnCheckout = `<button onclick="app.abrirModalCaptura(${repId}, '${cliId}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkout', '${cadastroEsc}')" class="btn-small">🚪 Checkout</button>`;
             const btnCampanha = `<button onclick="app.abrirModalCaptura(${repId}, '${cliId}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'campanha', '${cadastroEsc}')" class="btn-small">🎯 Campanha</button>`;
 
             const botoes = statusBase === 'sem_checkin'
                 ? btnCheckin
                 : statusBase === 'em_atendimento'
-                    ? `${btnCheckout}${btnCampanha}`
+                    ? `${btnAtividades}${btnCheckout}${btnCampanha}`
                     : '';
 
             const item = document.createElement('div');
@@ -5745,6 +5746,110 @@ class App {
         if (this.registroRotaState.resizeHandler) {
             window.removeEventListener('resize', this.registroRotaState.resizeHandler);
             this.registroRotaState.resizeHandler = null;
+        }
+    }
+
+    // ==================== ATIVIDADES ====================
+
+    async abrirModalAtividades(repId, clienteId, clienteNome, dataPlanejada) {
+        const normalizeClienteId = (v) => String(v ?? '').trim().replace(/\.0$/, '');
+        const clienteIdNorm = normalizeClienteId(clienteId);
+
+        // Buscar sessão ativa
+        const sessaoAberta = await this.buscarSessaoAberta(repId, dataPlanejada);
+        if (!sessaoAberta || normalizeClienteId(sessaoAberta.cliente_id) !== clienteIdNorm) {
+            this.showNotification('Sessão não encontrada. Realize o check-in primeiro.', 'warning');
+            return;
+        }
+
+        this.registroRotaState.sessaoAtividades = {
+            sessaoId: sessaoAberta.sessao_id || sessaoAberta.rv_sessao_id,
+            repId: Number(repId),
+            clienteId: clienteIdNorm,
+            clienteNome,
+            dataPlanejada
+        };
+
+        // Preencher modal com dados existentes (se houver)
+        document.getElementById('atv_qtd_frentes').value = sessaoAberta.qtd_frentes || '';
+        document.getElementById('atv_merchandising').checked = Boolean(sessaoAberta.usou_merchandising);
+        document.getElementById('atv_abastecimento').checked = Boolean(sessaoAberta.serv_abastecimento);
+        document.getElementById('atv_espaco_loja').checked = Boolean(sessaoAberta.serv_espaco_loja);
+        document.getElementById('atv_ruptura_loja').checked = Boolean(sessaoAberta.serv_ruptura_loja);
+        document.getElementById('atv_pontos_extras').checked = Boolean(sessaoAberta.serv_pontos_extras);
+        document.getElementById('atv_qtd_pontos_extras').value = sessaoAberta.qtd_pontos_extras || '';
+
+        document.getElementById('modalAtividadesTitulo').textContent = clienteNome || 'Atividades';
+        document.getElementById('atividadesClienteInfo').textContent = `${clienteIdNorm} • ${clienteNome}`;
+
+        document.getElementById('modalAtividades').classList.add('active');
+    }
+
+    fecharModalAtividades() {
+        document.getElementById('modalAtividades').classList.remove('active');
+        this.registroRotaState.sessaoAtividades = null;
+    }
+
+    async salvarAtividades() {
+        try {
+            const sessao = this.registroRotaState.sessaoAtividades;
+            if (!sessao) {
+                this.showNotification('Sessão não encontrada', 'error');
+                return;
+            }
+
+            const qtdFrentes = parseInt(document.getElementById('atv_qtd_frentes').value);
+            const usouMerchandising = document.getElementById('atv_merchandising').checked;
+            const servAbastecimento = document.getElementById('atv_abastecimento').checked;
+            const servEspacoLoja = document.getElementById('atv_espaco_loja').checked;
+            const servRupturaLoja = document.getElementById('atv_ruptura_loja').checked;
+            const servPontosExtras = document.getElementById('atv_pontos_extras').checked;
+            const qtdPontosExtras = parseInt(document.getElementById('atv_qtd_pontos_extras').value) || null;
+
+            // Validações
+            if (!qtdFrentes || qtdFrentes < 1) {
+                this.showNotification('Informe a quantidade de frentes (mínimo 1)', 'warning');
+                return;
+            }
+
+            const temServico = servAbastecimento || servEspacoLoja || servRupturaLoja || servPontosExtras;
+            if (!temServico) {
+                this.showNotification('Marque pelo menos uma atividade do checklist', 'warning');
+                return;
+            }
+
+            if (servPontosExtras && (!qtdPontosExtras || qtdPontosExtras < 1)) {
+                this.showNotification('Informe a quantidade de pontos extras', 'warning');
+                return;
+            }
+
+            const payload = {
+                qtd_frentes: qtdFrentes,
+                usou_merchandising: usouMerchandising,
+                serv_abastecimento: servAbastecimento,
+                serv_espaco_loja: servEspacoLoja,
+                serv_ruptura_loja: servRupturaLoja,
+                serv_pontos_extras: servPontosExtras,
+                qtd_pontos_extras: servPontosExtras ? qtdPontosExtras : null
+            };
+
+            const response = await fetch(`${this.registroRotaState.backendUrl}/api/registro-rota/sessoes/${sessao.sessaoId}/servicos`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const error = await this.extrairMensagemErro(response);
+                throw new Error(error || 'Erro ao salvar atividades');
+            }
+
+            this.showNotification('Atividades salvas com sucesso!', 'success');
+            this.fecharModalAtividades();
+            await this.carregarRoteiroRepositor(); // Atualizar grid
+        } catch (error) {
+            console.error('Erro ao salvar atividades:', error);
+            this.showNotification('Erro ao salvar atividades: ' + error.message, 'error');
         }
     }
 
