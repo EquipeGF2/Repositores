@@ -6324,10 +6324,12 @@ class App {
             // Configurar botões de filtro
             const btnTempo = document.getElementById('btnFiltrarTempo');
             const btnCampanha = document.getElementById('btnFiltrarCampanha');
+            const btnServicos = document.getElementById('btnFiltrarServicos');
             const btnRoteiro = document.getElementById('btnFiltrarRoteiro');
 
             if (btnTempo) btnTempo.onclick = () => this.filtrarTempoAtendimento();
             if (btnCampanha) btnCampanha.onclick = () => this.filtrarCampanha();
+            if (btnServicos) btnServicos.onclick = () => this.filtrarServicos();
             if (btnRoteiro) btnRoteiro.onclick = () => this.filtrarRoteiro();
 
             // Definir datas padrão (último mês)
@@ -6336,7 +6338,7 @@ class App {
             umMesAtras.setMonth(umMesAtras.getMonth() - 1);
             const dataInicio = umMesAtras.toISOString().split('T')[0];
 
-            const campos = ['tempo', 'campanha', 'roteiro'];
+            const campos = ['tempo', 'campanha', 'servicos', 'roteiro'];
             campos.forEach(campo => {
                 const inputInicio = document.getElementById(`${campo}DataInicio`);
                 const inputFim = document.getElementById(`${campo}DataFim`);
@@ -6573,6 +6575,175 @@ class App {
             console.error('Erro ao filtrar roteiro:', error);
             this.showNotification('Erro ao carregar dados: ' + error.message, 'error');
         }
+    }
+
+    async filtrarServicos() {
+        try {
+            const dataInicio = document.getElementById('servicosDataInicio').value;
+            const dataFim = document.getElementById('servicosDataFim').value;
+
+            if (!dataInicio || !dataFim) {
+                this.showNotification('Selecione o período', 'warning');
+                return;
+            }
+
+            this.showNotification('Carregando dados...', 'info');
+
+            const response = await fetch(
+                `${this.registroRotaState.backendUrl}/api/registro-rota/sessoes?data_inicio=${dataInicio}&data_fim=${dataFim}`
+            );
+
+            if (!response.ok) throw new Error('Erro ao buscar dados');
+
+            const data = await response.json();
+            const sessoes = data.sessoes || [];
+
+            // Filtrar apenas sessões com checkout (finalizadas)
+            const sessoesFinalizadas = sessoes.filter(s => s.checkout_at);
+
+            // Calcular estatísticas
+            const stats = {
+                total_visitas: sessoesFinalizadas.length,
+                total_clientes: new Set(sessoesFinalizadas.map(s => s.cliente_id)).size,
+
+                // Frentes
+                total_frentes: sessoesFinalizadas.reduce((sum, s) => sum + (s.qtd_frentes || 0), 0),
+                visitas_com_frentes: sessoesFinalizadas.filter(s => s.qtd_frentes && s.qtd_frentes > 0).length,
+                media_frentes_por_cliente: 0,
+
+                // Merchandising
+                visitas_com_merchandising: sessoesFinalizadas.filter(s => s.usou_merchandising).length,
+                perc_merchandising: 0,
+
+                // Pontos extras
+                visitas_com_pontos_extras: sessoesFinalizadas.filter(s => s.serv_pontos_extras).length,
+                clientes_com_pontos_extras: new Set(
+                    sessoesFinalizadas.filter(s => s.serv_pontos_extras).map(s => s.cliente_id)
+                ).size,
+                total_pontos_extras: sessoesFinalizadas.reduce((sum, s) => sum + (s.qtd_pontos_extras || 0), 0),
+                perc_clientes_pontos_extras: 0,
+
+                // Por tipo de serviço
+                abastecimento: sessoesFinalizadas.filter(s => s.serv_abastecimento).length,
+                espaco_loja: sessoesFinalizadas.filter(s => s.serv_espaco_loja).length,
+                ruptura_loja: sessoesFinalizadas.filter(s => s.serv_ruptura_loja).length
+            };
+
+            // Calcular médias e percentuais
+            if (stats.total_clientes > 0) {
+                stats.media_frentes_por_cliente = (stats.total_frentes / stats.total_clientes).toFixed(1);
+                stats.perc_clientes_pontos_extras = ((stats.clientes_com_pontos_extras / stats.total_clientes) * 100).toFixed(1);
+            }
+
+            if (stats.total_visitas > 0) {
+                stats.perc_merchandising = ((stats.visitas_com_merchandising / stats.total_visitas) * 100).toFixed(1);
+            }
+
+            this.renderizarServicos(stats);
+        } catch (error) {
+            console.error('Erro ao filtrar serviços:', error);
+            this.showNotification('Erro ao carregar dados: ' + error.message, 'error');
+        }
+    }
+
+    renderizarServicos(stats) {
+        const container = document.getElementById('servicosResultados');
+        if (!container) return;
+
+        const html = `
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
+                <!-- Card: Geral -->
+                <div class="performance-card">
+                    <h5 style="margin-bottom: 12px; color: #ef4444; font-size: 14px; font-weight: 700; text-transform: uppercase;">📊 Visão Geral</h5>
+                    <div class="performance-stat">
+                        <span class="performance-stat-label">Total de Visitas Realizadas</span>
+                        <span class="performance-stat-value">${stats.total_visitas}</span>
+                    </div>
+                    <div class="performance-stat">
+                        <span class="performance-stat-label">Total de Clientes Atendidos</span>
+                        <span class="performance-stat-value">${stats.total_clientes}</span>
+                    </div>
+                </div>
+
+                <!-- Card: Frentes -->
+                <div class="performance-card">
+                    <h5 style="margin-bottom: 12px; color: #ef4444; font-size: 14px; font-weight: 700; text-transform: uppercase;">📦 Frentes</h5>
+                    <div class="performance-stat">
+                        <span class="performance-stat-label">Total de Frentes</span>
+                        <span class="performance-stat-value">${stats.total_frentes}</span>
+                    </div>
+                    <div class="performance-stat">
+                        <span class="performance-stat-label">Visitas com Frentes</span>
+                        <span class="performance-stat-value">${stats.visitas_com_frentes}</span>
+                    </div>
+                    <div class="performance-stat">
+                        <span class="performance-stat-label">Média por Cliente</span>
+                        <span class="performance-stat-value">${stats.media_frentes_por_cliente}</span>
+                    </div>
+                </div>
+
+                <!-- Card: Merchandising -->
+                <div class="performance-card">
+                    <h5 style="margin-bottom: 12px; color: #ef4444; font-size: 14px; font-weight: 700; text-transform: uppercase;">🎨 Merchandising</h5>
+                    <div class="performance-stat">
+                        <span class="performance-stat-label">Visitas com Merchandising</span>
+                        <span class="performance-stat-value">${stats.visitas_com_merchandising}</span>
+                    </div>
+                    <div class="performance-stat">
+                        <span class="performance-stat-label">Total de Visitas</span>
+                        <span class="performance-stat-value">${stats.total_visitas}</span>
+                    </div>
+                    <div class="performance-stat">
+                        <span class="performance-stat-label">Percentual de Uso</span>
+                        <span class="performance-stat-value">${stats.perc_merchandising}%</span>
+                    </div>
+                </div>
+
+                <!-- Card: Pontos Extras -->
+                <div class="performance-card">
+                    <h5 style="margin-bottom: 12px; color: #ef4444; font-size: 14px; font-weight: 700; text-transform: uppercase;">⭐ Pontos Extras</h5>
+                    <div class="performance-stat">
+                        <span class="performance-stat-label">Total de Pontos Extras</span>
+                        <span class="performance-stat-value">${stats.total_pontos_extras}</span>
+                    </div>
+                    <div class="performance-stat">
+                        <span class="performance-stat-label">Visitas com Pontos Extras</span>
+                        <span class="performance-stat-value">${stats.visitas_com_pontos_extras}</span>
+                    </div>
+                    <div class="performance-stat">
+                        <span class="performance-stat-label">Clientes com Pontos Extras</span>
+                        <span class="performance-stat-value">${stats.clientes_com_pontos_extras}</span>
+                    </div>
+                    <div class="performance-stat">
+                        <span class="performance-stat-label">% Clientes (vs Total)</span>
+                        <span class="performance-stat-value">${stats.perc_clientes_pontos_extras}%</span>
+                    </div>
+                </div>
+
+                <!-- Card: Tipo de Serviços -->
+                <div class="performance-card">
+                    <h5 style="margin-bottom: 12px; color: #ef4444; font-size: 14px; font-weight: 700; text-transform: uppercase;">🔧 Tipos de Serviços</h5>
+                    <div class="performance-stat">
+                        <span class="performance-stat-label">Abastecimento</span>
+                        <span class="performance-stat-value">${stats.abastecimento}</span>
+                    </div>
+                    <div class="performance-stat">
+                        <span class="performance-stat-label">Espaço Loja</span>
+                        <span class="performance-stat-value">${stats.espaco_loja}</span>
+                    </div>
+                    <div class="performance-stat">
+                        <span class="performance-stat-label">Ruptura Loja</span>
+                        <span class="performance-stat-value">${stats.ruptura_loja}</span>
+                    </div>
+                    <div class="performance-stat">
+                        <span class="performance-stat-label">Pontos Extras</span>
+                        <span class="performance-stat-value">${stats.visitas_com_pontos_extras}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        container.innerHTML = html;
     }
 
     // ==================== NOTIFICAÇÕES ====================

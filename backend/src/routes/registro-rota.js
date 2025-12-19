@@ -695,4 +695,46 @@ router.post('/disparar-resumo', async (req, res) => {
   }
 });
 
+// GET /api/registro-rota/sessoes - Lista sessões com filtros
+router.get('/sessoes', async (req, res) => {
+  try {
+    const { data_inicio, data_fim, rep_id } = req.query;
+
+    if (!data_inicio || !data_fim) {
+      return res.status(400).json({
+        ok: false,
+        message: 'data_inicio e data_fim são obrigatórios'
+      });
+    }
+
+    let sql = `
+      SELECT *
+      FROM cc_visita_sessao
+      WHERE data_planejada >= ? AND data_planejada <= ?
+    `;
+    const params = [data_inicio, data_fim];
+
+    if (rep_id) {
+      sql += ' AND rep_id = ?';
+      params.push(parseInt(rep_id));
+    }
+
+    sql += ' ORDER BY data_planejada DESC, checkin_at DESC';
+
+    const result = await tursoService.execute(sql, params);
+
+    res.json({
+      ok: true,
+      sessoes: result.rows
+    });
+  } catch (error) {
+    console.error('Erro ao listar sessões:', error);
+    res.status(500).json({
+      ok: false,
+      message: 'Erro ao listar sessões',
+      error: error.message
+    });
+  }
+});
+
 export default router;

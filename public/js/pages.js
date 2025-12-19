@@ -2562,6 +2562,7 @@ export const pages = {
                     <div class="performance-tabs">
                         <button class="performance-tab active" data-tab="tempo">⏱️ Tempo de Atendimento</button>
                         <button class="performance-tab" data-tab="campanha">📋 Campanha</button>
+                        <button class="performance-tab" data-tab="servicos">🔧 Análise de Serviços</button>
                         <button class="performance-tab" data-tab="roteiro">🗺️ Roteiro</button>
                     </div>
 
@@ -2621,6 +2622,32 @@ export const pages = {
                         <div id="campanhaResultados">
                             <div class="empty-state">
                                 <div class="empty-state-icon">📋</div>
+                                <p>Selecione o período e clique em Buscar</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab Content: Análise de Serviços -->
+                    <div class="performance-tab-content" id="tab-servicos">
+                        <h4 style="margin-bottom: 16px; color: #374151; font-weight: 600;">Análise de Serviços Realizados</h4>
+
+                        <div class="filter-bar" style="margin-bottom: 20px;">
+                            <div class="filter-group">
+                                <label for="servicosDataInicio">Data Início</label>
+                                <input type="date" id="servicosDataInicio">
+                            </div>
+                            <div class="filter-group">
+                                <label for="servicosDataFim">Data Fim</label>
+                                <input type="date" id="servicosDataFim">
+                            </div>
+                            <div class="filter-group" style="display: flex; align-items: flex-end;">
+                                <button class="btn btn-secondary" id="btnFiltrarServicos">🔍 Buscar</button>
+                            </div>
+                        </div>
+
+                        <div id="servicosResultados">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">🔧</div>
                                 <p>Selecione o período e clique em Buscar</p>
                             </div>
                         </div>

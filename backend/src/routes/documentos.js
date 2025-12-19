@@ -29,7 +29,7 @@ function formatarDataHoraLocal(iso) {
   const data = new Date(iso);
   const formatter = new Intl.DateTimeFormat('pt-BR', {
     timeZone: 'America/Sao_Paulo',
-    year: '2-digit',
+    year: 'numeric',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -39,10 +39,15 @@ function formatarDataHoraLocal(iso) {
   const partes = Object.fromEntries(
     formatter.formatToParts(data).map(p => [p.type, p.value])
   );
+
+  // Usar ano completo de 4 dígitos para data_ref
+  const anoCompleto = partes.year;
+  const ano2Digitos = anoCompleto.slice(-2);
+
   return {
-    ddmmaa: `${partes.day}${partes.month}${partes.year}`,
+    ddmmaa: `${partes.day}${partes.month}${ano2Digitos}`,
     hhmm: `${partes.hour}${partes.minute}`,
-    data_ref: `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`,
+    data_ref: `${anoCompleto}-${partes.month}-${partes.day}`,
     hora_ref: `${partes.hour}:${partes.minute}`
   };
 }
