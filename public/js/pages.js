@@ -2545,6 +2545,212 @@ export const pages = {
                 }
             </style>
         `;
+    },
+
+    'analise-performance': async () => {
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">📊 Análise de Performance</h3>
+                    <p class="text-muted" style="margin: 4px 0 0;">
+                        Análise detalhada de tempo de atendimento, campanhas e roteiro
+                    </p>
+                </div>
+
+                <div class="card-body">
+                    <!-- Tabs -->
+                    <div class="performance-tabs">
+                        <button class="performance-tab active" data-tab="tempo">⏱️ Tempo de Atendimento</button>
+                        <button class="performance-tab" data-tab="campanha">📋 Campanha</button>
+                        <button class="performance-tab" data-tab="roteiro">🗺️ Roteiro</button>
+                    </div>
+
+                    <!-- Tab Content: Tempo de Atendimento -->
+                    <div class="performance-tab-content active" id="tab-tempo">
+                        <h4 style="margin-bottom: 16px; color: #374151; font-weight: 600;">Filtrar por Tempo em Loja</h4>
+
+                        <div class="filter-bar" style="margin-bottom: 20px;">
+                            <div class="filter-group">
+                                <label for="tempoDataInicio">Data Início</label>
+                                <input type="date" id="tempoDataInicio">
+                            </div>
+                            <div class="filter-group">
+                                <label for="tempoDataFim">Data Fim</label>
+                                <input type="date" id="tempoDataFim">
+                            </div>
+                            <div class="filter-group">
+                                <label for="tempoFiltro">Filtro de Tempo</label>
+                                <select id="tempoFiltro">
+                                    <option value="todos">Todos</option>
+                                    <option value="rapido">Rápido (< 10 min)</option>
+                                    <option value="medio">Médio (10-60 min)</option>
+                                    <option value="longo">Longo (> 1h)</option>
+                                </select>
+                            </div>
+                            <div class="filter-group" style="display: flex; align-items: flex-end;">
+                                <button class="btn btn-secondary" id="btnFiltrarTempo">🔍 Buscar</button>
+                            </div>
+                        </div>
+
+                        <div id="tempoResultados">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">⏱️</div>
+                                <p>Selecione o período e clique em Buscar</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab Content: Campanha -->
+                    <div class="performance-tab-content" id="tab-campanha">
+                        <h4 style="margin-bottom: 16px; color: #374151; font-weight: 600;">Análise de Campanhas</h4>
+
+                        <div class="filter-bar" style="margin-bottom: 20px;">
+                            <div class="filter-group">
+                                <label for="campanhaDataInicio">Data Início</label>
+                                <input type="date" id="campanhaDataInicio">
+                            </div>
+                            <div class="filter-group">
+                                <label for="campanhaDataFim">Data Fim</label>
+                                <input type="date" id="campanhaDataFim">
+                            </div>
+                            <div class="filter-group" style="display: flex; align-items: flex-end;">
+                                <button class="btn btn-secondary" id="btnFiltrarCampanha">🔍 Buscar</button>
+                            </div>
+                        </div>
+
+                        <div id="campanhaResultados">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">📋</div>
+                                <p>Selecione o período e clique em Buscar</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab Content: Roteiro -->
+                    <div class="performance-tab-content" id="tab-roteiro">
+                        <h4 style="margin-bottom: 16px; color: #374151; font-weight: 600;">Análise de Roteiro</h4>
+
+                        <div class="filter-bar" style="margin-bottom: 20px;">
+                            <div class="filter-group">
+                                <label for="roteiroDataInicio">Data Início</label>
+                                <input type="date" id="roteiroDataInicio">
+                            </div>
+                            <div class="filter-group">
+                                <label for="roteiroDataFim">Data Fim</label>
+                                <input type="date" id="roteiroDataFim">
+                            </div>
+                            <div class="filter-group" style="display: flex; align-items: flex-end;">
+                                <button class="btn btn-secondary" id="btnFiltrarRoteiro">🔍 Buscar</button>
+                            </div>
+                        </div>
+
+                        <div id="roteiroResultados">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">🗺️</div>
+                                <p>Selecione o período e clique em Buscar</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <style>
+                .performance-tabs {
+                    display: flex;
+                    gap: 8px;
+                    margin-bottom: 24px;
+                    border-bottom: 2px solid #e5e7eb;
+                    padding-bottom: 0;
+                }
+
+                .performance-tab {
+                    padding: 12px 24px;
+                    background: transparent;
+                    border: none;
+                    border-bottom: 3px solid transparent;
+                    color: #6b7280;
+                    font-size: 15px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                    margin-bottom: -2px;
+                }
+
+                .performance-tab:hover {
+                    color: #374151;
+                    background: #f9fafb;
+                }
+
+                .performance-tab.active {
+                    color: #ef4444;
+                    border-bottom-color: #ef4444;
+                }
+
+                .performance-tab-content {
+                    display: none;
+                    animation: fadeIn 0.3s ease;
+                }
+
+                .performance-tab-content.active {
+                    display: block;
+                }
+
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: translateY(10px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+
+                .performance-card {
+                    background: white;
+                    border: 1px solid #e5e7eb;
+                    border-radius: 12px;
+                    padding: 16px;
+                    margin-bottom: 12px;
+                    transition: all 0.2s ease;
+                }
+
+                .performance-card:hover {
+                    border-color: #ef4444;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+                }
+
+                .performance-stat {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 8px 0;
+                    border-bottom: 1px solid #f3f4f6;
+                }
+
+                .performance-stat:last-child {
+                    border-bottom: none;
+                }
+
+                .performance-stat-label {
+                    font-weight: 600;
+                    color: #374151;
+                    font-size: 14px;
+                }
+
+                .performance-stat-value {
+                    font-size: 16px;
+                    font-weight: 700;
+                    color: #ef4444;
+                }
+
+                .badge-tempo {
+                    display: inline-block;
+                    padding: 4px 12px;
+                    border-radius: 12px;
+                    font-size: 12px;
+                    font-weight: 600;
+                }
+
+                .badge-rapido { background: #fee2e2; color: #991b1b; }
+                .badge-medio { background: #fef3c7; color: #92400e; }
+                .badge-longo { background: #dbeafe; color: #1e40af; }
+            </style>
+        `;
     }
 };
 
@@ -2567,5 +2773,6 @@ export const pageTitles = {
   'roteiro-repositor': 'Roteiro do Repositor',
   'registro-rota': 'Registro de Rota',
   'consulta-visitas': 'Consulta de Visitas',
-  'documentos': 'Registro de Documentos'
+  'documentos': 'Registro de Documentos',
+  'analise-performance': 'Análise de Performance'
 };
