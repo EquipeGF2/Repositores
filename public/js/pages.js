@@ -1744,6 +1744,25 @@ export const pages = {
                         </div>
 
                         <div class="form-group">
+                            <label>Tipo de registro</label>
+                            <div class="tipo-registro" id="grupoTipoRegistro" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px;">
+                                <label class="chip-option">
+                                    <input type="radio" name="tipoRegistro" value="checkin" id="tipoRegistroCheckin">
+                                    <span>Check-in</span>
+                                </label>
+                                <label class="chip-option">
+                                    <input type="radio" name="tipoRegistro" value="checkout" id="tipoRegistroCheckout">
+                                    <span>Checkout</span>
+                                </label>
+                                <label class="chip-option">
+                                    <input type="radio" name="tipoRegistro" value="campanha" id="tipoRegistroCampanha" checked>
+                                    <span>Campanha</span>
+                                </label>
+                            </div>
+                            <p class="text-muted" id="avisoTipoRegistro" style="margin-top: 6px; font-size: 12px;">Selecione o tipo conforme o status do cliente.</p>
+                        </div>
+
+                        <div class="form-group">
                             <label>Localização GPS:</label>
                             <div id="gpsStatus" style="padding: 12px; background: #f3f4f6; border-radius: 8px; margin-top: 8px;">
                                 <p style="margin: 0; color: #6b7280;">Aguardando geolocalização...</p>
@@ -1897,6 +1916,22 @@ export const pages = {
 
                 .route-item-info {
                     flex: 1;
+                }
+
+                .chip-option {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    border: 1px solid #e5e7eb;
+                    border-radius: 10px;
+                    padding: 10px;
+                    cursor: pointer;
+                    background: #fff;
+                    font-weight: 600;
+                }
+
+                .chip-option input {
+                    accent-color: #ef4444;
                 }
 
                 .route-item-name {
