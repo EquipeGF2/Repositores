@@ -593,6 +593,24 @@ tbody td {
     animation: modalSlideIn 0.3s ease;
 }
 
+.modal-captura .modal-content.captura-modal {
+    max-width: 960px;
+    width: 98%;
+    height: 92dvh;
+    max-height: 92dvh;
+    overflow: hidden;
+    padding: 0;
+}
+
+@media (max-width: 768px) {
+    .modal-captura .modal-content.captura-modal {
+        width: 100%;
+        height: 100dvh;
+        max-height: 100dvh;
+        border-radius: 0;
+    }
+}
+
 .modal-representante .modal-content {
     max-width: 1100px;
     width: 96%;
@@ -967,15 +985,205 @@ tbody td {
 #videoPreview,
 #canvasCaptura {
     width: 100%;
-    height: 38vh;
-    max-height: 38vh;
+    height: 100%;
+    max-height: none;
     object-fit: cover;
     border-radius: 10px;
 }
 
 #cameraPlaceholder {
-    height: 38vh;
-    max-height: 38vh;
+    height: 100%;
+    max-height: none;
+}
+
+.captura-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    border-bottom: 1px solid var(--gray-200);
+}
+
+.captura-titulos {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.captura-header h3 {
+    margin: 0;
+    white-space: nowrap;
+}
+
+.captura-cliente-info {
+    margin: 0;
+    color: var(--gray-600);
+    font-size: 0.95rem;
+}
+
+.captura-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    background: var(--primary-red-light);
+    color: var(--primary-red-dark);
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 0.78rem;
+    width: fit-content;
+}
+
+.gps-chip {
+    margin-left: auto;
+    background: #f3f4f6;
+    border: 1px dashed #dc2626;
+    color: #7f1d1d;
+    padding: 8px 12px;
+    border-radius: 14px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    max-width: 260px;
+}
+
+.captura-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px 16px;
+    flex: 1;
+    overflow: hidden;
+}
+
+.camera-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1;
+    min-height: 320px;
+}
+
+.camera-area {
+    position: relative;
+    flex: 1;
+    background: #f3f4f6;
+    border-radius: 14px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 280px;
+}
+
+.camera-video,
+.camera-canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+    border-radius: 14px;
+    background: #000;
+}
+
+.camera-placeholder,
+.camera-erro {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    text-align: center;
+    color: #6b7280;
+    background: rgba(255,255,255,0.85);
+}
+
+.camera-erro {
+    color: #991b1b;
+    font-weight: 700;
+}
+
+.captura-hint {
+    font-size: 0.9rem;
+    color: #4b5563;
+    background: #fef2f2;
+    border: 1px dashed #fca5a5;
+    border-radius: 10px;
+    padding: 10px 12px;
+}
+
+.galeria-campanha {
+    display: none;
+    grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+    gap: 10px;
+}
+
+.galeria-item {
+    position: relative;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #fff;
+}
+
+.galeria-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.btn-remover-foto {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    background: rgba(0,0,0,0.6);
+    color: #fff;
+    border: none;
+    border-radius: 50%;
+    width: 26px;
+    height: 26px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.captura-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--gray-200);
+}
+
+.captura-actions-right {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.captura-actions-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+@media (max-width: 768px) {
+    .captura-header {
+        flex-wrap: wrap;
+    }
+
+    .gps-chip {
+        width: 100%;
+        margin-left: 0;
+    }
+
+    .captura-actions-right {
+        width: 100%;
+    }
 }
 
 .modal-footer {

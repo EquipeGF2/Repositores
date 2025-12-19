@@ -1727,49 +1727,39 @@ export const pages = {
             </div>
 
             <!-- Modal de Captura de Foto + GPS -->
-            <div class="modal" id="modalCapturarVisita">
-                <div class="modal-content" style="max-width: 600px; border-radius: 12px;">
-                    <div class="modal-header">
-                        <h3 id="modalCapturaTitulo">Registrar Visita</h3>
+            <div class="modal modal-captura" id="modalCapturarVisita">
+                <div class="modal-content captura-modal">
+                    <div class="modal-header captura-header">
+                        <div class="captura-titulos">
+                            <span id="capturaTipoBadge" class="captura-badge">CHECKIN</span>
+                            <h3 id="modalCapturaTitulo">Registrar Visita</h3>
+                            <p id="capturaClienteInfo" class="captura-cliente-info"></p>
+                        </div>
+                        <div id="gpsStatus" class="gps-chip">Aguardando geolocalização...</div>
                         <button class="modal-close" onclick="window.app.fecharModalCaptura()">&times;</button>
                     </div>
-                    <div class="modal-body">
-                        <input type="hidden" id="capturaRepId">
-                        <input type="hidden" id="capturaClienteId">
-                        <input type="hidden" id="capturaClienteNome">
-
-                        <div class="form-group">
-                            <label>Cliente:</label>
-                            <p id="capturaClienteInfo" style="font-weight: 600; color: #374151;"></p>
-                        </div>
-
-                        <div class="form-group">
-                            <label>Localização GPS:</label>
-                            <div id="gpsStatus" style="padding: 12px; background: #f3f4f6; border-radius: 8px; margin-top: 8px;">
-                                <p style="margin: 0; color: #6b7280;">Aguardando geolocalização...</p>
+                    <div class="modal-body captura-body">
+                        <div class="camera-wrapper">
+                            <div id="cameraArea" class="camera-area">
+                                <video id="videoPreview" class="camera-video" autoplay playsinline muted></video>
+                                <canvas id="canvasCaptura" class="camera-canvas"></canvas>
+                                <div id="cameraPlaceholder" class="camera-placeholder">📷 Preparando câmera...</div>
+                                <div id="cameraErro" class="camera-erro" style="display:none;"></div>
                             </div>
-                            <input type="hidden" id="capturaLatitude">
-                            <input type="hidden" id="capturaLongitude">
+                            <div class="captura-hint" id="capturaHint">Capture uma única foto para este registro. Você pode refazer antes de salvar.</div>
                         </div>
-
-                        <div class="form-group">
-                            <label>Câmera:</label>
-                            <video id="videoPreview" style="width: 100%; max-height: 300px; border-radius: 8px; background: #000; display: none;"></video>
-                            <canvas id="canvasCaptura" style="width: 100%; max-height: 300px; border-radius: 8px; display: none;"></canvas>
-                            <div id="cameraPlaceholder" style="width: 100%; height: 200px; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
-                                <p style="color: #6b7280;">📷 Câmera pronta para iniciar</p>
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <button class="btn btn-secondary" id="btnAtivarCamera" style="width: 100%; display:none;">📷 Ativar Câmera</button>
-                            <button class="btn btn-primary" id="btnCapturarFoto" style="width: 100%; margin-top: 8px;">📸 Capturar Foto</button>
-                            <button class="btn btn-secondary" id="btnNovaFoto" style="width: 100%; margin-top: 8px; display: none;">🔄 Tirar Outra Foto</button>
-                        </div>
+                        <div id="galeriaCampanha" class="galeria-campanha"></div>
                     </div>
-                    <div class="modal-footer">
-                        <button class="btn btn-secondary" onclick="window.app.fecharModalCaptura()">Cancelar</button>
-                        <button class="btn btn-primary" id="btnSalvarVisita" disabled>💾 Salvar Visita</button>
+                    <div class="modal-footer captura-footer">
+                        <div class="captura-actions-left">
+                            <button class="btn btn-secondary" id="btnPermitirCamera" style="display:none;">Permitir câmera</button>
+                        </div>
+                        <div class="captura-actions-right">
+                            <button class="btn btn-secondary" onclick="window.app.fecharModalCaptura()">Cancelar</button>
+                            <button class="btn btn-primary" id="btnCapturarFoto">📸 Capturar Foto</button>
+                            <button class="btn btn-secondary" id="btnNovaFoto" style="display: none;">🔄 Nova Foto</button>
+                            <button class="btn btn-primary" id="btnSalvarVisita" disabled>💾 Salvar Visita</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2043,6 +2033,22 @@ export const pages = {
                 .visit-item:hover {
                     border-color: #ef4444;
                     box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+                }
+
+                .visit-item.fora-dia {
+                    border-color: #fca5a5;
+                    background: #fef2f2;
+                }
+
+                .fora-dia-badge {
+                    background: #fee2e2;
+                    color: #991b1b;
+                    padding: 6px 10px;
+                    border-radius: 10px;
+                    margin-top: 6px;
+                    font-size: 0.9rem;
+                    border: 1px solid #fca5a5;
+                    display: inline-block;
                 }
             </style>
         `;

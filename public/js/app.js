@@ -95,6 +95,7 @@ class App {
         this.exportacaoRoteiroContexto = null;
         this.cacheUltimaAtualizacaoRoteiro = {};
         this.cidadesConsultaDisponiveis = [];
+        this.MAX_CAMPANHA_FOTOS = 10;
         this.recursosPorPagina = {
             'cadastro-repositor': 'mod_repositores',
             'validacao-dados': 'mod_repositores',
@@ -4905,26 +4906,24 @@ class App {
         backendUrl: API_BASE_URL,
         videoStream: null,
         gpsCoords: null,
-        fotoCapturada: null,
+        fotosCapturadas: [],
         clienteAtual: null,
         enderecoResolvido: null,
         resumoVisitas: new Map(),
-        tipoRegistro: null
+        tipoRegistro: null,
+        cameraErro: null,
+        resizeHandler: null
     };
 
     async inicializarRegistroRota() {
         const btnCarregarRoteiro = document.getElementById('btnCarregarRoteiro');
-        const btnAtivarCamera = document.getElementById('btnAtivarCamera');
         const btnCapturarFoto = document.getElementById('btnCapturarFoto');
         const btnNovaFoto = document.getElementById('btnNovaFoto');
         const btnSalvarVisita = document.getElementById('btnSalvarVisita');
+        const btnPermitirCamera = document.getElementById('btnPermitirCamera');
 
         if (btnCarregarRoteiro) {
             btnCarregarRoteiro.onclick = () => this.carregarRoteiroRepositor();
-        }
-
-        if (btnAtivarCamera) {
-            btnAtivarCamera.onclick = () => this.ativarCamera();
         }
 
         if (btnCapturarFoto) {
@@ -4937,6 +4936,10 @@ class App {
 
         if (btnSalvarVisita) {
             btnSalvarVisita.onclick = () => this.salvarVisita();
+        }
+
+        if (btnPermitirCamera) {
+            btnPermitirCamera.onclick = () => this.ativarCamera();
         }
 
         // Carregar lista de repositores (já está no HTML gerado)
@@ -5104,89 +5107,138 @@ class App {
         }
     }
 
-    async converterBlobParaBase64(blob) {
-        return await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const base64 = reader.result?.toString().split(',')[1];
-                resolve(base64 || '');
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
+    async buscarSessaoAberta(repId, dataPlanejada) {
+        try {
+            const params = new URLSearchParams({ rep_id: repId });
+            if (dataPlanejada) params.append('data_planejada', dataPlanejada);
+
+            const response = await fetch(`${this.registroRotaState.backendUrl}/api/registro-rota/sessao-aberta?${params.toString()}`);
+            if (!response.ok) return null;
+
+            const data = await response.json();
+            return data.sessao_aberta || null;
+        } catch (error) {
+            console.warn('Erro ao buscar sessão aberta:', error);
+            return null;
+        }
     }
 
     async abrirModalCaptura(repId, clienteId, clienteNome, enderecoLinha = null, dataVisitaParam = null, tipoRegistro = 'campanha', enderecoCadastro = '') {
-    const normalizeClienteId = (v) => String(v ?? '').trim().replace(/\.0$/, '');
+        const normalizeClienteId = (v) => String(v ?? '').trim().replace(/\.0$/, '');
 
-    const clienteIdNorm = normalizeClienteId(clienteId);
-    const dataInput = document.getElementById('registroData')?.value;
-    const statusCliente = this.registroRotaState.resumoVisitas.get(clienteIdNorm);
+        const clienteIdNorm = normalizeClienteId(clienteId);
+        const dataInput = document.getElementById('registroData')?.value;
+        const dataVisita = dataVisitaParam || dataInput;
+        const statusCliente = this.registroRotaState.resumoVisitas.get(clienteIdNorm);
 
-    const tipoPadrao = tipoRegistro || (statusCliente?.status === 'em_atendimento' ? 'checkout' : 'checkin');
-    this.registroRotaState.tipoRegistro = tipoPadrao;
+        const tipoPadrao = tipoRegistro || (statusCliente?.status === 'em_atendimento' ? 'checkout' : 'checkin');
+        this.registroRotaState.tipoRegistro = tipoPadrao;
 
-    this.registroRotaState.clienteAtual = {
-        repId: Number(repId),
-        clienteId: clienteIdNorm,                // SEM .0
-        clienteNome: String(clienteNome || ''),
-        enderecoLinha: enderecoLinha ? String(enderecoLinha) : null,
-        dataVisita: dataVisitaParam || dataInput, // YYYY-MM-DD
-        statusCliente,
-        clienteEndereco: enderecoCadastro || enderecoLinha
-    };
+        const sessaoAberta = await this.buscarSessaoAberta(repId, dataVisita);
+        if (sessaoAberta && tipoPadrao === 'checkin' && normalizeClienteId(sessaoAberta.cliente_id) !== clienteIdNorm) {
+            this.showNotification(`Finalize o checkout do cliente ${sessaoAberta.cliente_id} antes de novo check-in.`, 'warning');
+            return;
+        }
+        if (['checkout', 'campanha'].includes(tipoPadrao) && sessaoAberta && normalizeClienteId(sessaoAberta.cliente_id) !== clienteIdNorm) {
+            this.showNotification(`Há um atendimento em aberto para ${sessaoAberta.cliente_id}. Utilize o mesmo cliente.`, 'warning');
+            return;
+        }
+        if (tipoPadrao === 'checkout' && (!statusCliente || statusCliente.status !== 'em_atendimento')) {
+            this.showNotification('Realize o check-in antes de registrar o checkout.', 'warning');
+            return;
+        }
+        if (tipoPadrao === 'checkin' && statusCliente?.status === 'em_atendimento') {
+            this.showNotification('Check-in já realizado para este cliente.', 'warning');
+            return;
+        }
+        if (tipoPadrao === 'campanha' && (!statusCliente || statusCliente.status !== 'em_atendimento')) {
+            this.showNotification('Campanha liberada apenas após o check-in e antes do checkout.', 'warning');
+            return;
+        }
 
-    // Atualizar título do modal
-    const tituloModal = document.getElementById('modalCapturaTitulo');
-    if (tituloModal) {
-        tituloModal.textContent = `Registrar Visita - ${this.registroRotaState.clienteAtual.clienteNome}`;
+        this.registroRotaState.clienteAtual = {
+            repId: Number(repId),
+            clienteId: clienteIdNorm,
+            clienteNome: String(clienteNome || ''),
+            enderecoLinha: enderecoLinha ? String(enderecoLinha) : null,
+            dataVisita,
+            statusCliente,
+            clienteEndereco: enderecoCadastro || enderecoLinha
+        };
+
+        this.registroRotaState.gpsCoords = null;
+        this.registroRotaState.fotosCapturadas.forEach((foto) => foto?.url && URL.revokeObjectURL(foto.url));
+        this.registroRotaState.fotosCapturadas = [];
+        this.registroRotaState.enderecoResolvido = null;
+        this.registroRotaState.cameraErro = null;
+
+        const tituloModal = document.getElementById('modalCapturaTitulo');
+        if (tituloModal) {
+            tituloModal.textContent = this.registroRotaState.clienteAtual.clienteNome || 'Registrar Visita';
+        }
+
+        const tipoBadge = document.getElementById('capturaTipoBadge');
+        if (tipoBadge) {
+            tipoBadge.textContent = tipoPadrao.toUpperCase();
+        }
+
+        const clienteInfo = document.getElementById('capturaClienteInfo');
+        if (clienteInfo) {
+            clienteInfo.textContent = `${clienteIdNorm} • ${clienteNome}`;
+        }
+
+        const capturaHint = document.getElementById('capturaHint');
+        if (capturaHint) {
+            capturaHint.textContent = tipoPadrao === 'campanha'
+                ? `Capture até ${this.MAX_CAMPANHA_FOTOS} fotos da campanha e remova o que não quiser antes de salvar.`
+                : 'Capture uma única foto para este registro. Você pode refazer antes de salvar.';
+        }
+
+        const gpsStatus = document.getElementById('gpsStatus');
+        if (gpsStatus) {
+            gpsStatus.innerHTML = '<p style="margin: 0; color: #6b7280;">Aguardando geolocalização...</p>';
+        }
+
+        const canvas = document.getElementById('canvasCaptura');
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            canvas.style.display = 'none';
+        }
+
+        const placeholder = document.getElementById('cameraPlaceholder');
+        const video = document.getElementById('videoPreview');
+        const cameraErro = document.getElementById('cameraErro');
+        if (placeholder) placeholder.style.display = 'flex';
+        if (video) {
+            video.style.display = 'none';
+            video.srcObject = null;
+        }
+        if (cameraErro) cameraErro.style.display = 'none';
+
+        const btnCapturar = document.getElementById('btnCapturarFoto');
+        const btnNova = document.getElementById('btnNovaFoto');
+        const btnSalvar = document.getElementById('btnSalvarVisita');
+        const btnPermitirCamera = document.getElementById('btnPermitirCamera');
+
+        if (btnCapturar) btnCapturar.disabled = false;
+        if (btnNova) btnNova.style.display = 'none';
+        if (btnSalvar) btnSalvar.disabled = true;
+        if (btnPermitirCamera) btnPermitirCamera.style.display = 'none';
+
+        const modal = document.getElementById('modalCapturarVisita');
+        modal.classList.add('active');
+
+        if (!this.registroRotaState.resizeHandler) {
+            this.registroRotaState.resizeHandler = () => this.ajustarAreaCamera();
+            window.addEventListener('resize', this.registroRotaState.resizeHandler);
+        }
+
+        this.atualizarGaleriaCaptura();
+        this.ajustarAreaCamera();
+        await this.ativarCamera();
+        this.iniciarCapturaGPS();
     }
-
-    // Resetar estado
-    this.registroRotaState.gpsCoords = null;
-    this.registroRotaState.fotoCapturada = null;
-    this.registroRotaState.enderecoResolvido = null;
-
-    // Atualizar status GPS
-    const gpsStatus = document.getElementById('gpsStatus');
-    if (gpsStatus) {
-        gpsStatus.innerHTML = '<p style="margin: 0; color: #6b7280;">Aguardando geolocalização...</p>';
-    }
-
-    // Resetar canvas
-    const canvas = document.getElementById('canvasCaptura');
-    if (canvas) {
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        canvas.style.display = 'none';
-    }
-
-    // Resetar placeholder e vídeo
-    const placeholder = document.getElementById('cameraPlaceholder');
-    const video = document.getElementById('videoPreview');
-    if (placeholder) placeholder.style.display = 'flex';
-    if (video) video.style.display = 'none';
-
-    // Resetar botões
-    const btnAtivar = document.getElementById('btnAtivarCamera');
-    const btnCapturar = document.getElementById('btnCapturarFoto');
-    const btnNova = document.getElementById('btnNovaFoto');
-    const btnSalvar = document.getElementById('btnSalvarVisita');
-
-    if (btnAtivar) btnAtivar.style.display = 'none';
-    if (btnCapturar) btnCapturar.style.display = 'block';
-    if (btnNova) btnNova.style.display = 'none';
-    if (btnSalvar) btnSalvar.disabled = true;
-
-    // Abrir modal
-    document.getElementById('modalCapturarVisita').classList.add('active');
-
-    // Ativar câmera automaticamente (gesto de usuário já ocorreu ao abrir o modal)
-    this.ativarCamera();
-
-    // Iniciar captura de GPS
-    this.iniciarCapturaGPS();
-}
 
 
     iniciarCapturaGPS() {
@@ -5204,6 +5256,8 @@ class App {
                     latitude: position.coords.latitude,
                     longitude: position.coords.longitude
                 };
+
+                this.atualizarGaleriaCaptura();
 
                 const lat = position.coords.latitude.toFixed(6);
                 const lon = position.coords.longitude.toFixed(6);
@@ -5283,15 +5337,110 @@ class App {
         }
     }
 
+    ajustarAreaCamera() {
+        const area = document.getElementById('cameraArea');
+        const video = document.getElementById('videoPreview');
+        const canvas = document.getElementById('canvasCaptura');
+
+        if (!area) return;
+
+        const altura = Math.max(area.clientHeight, 240);
+        const largura = area.clientWidth || 320;
+
+        [video, canvas].forEach((el) => {
+            if (el) {
+                el.style.height = `${altura}px`;
+                el.style.width = `${largura}px`;
+            }
+        });
+    }
+
+    exibirErroCamera(mensagem) {
+        const cameraErro = document.getElementById('cameraErro');
+        const placeholder = document.getElementById('cameraPlaceholder');
+        const btnPermitir = document.getElementById('btnPermitirCamera');
+
+        if (cameraErro) {
+            cameraErro.style.display = 'flex';
+            cameraErro.textContent = mensagem;
+        }
+        if (placeholder) placeholder.style.display = 'flex';
+        if (btnPermitir) btnPermitir.style.display = 'inline-flex';
+    }
+
+    atualizarGaleriaCaptura() {
+        const tipo = (this.registroRotaState.tipoRegistro || '').toLowerCase();
+        const galeria = document.getElementById('galeriaCampanha');
+        const btnSalvar = document.getElementById('btnSalvarVisita');
+        const btnCapturar = document.getElementById('btnCapturarFoto');
+        const btnNova = document.getElementById('btnNovaFoto');
+
+        const total = this.registroRotaState.fotosCapturadas.length;
+
+        if (galeria) {
+            if (tipo === 'campanha') {
+                galeria.style.display = 'grid';
+                galeria.innerHTML = '';
+                this.registroRotaState.fotosCapturadas.forEach((foto, index) => {
+                    const thumb = document.createElement('div');
+                    thumb.className = 'galeria-item';
+                    thumb.innerHTML = `
+                        <img src="${foto.url}" alt="Foto ${index + 1}">
+                        <button type="button" data-index="${index}" class="btn-remover-foto">✖</button>
+                    `;
+                    galeria.appendChild(thumb);
+                });
+
+                galeria.querySelectorAll('.btn-remover-foto').forEach((btn) => {
+                    btn.onclick = (e) => {
+                        const idx = Number(e.currentTarget.getAttribute('data-index'));
+                        this.removerFotoIndice(idx);
+                    };
+                });
+            } else {
+                galeria.style.display = 'none';
+                galeria.innerHTML = '';
+            }
+        }
+
+        if (btnSalvar) {
+            btnSalvar.disabled = !(this.registroRotaState.gpsCoords && total > 0);
+        }
+
+        if (btnCapturar) {
+            const limiteAtingido = tipo !== 'campanha' ? total >= 1 : total >= this.MAX_CAMPANHA_FOTOS;
+            btnCapturar.disabled = limiteAtingido;
+        }
+
+        if (btnNova) {
+            btnNova.style.display = total > 0 && tipo !== 'campanha' ? 'inline-flex' : 'none';
+        }
+    }
+
+    removerFotoIndice(indice) {
+        const foto = this.registroRotaState.fotosCapturadas[indice];
+        if (foto?.url) URL.revokeObjectURL(foto.url);
+
+        this.registroRotaState.fotosCapturadas.splice(indice, 1);
+        this.atualizarGaleriaCaptura();
+    }
+
+    pararStreamVideo() {
+        if (this.registroRotaState.videoStream) {
+            this.registroRotaState.videoStream.getTracks().forEach((track) => track.stop());
+            this.registroRotaState.videoStream = null;
+        }
+    }
+
     async ativarCamera() {
         try {
             const videoElement = document.getElementById('videoPreview');
             const placeholder = document.getElementById('cameraPlaceholder');
+            const cameraErro = document.getElementById('cameraErro');
 
-            // Solicitar acesso à câmera
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: {
-                    facingMode: 'environment', // Preferir câmera traseira
+                    facingMode: 'environment',
                     width: { ideal: 1280 },
                     height: { ideal: 720 }
                 }
@@ -5300,21 +5449,17 @@ class App {
             this.registroRotaState.videoStream = stream;
             videoElement.srcObject = stream;
 
-            // Aguardar vídeo carregar antes de exibir
             videoElement.onloadedmetadata = () => {
                 videoElement.play();
                 videoElement.style.display = 'block';
                 if (placeholder) placeholder.style.display = 'none';
+                if (cameraErro) cameraErro.style.display = 'none';
+                this.ajustarAreaCamera();
             };
-
-            // Atualizar botões
-            document.getElementById('btnAtivarCamera').style.display = 'none';
-            document.getElementById('btnCapturarFoto').style.display = 'block';
-
-            this.showNotification('Câmera ativada', 'success');
         } catch (error) {
             console.error('Erro ao ativar câmera:', error);
-            this.showNotification('Erro ao ativar câmera: ' + error.message, 'error');
+            this.registroRotaState.cameraErro = error;
+            this.exibirErroCamera('Não foi possível ativar a câmera. Permita o acesso e tente novamente.');
         }
     }
 
@@ -5322,291 +5467,285 @@ class App {
         try {
             const video = document.getElementById('videoPreview');
             const canvas = document.getElementById('canvasCaptura');
+            const placeholder = document.getElementById('cameraPlaceholder');
             const ctx = canvas.getContext('2d');
 
-            // Ajustar canvas para tamanho do vídeo
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-
-            // Desenhar frame do vídeo no canvas
+            const largura = video.videoWidth || video.clientWidth || 640;
+            const altura = video.videoHeight || video.clientHeight || 480;
+            canvas.width = largura;
+            canvas.height = altura;
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            // Converter canvas para blob
-            canvas.toBlob((blob) => {
-                this.registroRotaState.fotoCapturada = blob;
-
-                // Mostrar canvas, esconder vídeo
-                canvas.style.display = 'block';
-                video.style.display = 'none';
-
-                // Parar stream
-                if (this.registroRotaState.videoStream) {
-                    this.registroRotaState.videoStream.getTracks().forEach(track => track.stop());
-                    this.registroRotaState.videoStream = null;
+            canvas.toBlob(async (blob) => {
+                if (!blob) {
+                    this.showNotification('Não foi possível capturar a foto.', 'error');
+                    return;
                 }
 
-            // Atualizar botões
-            document.getElementById('btnCapturarFoto').style.display = 'none';
-            const btnNova = document.getElementById('btnNovaFoto');
-            if (btnNova) btnNova.style.display = 'none';
+                await this.processarFotoCapturada(blob);
 
-                // Habilitar salvar se GPS ok
-                if (this.registroRotaState.gpsCoords) {
-                    document.getElementById('btnSalvarVisita').disabled = false;
+                const tipo = (this.registroRotaState.tipoRegistro || '').toLowerCase();
+                if (tipo !== 'campanha') {
+                    canvas.style.display = 'block';
+                    video.style.display = 'none';
+                    if (placeholder) placeholder.style.display = 'none';
+                    this.pararStreamVideo();
+                } else {
+                    canvas.style.display = 'none';
                 }
-
-                this.showNotification('Foto capturada', 'success');
-            }, 'image/jpeg', 0.85);
+            }, 'image/jpeg', 0.9);
         } catch (error) {
             console.error('Erro ao capturar foto:', error);
             this.showNotification('Erro ao capturar foto: ' + error.message, 'error');
         }
     }
 
+    async processarFotoCapturada(blob) {
+        const tipoRegistro = (this.registroRotaState.tipoRegistro || '').toLowerCase();
+        const totalAtual = this.registroRotaState.fotosCapturadas.length;
+
+        if (tipoRegistro === 'campanha' && totalAtual >= this.MAX_CAMPANHA_FOTOS) {
+            this.showNotification(`Limite de ${this.MAX_CAMPANHA_FOTOS} fotos atingido. Remova alguma foto para continuar.`, 'warning');
+            return;
+        }
+
+        if (tipoRegistro !== 'campanha' && totalAtual >= 1) {
+            this.registroRotaState.fotosCapturadas.forEach((foto) => foto?.url && URL.revokeObjectURL(foto.url));
+            this.registroRotaState.fotosCapturadas = [];
+        }
+
+        const url = URL.createObjectURL(blob);
+        this.registroRotaState.fotosCapturadas.push({ blob, url });
+
+        this.atualizarGaleriaCaptura();
+
+        if (this.registroRotaState.gpsCoords && document.getElementById('btnSalvarVisita')) {
+            document.getElementById('btnSalvarVisita').disabled = false;
+        }
+
+        this.showNotification('Foto capturada', 'success');
+    }
+
     novaFoto() {
-        // Resetar canvas
         const canvas = document.getElementById('canvasCaptura');
-        if (canvas) canvas.style.display = 'none';
-
-        // Mostrar placeholder novamente
+        const video = document.getElementById('videoPreview');
         const placeholder = document.getElementById('cameraPlaceholder');
-        if (placeholder) placeholder.style.display = 'flex';
 
-        // Resetar estado
-        this.registroRotaState.fotoCapturada = null;
+        if (canvas) canvas.style.display = 'none';
+        if (video) video.style.display = 'block';
+        if (placeholder) placeholder.style.display = 'none';
 
-        // Atualizar botões
-        document.getElementById('btnAtivarCamera').style.display = 'block';
-        document.getElementById('btnNovaFoto').style.display = 'none';
-        document.getElementById('btnSalvarVisita').disabled = true;
+        this.registroRotaState.fotosCapturadas.forEach((foto) => foto?.url && URL.revokeObjectURL(foto.url));
+        this.registroRotaState.fotosCapturadas = [];
+        this.atualizarGaleriaCaptura();
+
+        if (!this.registroRotaState.videoStream) {
+            this.ativarCamera();
+        }
     }
 
     async salvarVisita() {
-    const btnSalvar = document.getElementById('btnSalvarVisita');
+        const btnSalvar = document.getElementById('btnSalvarVisita');
+        const normalizeClienteId = (v) => String(v ?? '').trim().replace(/\.0$/, '');
+        const pad2 = (n) => String(n).padStart(2, '0');
 
-    // helpers locais (sem depender de outras funções do arquivo)
-    const normalizeClienteId = (v) => String(v ?? '').trim().replace(/\.0$/, '');
-    const pad2 = (n) => String(n).padStart(2, '0');
+        const stampOnBlob = async (blob, linhasTexto) => {
+            const img = await new Promise((resolve, reject) => {
+                const url = URL.createObjectURL(blob);
+                const image = new Image();
+                image.onload = () => { URL.revokeObjectURL(url); resolve(image); };
+                image.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Falha ao carregar imagem')); };
+                image.src = url;
+            });
 
-    const toBase64Raw = async (blob) => {
-        return await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onerror = () => reject(new Error('Falha ao ler imagem'));
-            reader.onload = () => {
-                const result = String(reader.result || '');
-                // remove prefixo data:...;base64, se vier
-                const raw = result.includes('base64,') ? result.split('base64,')[1] : result;
-                resolve(raw);
-            };
-            reader.readAsDataURL(blob);
-        });
-    };
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
 
-    const stampOnBlob = async (blob, linhasTexto) => {
-        // desenha imagem + carimbo no canvas e devolve um novo Blob JPEG
-        const img = await new Promise((resolve, reject) => {
-            const url = URL.createObjectURL(blob);
-            const image = new Image();
-            image.onload = () => { URL.revokeObjectURL(url); resolve(image); };
-            image.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Falha ao carregar imagem')); };
-            image.src = url;
-        });
+            ctx.drawImage(img, 0, 0);
 
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
+            const margin = Math.round(canvas.width * 0.02);
+            const fontSize = Math.max(14, Math.round(canvas.width * 0.028));
+            const lineH = Math.round(fontSize * 1.25);
+            const boxH = margin * 2 + lineH * linhasTexto.length;
 
-        ctx.drawImage(img, 0, 0);
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+            ctx.fillRect(0, canvas.height - boxH, canvas.width, boxH);
 
-        const margin = Math.round(canvas.width * 0.02);
-        const fontSize = Math.max(14, Math.round(canvas.width * 0.028));
-        const lineH = Math.round(fontSize * 1.25);
-        const boxH = margin * 2 + lineH * linhasTexto.length;
+            ctx.font = `${fontSize}px Arial`;
+            ctx.fillStyle = '#fff';
+            ctx.textBaseline = 'top';
 
-        // caixa de fundo semitransparente
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
-        ctx.fillRect(0, canvas.height - boxH, canvas.width, boxH);
+            let y = canvas.height - boxH + margin;
+            for (const linha of linhasTexto) {
+                ctx.fillText(linha, margin, y);
+                y += lineH;
+            }
 
-        // texto
-        ctx.font = `${fontSize}px Arial`;
-        ctx.fillStyle = '#fff';
-        ctx.textBaseline = 'top';
+            const stampedBlob = await new Promise((resolve) => {
+                canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.9);
+            });
 
-        let y = canvas.height - boxH + margin;
-        for (const linha of linhasTexto) {
-            ctx.fillText(linha, margin, y);
-            y += lineH;
-        }
-
-        const stampedBlob = await new Promise((resolve) => {
-            canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.9);
-        });
-
-        return stampedBlob || blob;
-    };
-
-    try {
-        const atual = this.registroRotaState.clienteAtual || {};
-        const repId = Number(atual.repId);
-        const clienteId = normalizeClienteId(atual.clienteId);
-        const clienteNome = String(atual.clienteNome || '');
-        const dataVisita = String(atual.dataVisita || '').trim(); // esperado YYYY-MM-DD
-        const tipoRegistro = (this.registroRotaState.tipoRegistro || '').toLowerCase();
-        const statusCliente = atual.statusCliente;
-
-        const gpsCoords = this.registroRotaState.gpsCoords;
-        const fotoCapturada = this.registroRotaState.fotoCapturada;
-        const enderecoResolvido = (this.registroRotaState.enderecoResolvido || atual.enderecoLinha || '').trim();
-
-        if (!fotoCapturada) {
-            this.showNotification('Capture uma foto antes de salvar', 'warning');
-            return;
-        }
-        if (!gpsCoords) {
-            this.showNotification('Aguarde a captura do GPS', 'warning');
-            return;
-        }
-
-        if (!enderecoResolvido) {
-            this.showNotification('Endereço do registro não identificado ainda. Aguarde a geolocalização.', 'warning');
-            return;
-        }
-        if (!repId || !clienteId) {
-            this.showNotification('Dados do cliente inválidos. Recarregue o roteiro e tente novamente.', 'warning');
-            return;
-        }
-
-        if (!tipoRegistro) {
-            this.showNotification('Tipo de registro não identificado. Escolha o cliente novamente.', 'warning');
-            return;
-        }
-
-        if (tipoRegistro === 'checkout' && (!statusCliente || statusCliente.status !== 'em_atendimento')) {
-            this.showNotification('Realize o check-in antes de registrar o checkout.', 'warning');
-            return;
-        }
-
-        if (tipoRegistro === 'checkin' && statusCliente?.status === 'em_atendimento') {
-            this.showNotification('Já existe um check-in em aberto para este cliente.', 'warning');
-            return;
-        }
-
-        if (tipoRegistro === 'campanha' && (!statusCliente || statusCliente.status !== 'em_atendimento')) {
-            this.showNotification('Campanha liberada apenas após o check-in e antes do checkout.', 'warning');
-            return;
-        }
-
-        if (btnSalvar) {
-            btnSalvar.disabled = true;
-            btnSalvar.textContent = 'Salvando...';
-        }
-
-        const dtLocal = new Date();
-        // ✅ carimbo (foto + coords + endereço + data/hora)
-        const latTxt = Number(gpsCoords.latitude).toFixed(6);
-        const lonTxt = Number(gpsCoords.longitude).toFixed(6);
-
-        const formatter = new Intl.DateTimeFormat('pt-BR', {
-            timeZone: 'America/Sao_Paulo',
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-        const parts = Object.fromEntries(formatter.formatToParts(dtLocal).map((p) => [p.type, p.value]));
-        const dataTxt = `${parts.day}/${parts.month}/${parts.year} ${parts.hour}:${parts.minute}`;
-
-        const linhasCarimbo = [
-            `Cliente: ${clienteId} - ${clienteNome}`,
-            `Tipo: ${tipoRegistro.toUpperCase()}`,
-            `Data/Hora: ${dataTxt} (America/Sao_Paulo)`,
-            `GPS: ${latTxt}, ${lonTxt}`,
-            enderecoResolvido ? `Endereço: ${enderecoResolvido}` : 'Endereço: (não informado)'
-        ];
-
-        const blobCarimbado = await stampOnBlob(fotoCapturada, linhasCarimbo);
-        const fotoBase64 = await toBase64Raw(blobCarimbado);
-        const enderecoClienteSnapshot = (atual.clienteEndereco || atual.enderecoLinha || '').trim();
-
-        const payload = {
-            rep_id: repId,
-            cliente_id: clienteId,                 // SEM .0 e como string
-            data_planejada: dataVisita || null,
-            latitude: Number(gpsCoords.latitude),
-            longitude: Number(gpsCoords.longitude),
-            endereco_resolvido: enderecoResolvido || null,
-            foto_base64: fotoBase64,               // base64 "raw"
-            foto_mime: 'image/jpeg',
-            tipo: tipoRegistro,
-
-            // extras “forward compatible” (se o backend quiser usar p/ nome do arquivo)
-            cliente_nome: clienteNome,
-            cliente_endereco: enderecoClienteSnapshot || null,
-            foto_padrao_nome: 'DDMMAA_HHMM_IDCLIENTE.SEQ_NOMECLIENTE.JPG'
+            return stampedBlob || blob;
         };
 
-        const response = await fetch(`${this.registroRotaState.backendUrl}/api/registro-rota/visitas`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
+        try {
+            const atual = this.registroRotaState.clienteAtual || {};
+            const repId = Number(atual.repId);
+            const clienteId = normalizeClienteId(atual.clienteId);
+            const clienteNome = String(atual.clienteNome || '');
+            const dataVisita = String(atual.dataVisita || '').trim();
+            const tipoRegistro = (this.registroRotaState.tipoRegistro || '').toLowerCase();
+            const statusCliente = atual.statusCliente;
 
-        if (!response.ok) {
-            const detalhesErro = await this.extrairMensagemErro(response);
-            throw new Error(detalhesErro || `Erro ao salvar visita (status ${response.status})`);
-        }
+            const gpsCoords = this.registroRotaState.gpsCoords;
+            const fotos = this.registroRotaState.fotosCapturadas || [];
+            const enderecoResolvido = (this.registroRotaState.enderecoResolvido || atual.enderecoLinha || '').trim();
 
-        await response.json();
+            if (!fotos.length) {
+                this.showNotification('Capture uma foto antes de salvar', 'warning');
+                return;
+            }
+            if (!gpsCoords) {
+                this.showNotification('Aguarde a captura do GPS', 'warning');
+                return;
+            }
 
-        this.showNotification('Visita registrada com sucesso!', 'success');
+            if (!enderecoResolvido) {
+                this.showNotification('Endereço do registro não identificado ainda. Aguarde a geolocalização.', 'warning');
+                return;
+            }
+            if (!repId || !clienteId) {
+                this.showNotification('Dados do cliente inválidos. Recarregue o roteiro e tente novamente.', 'warning');
+                return;
+            }
 
-        this.fecharModalCaptura();
-        await this.carregarRoteiroRepositor();
+            if (!tipoRegistro) {
+                this.showNotification('Tipo de registro não identificado. Escolha o cliente novamente.', 'warning');
+                return;
+            }
 
-    } catch (error) {
-        console.error('Erro ao salvar visita:', error);
-        this.showNotification('Erro ao salvar: ' + error.message, 'error');
-    } finally {
-        if (btnSalvar) {
-            btnSalvar.disabled = false;
-            btnSalvar.textContent = '💾 Salvar Visita';
+            if (tipoRegistro === 'checkout' && (!statusCliente || statusCliente.status !== 'em_atendimento')) {
+                this.showNotification('Realize o check-in antes de registrar o checkout.', 'warning');
+                return;
+            }
+
+            if (tipoRegistro === 'checkin' && statusCliente?.status === 'em_atendimento') {
+                this.showNotification('Já existe um check-in em aberto para este cliente.', 'warning');
+                return;
+            }
+
+            if (tipoRegistro === 'campanha' && (!statusCliente || statusCliente.status !== 'em_atendimento')) {
+                this.showNotification('Campanha liberada apenas após o check-in e antes do checkout.', 'warning');
+                return;
+            }
+
+            const listaFotos = tipoRegistro === 'campanha' ? fotos : fotos.slice(0, 1);
+
+            if (btnSalvar) {
+                btnSalvar.disabled = true;
+                btnSalvar.textContent = 'Salvando...';
+            }
+
+            const dtLocal = new Date();
+            const latTxt = Number(gpsCoords.latitude).toFixed(6);
+            const lonTxt = Number(gpsCoords.longitude).toFixed(6);
+
+            const formatter = new Intl.DateTimeFormat('pt-BR', {
+                timeZone: 'America/Sao_Paulo',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            const parts = Object.fromEntries(formatter.formatToParts(dtLocal).map((p) => [p.type, p.value]));
+            const dataTxt = `${parts.day}/${parts.month}/${parts.year} ${parts.hour}:${parts.minute}`;
+
+            const linhasCarimboBase = [
+                `${tipoRegistro.toUpperCase()} - ${clienteId} - ${clienteNome}`,
+                `Data/Hora: ${dataTxt}`,
+                `Coordenadas: ${latTxt}, ${lonTxt}`,
+                enderecoResolvido ? `Endereço: ${enderecoResolvido}` : ''
+            ].filter(Boolean);
+
+            const arquivos = [];
+            for (let i = 0; i < listaFotos.length; i += 1) {
+                const carimbada = await stampOnBlob(listaFotos[i].blob, linhasCarimboBase);
+                const arquivo = new File([carimbada], `captura-${pad2(i + 1)}.jpg`, { type: 'image/jpeg' });
+                arquivos.push(arquivo);
+            }
+
+            const formData = new FormData();
+            formData.append('rep_id', repId);
+            formData.append('cliente_id', clienteId);
+            formData.append('latitude', Number(gpsCoords.latitude));
+            formData.append('longitude', Number(gpsCoords.longitude));
+            formData.append('endereco_resolvido', enderecoResolvido || '');
+            formData.append('tipo', tipoRegistro);
+            formData.append('cliente_nome', clienteNome);
+            formData.append('cliente_endereco', enderecoResolvido || '');
+            if (dataVisita) formData.append('data_planejada', dataVisita);
+
+            arquivos.forEach((arquivo) => formData.append('fotos[]', arquivo));
+
+            const response = await fetch(`${this.registroRotaState.backendUrl}/api/registro-rota/visitas`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                const detalhesErro = await this.extrairMensagemErro(response);
+                throw new Error(detalhesErro || `Erro ao salvar visita (status ${response.status})`);
+            }
+
+            await response.json();
+
+            this.showNotification('Visita registrada com sucesso!', 'success');
+
+            this.fecharModalCaptura();
+            await this.carregarRoteiroRepositor();
+        } catch (error) {
+            console.error('Erro ao salvar visita:', error);
+            this.showNotification('Erro ao salvar: ' + error.message, 'error');
+        } finally {
+            if (btnSalvar) {
+                btnSalvar.disabled = false;
+                btnSalvar.textContent = '💾 Salvar Visita';
+            }
         }
     }
-}
 
 
     fecharModalCaptura() {
-        // Parar stream se ativo
-        if (this.registroRotaState.videoStream) {
-            this.registroRotaState.videoStream.getTracks().forEach(track => track.stop());
-            this.registroRotaState.videoStream = null;
-        }
+        this.pararStreamVideo();
 
-        // Resetar vídeo
         const video = document.getElementById('videoPreview');
         if (video) {
             video.srcObject = null;
             video.style.display = 'none';
         }
 
-        // Resetar canvas e placeholder
         const canvas = document.getElementById('canvasCaptura');
         if (canvas) canvas.style.display = 'none';
 
         const placeholder = document.getElementById('cameraPlaceholder');
         if (placeholder) placeholder.style.display = 'flex';
 
-        // Fechar modal
         document.getElementById('modalCapturarVisita').classList.remove('active');
 
-        // Resetar estado
         this.registroRotaState.clienteAtual = null;
         this.registroRotaState.gpsCoords = null;
-        this.registroRotaState.fotoCapturada = null;
+        this.registroRotaState.fotosCapturadas.forEach((foto) => foto?.url && URL.revokeObjectURL(foto.url));
+        this.registroRotaState.fotosCapturadas = [];
         this.registroRotaState.enderecoResolvido = null;
         this.registroRotaState.tipoRegistro = null;
+
+        if (this.registroRotaState.resizeHandler) {
+            window.removeEventListener('resize', this.registroRotaState.resizeHandler);
+            this.registroRotaState.resizeHandler = null;
+        }
     }
 
     // ==================== CONSULTA DE VISITAS ====================
@@ -5667,7 +5806,8 @@ class App {
 
             visitas.forEach(visita => {
                 const item = document.createElement('div');
-                item.className = 'visit-item';
+                const foraDia = Number(visita.fora_do_dia) === 1;
+                item.className = `visit-item${foraDia ? ' fora-dia' : ''}`;
 
                 const dataBruta = visita.data_hora || visita.created_at;
                 const dataBase = dataBruta ? (isNaN(Number(dataBruta)) ? new Date(dataBruta) : new Date(Number(dataBruta))) : null;
@@ -5694,9 +5834,14 @@ class App {
                 const enderecoCliente = visita.rv_endereco_cliente || visita.endereco_cliente || 'Não informado';
                 const enderecoRegistro = visita.endereco_resolvido || '';
 
+                const alertaDia = foraDia
+                    ? `<div class="fora-dia-badge">Realizado fora do dia previsto<br>Dia previsto: ${visita.dia_previsto_label || '-'} | Realizado: ${visita.dia_real_label || '-'}</div>`
+                    : '';
+
                 item.innerHTML = `
                     <div style="flex: 1;">
                         <div><strong>${visita.cliente_id}</strong> <span style="font-size:0.85em;color:#ef4444;font-weight:700;">${tipo}</span>${tempoTexto}</div>
+                        ${alertaDia}
                         <div style="font-size: 0.9em; color: #666; margin-top: 4px;">
                             📅 ${dataFormatada}
                         </div>

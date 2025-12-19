@@ -229,6 +229,53 @@ class TursoService {
     return result.rows[0] || null;
   }
 
+  async buscarSessaoAbertaPorRep(repId, { dataPlanejada, inicioIso, fimIso }) {
+    let sql = `
+      SELECT c.*
+      FROM cc_registro_visita c
+      LEFT JOIN cc_registro_visita co ON co.rv_sessao_id = c.rv_sessao_id AND co.rv_tipo = 'checkout'
+      WHERE c.rep_id = ?
+        AND c.rv_tipo = 'checkin'
+        AND c.rv_sessao_id IS NOT NULL
+    `;
+
+    const args = [repId];
+
+    if (dataPlanejada) {
+      sql += ' AND c.rv_data_planejada = ?';
+      args.push(dataPlanejada);
+    } else {
+      sql += ' AND c.data_hora BETWEEN ? AND ?';
+      args.push(inicioIso, fimIso);
+    }
+
+    sql += ' AND co.id IS NULL ORDER BY c.data_hora DESC LIMIT 1';
+
+    const result = await this.execute(sql, args);
+    return result.rows[0] || null;
+  }
+
+  async mapearDiaPrevistoClientes(repId) {
+    const sql = `
+      SELECT cli.rot_cliente_codigo AS cliente_id, rc.rot_dia_semana
+      FROM rot_roteiro_cidade rc
+      JOIN rot_roteiro_cliente cli ON cli.rot_cid_id = rc.rot_cid_id
+      WHERE rc.rot_repositor_id = ?
+    `;
+
+    const result = await this.execute(sql, [repId]);
+    const mapa = new Map();
+
+    for (const row of result.rows) {
+      const clienteId = normalizeClienteId(row.cliente_id);
+      if (!mapa.has(clienteId)) {
+        mapa.set(clienteId, String(row.rot_dia_semana || '').toLowerCase());
+      }
+    }
+
+    return mapa;
+  }
+
   async obterRepositor(repId) {
     const id = Number(repId);
     const result = await this.execute('SELECT repo_cod, repo_nome FROM cad_repositor WHERE repo_cod = ? LIMIT 1', [id]);
@@ -300,6 +347,21 @@ class TursoService {
         await client.execute({ sql, args: [] });
       } catch (error) {
         console.warn('⚠️  Erro ao criar índice de registro de rota:', error.message || error);
+      }
+    }
+
+    const novosIndices = [
+      'CREATE INDEX IF NOT EXISTS idx_rv_rep_datahora ON cc_registro_visita(rep_id, data_hora)',
+      'CREATE INDEX IF NOT EXISTS idx_rv_rep_sessao ON cc_registro_visita(rep_id, rv_sessao_id)',
+      'CREATE INDEX IF NOT EXISTS idx_rv_cli_datahora ON cc_registro_visita(cliente_id, data_hora)',
+      'CREATE INDEX IF NOT EXISTS idx_rv_cli_planejada ON cc_registro_visita(cliente_id, rv_data_planejada)'
+    ];
+
+    for (const sql of novosIndices) {
+      try {
+        await client.execute({ sql, args: [] });
+      } catch (error) {
+        console.warn('⚠️  Erro ao criar índice adicional:', error.message || error);
       }
     }
 

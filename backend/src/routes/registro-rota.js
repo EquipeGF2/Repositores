@@ -1,5 +1,6 @@
 import express from 'express';
 import crypto from 'node:crypto';
+import multer from 'multer';
 import { tursoService, DatabaseNotConfiguredError, normalizeClienteId } from '../services/turso.js';
 import { googleDriveService, OAuthNotConfiguredError } from '../services/googleDrive.js';
 import { emailService } from '../services/email.js';
@@ -7,6 +8,11 @@ import { emailService } from '../services/email.js';
 const router = express.Router();
 const TIME_ZONE = 'America/Sao_Paulo';
 const RV_TIPOS = ['checkin', 'checkout', 'campanha'];
+const MAX_CAMPANHA_FOTOS = 10;
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { files: MAX_CAMPANHA_FOTOS, fileSize: 10 * 1024 * 1024 }
+});
 
 /**
  * Sanitiza BigInt para JSON (Express/JSON.stringify não serializa BigInt)
@@ -66,6 +72,25 @@ async function gerarNomeCampanha({ parentFolderId, clienteIdNorm, nomeClienteSan
 
   const sufixoFinal = maiorSufixo > 1 ? `_${String(maiorSufixo).padStart(2, '0')}` : '';
   return `${base}${sufixoFinal}.jpg`;
+}
+
+function gerarNomeArquivo({ repId, clienteIdNorm, tipo, sessaoId, dataHoraIso, sequencia }) {
+  const data = new Date(dataHoraIso);
+  const pad = (num, size = 2) => String(num).padStart(size, '0');
+  const partes = {
+    ano: data.getFullYear(),
+    mes: pad(data.getMonth() + 1),
+    dia: pad(data.getDate()),
+    hora: pad(data.getHours()),
+    minuto: pad(data.getMinutes()),
+    segundo: pad(data.getSeconds())
+  };
+
+  const seq = pad(sequencia ?? 1);
+  const tipoLabel = String(tipo || 'campanha').toUpperCase();
+  const sessaoSegment = sessaoId ? sessaoId : 'SESSAO';
+
+  return `REP${repId}_CLI${clienteIdNorm}_${tipoLabel}_${partes.ano}${partes.mes}${partes.dia}_${partes.hora}${partes.minuto}${partes.segundo}_${sessaoSegment}_${seq}.jpg`;
 }
 
 function dataLocalIso(isoDate) {
@@ -135,6 +160,27 @@ function formatDataHoraLocal(dataIso) {
   };
 }
 
+function obterDiaSemanaLabel(valor) {
+  const mapa = {
+    0: 'Domingo',
+    1: 'Segunda-feira',
+    2: 'Terça-feira',
+    3: 'Quarta-feira',
+    4: 'Quinta-feira',
+    5: 'Sexta-feira',
+    6: 'Sábado',
+    dom: 'Domingo',
+    seg: 'Segunda-feira',
+    ter: 'Terça-feira',
+    qua: 'Quarta-feira',
+    qui: 'Quinta-feira',
+    sex: 'Sexta-feira',
+    sab: 'Sábado'
+  };
+
+  return mapa[valor] || '';
+}
+
 function validarDataPlanejada(dataPlanejada) {
   if (!dataPlanejada) return null;
   const regex = /^\d{4}-\d{2}-\d{2}$/;
@@ -157,7 +203,7 @@ async function garantirNomeCampanhaUnico(folderId, nomeBase) {
 
 // ==================== POST /api/registro-rota/visitas ====================
 // Registrar nova visita com foto
-router.post('/visitas', async (req, res) => {
+router.post('/visitas', upload.any(), async (req, res) => {
   try {
     const {
       rep_id,
@@ -173,11 +219,13 @@ router.post('/visitas', async (req, res) => {
       data_planejada
     } = req.body;
 
-    if (!rep_id || !cliente_id || !foto_base64 || !tipo || !cliente_nome || !cliente_endereco) {
+    const arquivos = Array.isArray(req.files) ? req.files : [];
+
+    if (!rep_id || !cliente_id || (!foto_base64 && arquivos.length === 0) || !tipo || !cliente_nome || !cliente_endereco) {
       return res.status(400).json({
         ok: false,
         code: 'INVALID_PAYLOAD',
-        message: 'Campos obrigatórios ausentes: rep_id, cliente_id, tipo, foto_base64, cliente_nome, cliente_endereco'
+        message: 'Campos obrigatórios ausentes: rep_id, cliente_id, tipo, foto(s), cliente_nome, cliente_endereco'
       });
     }
 
@@ -209,6 +257,12 @@ router.post('/visitas', async (req, res) => {
     const dataReferencia = dataPlanejadaValida || dataLocalIso(dataHoraRegistro);
     const { inicioIso, fimIso } = buildUtcRangeFromLocalDates(dataReferencia, dataReferencia);
 
+    const sessaoAberta = await tursoService.buscarSessaoAbertaPorRep(repIdNumber, {
+      dataPlanejada: dataPlanejadaValida,
+      inicioIso,
+      fimIso
+    });
+
     const repositor = await tursoService.obterRepositor(repIdNumber);
     if (!repositor) {
       return res.status(404).json({ ok: false, message: 'Repositor não encontrado', code: 'REPOSITOR_NOT_FOUND' });
@@ -236,6 +290,13 @@ router.post('/visitas', async (req, res) => {
       if (checkinExistente) {
         return res.status(409).json({ ok: false, code: 'CHECKIN_EXISTENTE', message: 'Já existe check-in para este cliente no dia.' });
       }
+      if (sessaoAberta && normalizeClienteId(sessaoAberta.cliente_id) !== clienteIdNorm) {
+        return res.status(409).json({
+          ok: false,
+          code: 'SESSAO_ABERTA_OUTRO_CLIENTE',
+          message: `Há um atendimento em aberto para o cliente ${sessaoAberta.cliente_id}. Finalize o checkout antes de iniciar outro check-in.`
+        });
+      }
       sessaoId = crypto.randomUUID();
     }
 
@@ -246,7 +307,14 @@ router.post('/visitas', async (req, res) => {
       if (checkoutExistente) {
         return res.status(409).json({ ok: false, code: 'CHECKOUT_EXISTENTE', message: 'Check-out já registrado para este cliente no dia.' });
       }
-      sessaoId = checkinExistente.rv_sessao_id || `sessao-${checkinExistente.id}`;
+      if (sessaoAberta && normalizeClienteId(sessaoAberta.cliente_id) !== clienteIdNorm) {
+        return res.status(409).json({
+          ok: false,
+          code: 'CHECKOUT_CLIENTE_DIFERENTE',
+          message: `Existe um check-in aberto para o cliente ${sessaoAberta.cliente_id}. Realize o checkout nele antes de finalizar outro cliente.`
+        });
+      }
+      sessaoId = (checkinExistente.rv_sessao_id || sessaoAberta?.rv_sessao_id || `sessao-${checkinExistente.id}`).toString();
       tempoTrabalhoMin = Math.round((new Date(dataHoraRegistro).getTime() - new Date(checkinExistente.data_hora).getTime()) / 60000);
     }
 
@@ -268,58 +336,90 @@ router.post('/visitas', async (req, res) => {
     const nomeClienteSanitizado = sanitizeNomeCliente(cliente_nome || cliente_id);
     const partesData = formatDataHoraLocal(dataHoraRegistro);
 
-    let nomeFinal = '';
-    if (rvTipo === 'campanha') {
-      nomeFinal = await gerarNomeCampanha({
-        parentFolderId,
-        clienteIdNorm,
-        nomeClienteSanitizado,
-        partesData
+    const arquivosParaProcessar = arquivos.length > 0 ? arquivos : [{ buffer: Buffer.from(foto_base64, 'base64'), mimetype: mimeType }];
+
+    if (rvTipo === 'campanha' && arquivosParaProcessar.length > MAX_CAMPANHA_FOTOS) {
+      return res.status(400).json({ ok: false, code: 'LIMITE_FOTOS', message: `Limite de ${MAX_CAMPANHA_FOTOS} fotos excedido.` });
+    }
+
+    const registrosSalvos = [];
+
+    for (let i = 0; i < arquivosParaProcessar.length; i += 1) {
+      const arquivo = arquivosParaProcessar[i];
+      const sequencia = i + 1;
+      const dataHoraArquivo = new Date(new Date(dataHoraRegistro).getTime() + i * 1000).toISOString();
+
+      let nomeFinal = '';
+      if (rvTipo === 'campanha') {
+        nomeFinal = gerarNomeArquivo({
+          repId: repIdNumber,
+          clienteIdNorm,
+          tipo: rvTipo,
+          sessaoId,
+          dataHoraIso: dataHoraArquivo,
+          sequencia
+        });
+      } else {
+        nomeFinal = gerarNomeArquivo({
+          repId: repIdNumber,
+          clienteIdNorm,
+          tipo: rvTipo,
+          sessaoId,
+          dataHoraIso: dataHoraArquivo,
+          sequencia: 1
+        });
+      }
+
+      const base64Data = arquivo.buffer.toString('base64');
+
+      const uploadResult = await googleDriveService.uploadFotoBase64({
+        base64Data,
+        mimeType: arquivo.mimetype || mimeType,
+        filename: nomeFinal,
+        repId: repIdNumber,
+        repoNome: repositor.repo_nome,
+        parentFolderId
       });
-    } else {
-      const prefixo = rvTipo === 'checkin' ? 'in' : 'out';
-      nomeFinal = `${prefixo}_${partesData.ddmmaa}_${partesData.hhmm}_${clienteIdNorm}_${nomeClienteSanitizado}.jpg`;
+
+      if (!uploadResult?.fileId || !uploadResult?.webViewLink) {
+        return res.status(400).json({ ok: false, code: 'DRIVE_UPLOAD_UNAVAILABLE', message: 'Upload no Drive não disponível' });
+      }
+
+      const visita = await tursoService.salvarVisitaDetalhada({
+        repId: repIdNumber,
+        clienteId: clienteIdNorm,
+        dataHora: dataHoraArquivo,
+        latitude: latitudeNumber,
+        longitude: longitudeNumber,
+        enderecoResolvido: enderecoSnapshot,
+        driveFileId: uploadResult.fileId,
+        driveFileUrl: uploadResult.webViewLink,
+        rvTipo,
+        rvSessaoId: sessaoId,
+        rvDataPlanejada: dataReferencia,
+        rvClienteNome: cliente_nome || cliente_id,
+        rvEnderecoCliente: cliente_endereco || null,
+        rvPastaDriveId: parentFolderId,
+        rvDataHoraRegistro: dataHoraArquivo,
+        rvEnderecoRegistro: enderecoSnapshot,
+        rvDriveFileId: uploadResult.fileId,
+        rvDriveFileUrl: uploadResult.webViewLink,
+        rvLatitude: latitudeNumber,
+        rvLongitude: longitudeNumber
+      });
+
+      registrosSalvos.push({
+        id: visita?.id ?? null,
+        drive_file_id: uploadResult.fileId,
+        drive_file_url: uploadResult.webViewLink,
+        data_hora: dataHoraArquivo,
+        nome_arquivo: nomeFinal
+      });
     }
-
-    const uploadResult = await googleDriveService.uploadFotoBase64({
-      base64Data: foto_base64,
-      mimeType,
-      filename: nomeFinal,
-      repId: repIdNumber,
-      repoNome: repositor.repo_nome,
-      parentFolderId
-    });
-
-    if (!uploadResult?.fileId || !uploadResult?.webViewLink) {
-      return res.status(400).json({ ok: false, code: 'DRIVE_UPLOAD_UNAVAILABLE', message: 'Upload no Drive não disponível' });
-    }
-
-    const visita = await tursoService.salvarVisitaDetalhada({
-      repId: repIdNumber,
-      clienteId: clienteIdNorm,
-      dataHora: dataHoraRegistro,
-      latitude: latitudeNumber,
-      longitude: longitudeNumber,
-      enderecoResolvido: enderecoSnapshot,
-      driveFileId: uploadResult.fileId,
-      driveFileUrl: uploadResult.webViewLink,
-      rvTipo,
-      rvSessaoId: sessaoId,
-      rvDataPlanejada: dataReferencia,
-      rvClienteNome: cliente_nome || cliente_id,
-      rvEnderecoCliente: cliente_endereco || null,
-      rvPastaDriveId: parentFolderId,
-      rvDataHoraRegistro: dataHoraRegistro,
-      rvEnderecoRegistro: enderecoSnapshot,
-      rvDriveFileId: uploadResult.fileId,
-      rvDriveFileUrl: uploadResult.webViewLink,
-      rvLatitude: latitudeNumber,
-      rvLongitude: longitudeNumber
-    });
 
     const payload = {
       ok: true,
-      id: visita?.id ?? null,
+      registros: registrosSalvos,
       rep_id: repIdNumber,
       cliente_id: clienteIdNorm,
       data_hora: dataHoraRegistro,
@@ -327,8 +427,6 @@ router.post('/visitas', async (req, res) => {
       latitude: latitudeNumber,
       longitude: longitudeNumber,
       endereco_resolvido: enderecoSnapshot,
-      drive_file_id: uploadResult.fileId,
-      drive_file_url: uploadResult.webViewLink,
       tipo: rvTipo,
       sessao_id: sessaoId,
       data_planejada: dataReferencia,
@@ -407,11 +505,34 @@ router.get('/visitas', async (req, res) => {
     }
 
     const visitas = await tursoService.listarVisitasDetalhadas({ repId: repIdNumber, inicioIso, fimIso });
+    const mapaDiasPrevistos = await tursoService.mapearDiaPrevistoClientes(repIdNumber);
+
+    const visitasComDia = visitas.map((visita) => {
+      const clienteId = normalizeClienteId(visita.cliente_id);
+      const dataReferencia = visita.rv_data_planejada || (visita.data_hora ? dataLocalIso(visita.data_hora) : null);
+      const dataParaDia = dataReferencia || data_inicio;
+      const diaPrevisto = mapaDiasPrevistos.get(clienteId) || null;
+
+      const dataDia = dataParaDia ? new Date(`${dataParaDia}T12:00:00-03:00`) : null;
+      const diaRealNumero = dataDia ? dataDia.getDay() : null;
+
+      const diaRealLabel = diaRealNumero != null ? obterDiaSemanaLabel(diaRealNumero) : '';
+      const diaPrevistoLabel = diaPrevisto ? obterDiaSemanaLabel(diaPrevisto) : '';
+
+      const foraDoDia = Boolean(diaPrevisto && diaRealNumero != null && obterDiaSemanaLabel(diaPrevisto) !== diaRealLabel);
+
+      return {
+        ...visita,
+        fora_do_dia: foraDoDia ? 1 : 0,
+        dia_previsto_label: diaPrevistoLabel,
+        dia_real_label: diaRealLabel
+      };
+    });
 
     return res.json(
       sanitizeForJson({
         ok: true,
-        visitas,
+        visitas: visitasComDia,
         modo: modoNormalizado
       })
     );
@@ -426,6 +547,36 @@ router.get('/visitas', async (req, res) => {
       code: 'LISTAR_VISITAS_ERROR',
       message: 'Erro ao consultar visitas'
     });
+  }
+});
+
+// ==================== GET /api/registro-rota/sessao-aberta ====================
+router.get('/sessao-aberta', async (req, res) => {
+  try {
+    const { rep_id, data_planejada } = req.query;
+
+    if (!rep_id) {
+      return res.status(400).json({ ok: false, code: 'REP_ID_REQUIRED', message: 'rep_id é obrigatório' });
+    }
+
+    const repIdNumber = Number(rep_id);
+    if (Number.isNaN(repIdNumber)) {
+      return res.status(400).json({ ok: false, code: 'INVALID_REP_ID', message: 'rep_id deve ser numérico' });
+    }
+
+    const dataReferencia = validarDataPlanejada(data_planejada) || new Date().toISOString().split('T')[0];
+    const { inicioIso, fimIso } = buildUtcRangeFromLocalDates(dataReferencia, dataReferencia);
+
+    const sessao = await tursoService.buscarSessaoAbertaPorRep(repIdNumber, { dataPlanejada: data_planejada, inicioIso, fimIso });
+
+    return res.json(sanitizeForJson({ ok: true, sessao_aberta: sessao || null }));
+  } catch (error) {
+    if (error instanceof DatabaseNotConfiguredError) {
+      return res.status(503).json({ ok: false, code: error.code, message: error.message });
+    }
+
+    console.error('Erro ao buscar sessão aberta:', error?.stack || error);
+    return res.status(500).json({ ok: false, code: 'BUSCAR_SESSAO_ERROR', message: 'Erro ao buscar sessão aberta' });
   }
 });
 
