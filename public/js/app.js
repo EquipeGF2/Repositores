@@ -512,6 +512,8 @@ class App {
                 await this.inicializarConsultaVisitas();
             } else if (pageName === 'documentos') {
                 await this.inicializarDocumentos();
+            } else if (pageName === 'analise-performance') {
+                await this.inicializarAnalisePerformance();
             }
         } catch (error) {
             console.error('Erro ao carregar página:', error);
@@ -6303,6 +6305,273 @@ class App {
         } catch (error) {
             console.error('Erro ao fazer download em lote:', error);
             this.showNotification('Erro ao fazer download em lote: ' + error.message, 'error');
+        }
+    }
+
+    // ==================== ANÁLISE DE PERFORMANCE ====================
+
+    async inicializarAnalisePerformance() {
+        try {
+            // Configurar tabs
+            const tabs = document.querySelectorAll('.performance-tab');
+            tabs.forEach(tab => {
+                tab.onclick = (e) => {
+                    const targetTab = e.target.dataset.tab;
+                    this.trocarTabPerformance(targetTab);
+                };
+            });
+
+            // Configurar botões de filtro
+            const btnTempo = document.getElementById('btnFiltrarTempo');
+            const btnCampanha = document.getElementById('btnFiltrarCampanha');
+            const btnRoteiro = document.getElementById('btnFiltrarRoteiro');
+
+            if (btnTempo) btnTempo.onclick = () => this.filtrarTempoAtendimento();
+            if (btnCampanha) btnCampanha.onclick = () => this.filtrarCampanha();
+            if (btnRoteiro) btnRoteiro.onclick = () => this.filtrarRoteiro();
+
+            // Definir datas padrão (último mês)
+            const hoje = new Date().toISOString().split('T')[0];
+            const umMesAtras = new Date();
+            umMesAtras.setMonth(umMesAtras.getMonth() - 1);
+            const dataInicio = umMesAtras.toISOString().split('T')[0];
+
+            const campos = ['tempo', 'campanha', 'roteiro'];
+            campos.forEach(campo => {
+                const inputInicio = document.getElementById(`${campo}DataInicio`);
+                const inputFim = document.getElementById(`${campo}DataFim`);
+                if (inputInicio) inputInicio.value = dataInicio;
+                if (inputFim) inputFim.value = hoje;
+            });
+        } catch (error) {
+            console.error('Erro ao inicializar análise de performance:', error);
+        }
+    }
+
+    trocarTabPerformance(tabName) {
+        // Atualizar tabs
+        document.querySelectorAll('.performance-tab').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        document.querySelector(`.performance-tab[data-tab="${tabName}"]`)?.classList.add('active');
+
+        // Atualizar conteúdo
+        document.querySelectorAll('.performance-tab-content').forEach(content => {
+            content.classList.remove('active');
+        });
+        document.getElementById(`tab-${tabName}`)?.classList.add('active');
+    }
+
+    async filtrarTempoAtendimento() {
+        try {
+            const dataInicio = document.getElementById('tempoDataInicio').value;
+            const dataFim = document.getElementById('tempoDataFim').value;
+            const filtroTempo = document.getElementById('tempoFiltro').value;
+
+            if (!dataInicio || !dataFim) {
+                this.showNotification('Selecione o período', 'warning');
+                return;
+            }
+
+            this.showNotification('Carregando dados...', 'info');
+
+            // Buscar dados de todas as sessões no período
+            const response = await fetch(
+                `${this.registroRotaState.backendUrl}/api/registro-rota/sessoes?data_inicio=${dataInicio}&data_fim=${dataFim}`
+            );
+
+            if (!response.ok) throw new Error('Erro ao buscar dados');
+
+            const data = await response.json();
+            const sessoes = data.sessoes || [];
+
+            // Filtrar por tempo
+            const sessoesFiltradas = sessoes.filter(s => {
+                if (!s.tempo_minutos) return false;
+
+                const minutos = s.tempo_minutos;
+                if (filtroTempo === 'rapido') return minutos < 10;
+                if (filtroTempo === 'medio') return minutos >= 10 && minutos <= 60;
+                if (filtroTempo === 'longo') return minutos > 60;
+                return true;
+            });
+
+            this.renderizarTempoAtendimento(sessoesFiltradas);
+        } catch (error) {
+            console.error('Erro ao filtrar tempo de atendimento:', error);
+            this.showNotification('Erro ao carregar dados: ' + error.message, 'error');
+        }
+    }
+
+    renderizarTempoAtendimento(sessoes) {
+        const container = document.getElementById('tempoResultados');
+        if (!container) return;
+
+        if (sessoes.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">⏱️</div>
+                    <p>Nenhuma sessão encontrada com os filtros selecionados</p>
+                </div>
+            `;
+            return;
+        }
+
+        const html = sessoes.map(s => {
+            const minutos = s.tempo_minutos || 0;
+            let badgeClass = 'badge-medio';
+            if (minutos < 10) badgeClass = 'badge-rapido';
+            else if (minutos > 60) badgeClass = 'badge-longo';
+
+            return `
+                <div class="performance-card">
+                    <div class="performance-stat">
+                        <span class="performance-stat-label">Cliente</span>
+                        <span>${s.cliente_nome || s.cliente_id}</span>
+                    </div>
+                    <div class="performance-stat">
+                        <span class="performance-stat-label">Data</span>
+                        <span>${s.data_planejada}</span>
+                    </div>
+                    <div class="performance-stat">
+                        <span class="performance-stat-label">Tempo em Loja</span>
+                        <span class="badge-tempo ${badgeClass}">${minutos} min</span>
+                    </div>
+                    <div class="performance-stat">
+                        <span class="performance-stat-label">Repositor</span>
+                        <span>${s.rep_id}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        container.innerHTML = `
+            <div style="margin-bottom: 16px; padding: 12px; background: #f9fafb; border-radius: 8px;">
+                <strong>${sessoes.length}</strong> sessões encontradas
+            </div>
+            ${html}
+        `;
+    }
+
+    async filtrarCampanha() {
+        try {
+            const dataInicio = document.getElementById('campanhaDataInicio').value;
+            const dataFim = document.getElementById('campanhaDataFim').value;
+
+            if (!dataInicio || !dataFim) {
+                this.showNotification('Selecione o período', 'warning');
+                return;
+            }
+
+            this.showNotification('Carregando dados...', 'info');
+
+            const response = await fetch(
+                `${this.registroRotaState.backendUrl}/api/registro-rota/sessoes?data_inicio=${dataInicio}&data_fim=${dataFim}`
+            );
+
+            if (!response.ok) throw new Error('Erro ao buscar dados');
+
+            const data = await response.json();
+            const sessoes = data.sessoes || [];
+
+            // Agrupar por cliente
+            const porCliente = {};
+            sessoes.forEach(s => {
+                const key = s.cliente_id;
+                if (!porCliente[key]) {
+                    porCliente[key] = {
+                        cliente_id: s.cliente_id,
+                        cliente_nome: s.cliente_nome,
+                        visitas: [],
+                        total_servicos: 0
+                    };
+                }
+                porCliente[key].visitas.push(s);
+
+                // Contar serviços realizados
+                let servicos = 0;
+                if (s.serv_abastecimento) servicos++;
+                if (s.serv_espaco_loja) servicos++;
+                if (s.serv_ruptura_loja) servicos++;
+                if (s.serv_pontos_extras) servicos++;
+                porCliente[key].total_servicos += servicos;
+            });
+
+            this.renderizarCampanha(Object.values(porCliente));
+        } catch (error) {
+            console.error('Erro ao filtrar campanha:', error);
+            this.showNotification('Erro ao carregar dados: ' + error.message, 'error');
+        }
+    }
+
+    renderizarCampanha(clientes) {
+        const container = document.getElementById('campanhaResultados');
+        if (!container) return;
+
+        if (clientes.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">📋</div>
+                    <p>Nenhum registro encontrado no período</p>
+                </div>
+            `;
+            return;
+        }
+
+        const html = clientes.map(c => `
+            <div class="performance-card">
+                <div class="performance-stat">
+                    <span class="performance-stat-label">Cliente</span>
+                    <span style="font-weight: 700;">${c.cliente_nome || c.cliente_id}</span>
+                </div>
+                <div class="performance-stat">
+                    <span class="performance-stat-label">Total de Visitas</span>
+                    <span class="performance-stat-value">${c.visitas.length}</span>
+                </div>
+                <div class="performance-stat">
+                    <span class="performance-stat-label">Total de Serviços</span>
+                    <span class="performance-stat-value">${c.total_servicos}</span>
+                </div>
+                <div class="performance-stat">
+                    <span class="performance-stat-label">Datas</span>
+                    <span style="font-size: 12px;">${c.visitas.map(v => v.data_planejada).join(', ')}</span>
+                </div>
+            </div>
+        `).join('');
+
+        container.innerHTML = `
+            <div style="margin-bottom: 16px; padding: 12px; background: #f9fafb; border-radius: 8px;">
+                <strong>${clientes.length}</strong> clientes com registros
+            </div>
+            ${html}
+        `;
+    }
+
+    async filtrarRoteiro() {
+        try {
+            const dataInicio = document.getElementById('roteiroDataInicio').value;
+            const dataFim = document.getElementById('roteiroDataFim').value;
+
+            if (!dataInicio || !dataFim) {
+                this.showNotification('Selecione o período', 'warning');
+                return;
+            }
+
+            this.showNotification('Funcionalidade em desenvolvimento', 'info');
+
+            // TODO: Implementar análise de roteiro quando tivermos dados de roteiro planejado vs executado
+            const container = document.getElementById('roteiroResultados');
+            if (container) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🗺️</div>
+                        <p>Análise de roteiro será implementada quando tivermos dados de roteiro planejado vs executado</p>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Erro ao filtrar roteiro:', error);
+            this.showNotification('Erro ao carregar dados: ' + error.message, 'error');
         }
     }
 
