@@ -285,6 +285,68 @@ class GoogleDriveService {
 
     return oauthClient;
   }
+
+  async criarSubpasta(nome, parentId) {
+    return this.createFolderIfNotExists(parentId, nome);
+  }
+
+  async uploadArquivo({ buffer, mimeType, filename, parentFolderId }) {
+    await this.authenticate();
+
+    try {
+      const fileMetadata = {
+        name: filename,
+        parents: [parentFolderId]
+      };
+
+      const media = {
+        mimeType,
+        body: Readable.from(buffer)
+      };
+
+      const file = await this.drive.files.create({
+        requestBody: fileMetadata,
+        media: media,
+        fields: 'id, webViewLink, name'
+      });
+
+      // Tornar o arquivo acessível via link
+      await this.drive.permissions.create({
+        fileId: file.data.id,
+        requestBody: {
+          role: 'reader',
+          type: 'anyone'
+        }
+      });
+
+      console.log(`📄 Arquivo enviado: ${filename} (${file.data.id})`);
+
+      return {
+        fileId: file.data.id,
+        filename: file.data.name,
+        webViewLink: file.data.webViewLink
+      };
+    } catch (error) {
+      console.error('❌ Erro ao fazer upload no Drive:', error.message);
+      throw error;
+    }
+  }
+
+  async downloadArquivo(fileId) {
+    await this.authenticate();
+
+    try {
+      const response = await this.drive.files.get(
+        { fileId, alt: 'media' },
+        { responseType: 'stream' }
+      );
+
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao fazer download do Drive:', error.message);
+      throw error;
+    }
+  }
 }
 
 export const googleDriveService = new GoogleDriveService();
