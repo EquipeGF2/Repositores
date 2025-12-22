@@ -6645,6 +6645,7 @@ class App {
 
     async filtrarTempoAtendimento() {
         try {
+            const repositor = document.getElementById('tempoRepositor')?.value || '';
             const dataInicio = document.getElementById('tempoDataInicio').value;
             const dataFim = document.getElementById('tempoDataFim').value;
             const filtroTempo = document.getElementById('tempoFiltro').value;
@@ -6657,9 +6658,12 @@ class App {
             this.showNotification('Carregando dados...', 'info');
 
             // Buscar dados de todas as sessões no período
-            const response = await fetch(
-                `${this.registroRotaState.backendUrl}/api/registro-rota/sessoes?data_inicio=${dataInicio}&data_fim=${dataFim}`
-            );
+            let url = `${this.registroRotaState.backendUrl}/api/registro-rota/sessoes?data_inicio=${dataInicio}&data_fim=${dataFim}`;
+            if (repositor) {
+                url += `&rep_id=${repositor}`;
+            }
+
+            const response = await fetch(url);
 
             if (!response.ok) throw new Error('Erro ao buscar dados');
 
@@ -6736,6 +6740,7 @@ class App {
 
     async filtrarCampanha() {
         try {
+            const repositor = document.getElementById('campanhaRepositor')?.value || '';
             const dataInicio = document.getElementById('campanhaDataInicio').value;
             const dataFim = document.getElementById('campanhaDataFim').value;
 
@@ -6746,9 +6751,12 @@ class App {
 
             this.showNotification('Carregando dados...', 'info');
 
-            const response = await fetch(
-                `${this.registroRotaState.backendUrl}/api/registro-rota/sessoes?data_inicio=${dataInicio}&data_fim=${dataFim}`
-            );
+            let url = `${this.registroRotaState.backendUrl}/api/registro-rota/sessoes?data_inicio=${dataInicio}&data_fim=${dataFim}`;
+            if (repositor) {
+                url += `&rep_id=${repositor}`;
+            }
+
+            const response = await fetch(url);
 
             if (!response.ok) throw new Error('Erro ao buscar dados');
 
@@ -6830,6 +6838,7 @@ class App {
 
     async filtrarRoteiro() {
         try {
+            const repositor = document.getElementById('roteiroRepositor')?.value || '';
             const dataInicio = document.getElementById('roteiroDataInicio').value;
             const dataFim = document.getElementById('roteiroDataFim').value;
 
@@ -6841,9 +6850,10 @@ class App {
             this.showNotification('Carregando dados...', 'info');
 
             // Buscar todas as visitas do período
-            // Usar rep_id do repositor atual se disponível
-            const repId = this.registroRotaState.repositor?.repo_cod || '';
-            const url = `${this.registroRotaState.backendUrl}/api/registro-rota/visitas?data_inicio=${dataInicio}&data_fim=${dataFim}&rep_id=${repId || '28'}`;
+            let url = `${this.registroRotaState.backendUrl}/api/registro-rota/visitas?data_inicio=${dataInicio}&data_fim=${dataFim}`;
+            if (repositor) {
+                url += `&rep_id=${repositor}`;
+            }
 
             const response = await fetch(url);
 
@@ -6967,6 +6977,7 @@ class App {
 
     async filtrarServicos() {
         try {
+            const repositor = document.getElementById('servicosRepositor')?.value || '';
             const dataInicio = document.getElementById('servicosDataInicio').value;
             const dataFim = document.getElementById('servicosDataFim').value;
 
@@ -6977,9 +6988,12 @@ class App {
 
             this.showNotification('Carregando dados...', 'info');
 
-            const response = await fetch(
-                `${this.registroRotaState.backendUrl}/api/registro-rota/sessoes?data_inicio=${dataInicio}&data_fim=${dataFim}`
-            );
+            let url = `${this.registroRotaState.backendUrl}/api/registro-rota/sessoes?data_inicio=${dataInicio}&data_fim=${dataFim}`;
+            if (repositor) {
+                url += `&rep_id=${repositor}`;
+            }
+
+            const response = await fetch(url);
 
             if (!response.ok) throw new Error('Erro ao buscar dados');
 

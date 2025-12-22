@@ -2557,6 +2557,11 @@ export const pages = {
     },
 
     'analise-performance': async () => {
+        const repositores = await db.getAllRepositors();
+        const repositorOptions = repositores
+            .map(repo => `<option value="${repo.repo_cod}">${repo.repo_cod} - ${repo.repo_nome}</option>`)
+            .join('');
+
         return `
             <div class="card">
                 <div class="card-header">
@@ -2580,6 +2585,13 @@ export const pages = {
                         <h4 style="margin-bottom: 16px; color: #374151; font-weight: 600;">Filtrar por Tempo em Loja</h4>
 
                         <div class="filter-bar" style="margin-bottom: 20px;">
+                            <div class="filter-group">
+                                <label for="tempoRepositor">Repositor</label>
+                                <select id="tempoRepositor">
+                                    <option value="">Todos</option>
+                                    ${repositorOptions}
+                                </select>
+                            </div>
                             <div class="filter-group">
                                 <label for="tempoDataInicio">Data Início</label>
                                 <input type="date" id="tempoDataInicio">
@@ -2616,6 +2628,13 @@ export const pages = {
 
                         <div class="filter-bar" style="margin-bottom: 20px;">
                             <div class="filter-group">
+                                <label for="campanhaRepositor">Repositor</label>
+                                <select id="campanhaRepositor">
+                                    <option value="">Todos</option>
+                                    ${repositorOptions}
+                                </select>
+                            </div>
+                            <div class="filter-group">
                                 <label for="campanhaDataInicio">Data Início</label>
                                 <input type="date" id="campanhaDataInicio">
                             </div>
@@ -2642,6 +2661,13 @@ export const pages = {
 
                         <div class="filter-bar" style="margin-bottom: 20px;">
                             <div class="filter-group">
+                                <label for="servicosRepositor">Repositor</label>
+                                <select id="servicosRepositor">
+                                    <option value="">Todos</option>
+                                    ${repositorOptions}
+                                </select>
+                            </div>
+                            <div class="filter-group">
                                 <label for="servicosDataInicio">Data Início</label>
                                 <input type="date" id="servicosDataInicio">
                             </div>
@@ -2665,8 +2691,18 @@ export const pages = {
                     <!-- Tab Content: Roteiro -->
                     <div class="performance-tab-content" id="tab-roteiro">
                         <h4 style="margin-bottom: 16px; color: #374151; font-weight: 600;">Análise de Roteiro</h4>
+                        <p style="color: #6b7280; font-size: 0.9em; margin-bottom: 16px;">
+                            Esta análise identifica clientes visitados <strong>fora do dia previsto no roteiro</strong>.
+                        </p>
 
                         <div class="filter-bar" style="margin-bottom: 20px;">
+                            <div class="filter-group">
+                                <label for="roteiroRepositor">Repositor</label>
+                                <select id="roteiroRepositor">
+                                    <option value="">Todos</option>
+                                    ${repositorOptions}
+                                </select>
+                            </div>
                             <div class="filter-group">
                                 <label for="roteiroDataInicio">Data Início</label>
                                 <input type="date" id="roteiroDataInicio">
