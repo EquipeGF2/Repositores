@@ -1425,9 +1425,17 @@ tbody td {
     gap: 12px;
 }
 
-.campanha-lightbox img {
-    max-width: 90vw;
+.campanha-image-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0b0f19;
+}
+
+.campanha-image-wrapper img {
     max-height: 80vh;
+    width: 100%;
     object-fit: contain;
     border-radius: 10px;
 }
@@ -1444,6 +1452,57 @@ tbody td {
     height: 32px;
     font-size: 18px;
     cursor: pointer;
+}
+
+.foto-overlay {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.65));
+    color: #f8fafc;
+    padding: 8px 10px;
+    border-radius: 10px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 12px;
+    backdrop-filter: blur(2px);
+}
+
+.foto-overlay .overlay-text {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    line-height: 1.3;
+}
+
+.foto-overlay .overlay-text.expandido {
+    -webkit-line-clamp: unset;
+}
+
+.foto-overlay.compacto {
+    padding: 6px 8px;
+}
+
+.foto-overlay .overlay-toggle {
+    background: rgba(255,255,255,0.15);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.foto-overlay .overlay-toggle:hover {
+    background: rgba(255,255,255,0.25);
+}
+
+.foto-overlay.expandido {
+    background: linear-gradient(180deg, rgba(0,0,0,0.55), rgba(0,0,0,0.85));
 }
 
 .captura-actions-right {
