@@ -5880,7 +5880,18 @@ class App {
 
         // Preencher modal com dados existentes (se houver)
         document.getElementById('atv_qtd_frentes').value = sessaoAberta.qtd_frentes || '';
-        document.getElementById('atv_merchandising').checked = Boolean(sessaoAberta.usou_merchandising);
+
+        // Merchandising - radio buttons
+        const usouMerchandising = Boolean(sessaoAberta.usou_merchandising);
+        const mercSim = document.getElementById('atv_merchandising_sim');
+        const mercNao = document.getElementById('atv_merchandising_nao');
+        if (sessaoAberta.usou_merchandising === 1 || sessaoAberta.usou_merchandising === true) {
+            if (mercSim) mercSim.checked = true;
+        } else if (sessaoAberta.usou_merchandising === 0 || sessaoAberta.usou_merchandising === false) {
+            if (mercNao) mercNao.checked = true;
+        }
+        // Se não tem valor ainda, deixa ambos desmarcados para forçar seleção
+
         document.getElementById('atv_abastecimento').checked = Boolean(sessaoAberta.serv_abastecimento);
         document.getElementById('atv_espaco_loja').checked = Boolean(sessaoAberta.serv_espaco_loja);
         document.getElementById('atv_ruptura_loja').checked = Boolean(sessaoAberta.serv_ruptura_loja);
@@ -5929,7 +5940,15 @@ class App {
             }
 
             const qtdFrentes = parseInt(document.getElementById('atv_qtd_frentes').value);
-            const usouMerchandising = document.getElementById('atv_merchandising').checked;
+
+            // Ler valor do merchandising (radio button)
+            const merchandisingRadio = document.querySelector('input[name="atv_merchandising"]:checked');
+            if (!merchandisingRadio) {
+                this.showNotification('Selecione se usou merchandising (Sim ou Não)', 'warning');
+                return;
+            }
+            const usouMerchandising = parseInt(merchandisingRadio.value) === 1;
+
             const servAbastecimento = document.getElementById('atv_abastecimento').checked;
             const servEspacoLoja = document.getElementById('atv_espaco_loja').checked;
             const servRupturaLoja = document.getElementById('atv_ruptura_loja').checked;
@@ -6012,8 +6031,8 @@ class App {
                 return;
             }
 
-            // Montar URL
-            const url = `${this.registroRotaState.backendUrl}/api/registro-rota/visitas?data_inicio=${dataInicio}&data_fim=${dataFim}&rep_id=${repId}`;
+            // Usar rota de sessões para agrupar checkin/checkout
+            const url = `${this.registroRotaState.backendUrl}/api/registro-rota/sessoes?data_inicio=${dataInicio}&data_fim=${dataFim}&rep_id=${repId}`;
 
             const response = await fetch(url);
 
@@ -6022,7 +6041,10 @@ class App {
             }
 
             const result = await response.json();
-            const visitas = result.visitas || [];
+            const sessoes = result.sessoes || [];
+
+            // Filtrar apenas sessões com checkin (não mostrar campanhas isoladas)
+            const sessoesComCheckin = sessoes.filter(s => s.checkin_at);
 
             // Renderizar resultados
             const container = document.getElementById('visitasContainer');
@@ -6031,93 +6053,88 @@ class App {
                 return;
             }
 
-            if (visitas.length === 0) {
+            if (sessoesComCheckin.length === 0) {
                 container.innerHTML = '<p style="text-align:center;color:#999;margin-top:20px;">Nenhuma visita encontrada</p>';
                 return;
             }
 
             container.innerHTML = '';
-            const sessoes = new Map();
 
-            visitas.forEach(visita => {
+            sessoesComCheckin.forEach(sessao => {
                 const item = document.createElement('div');
-                const foraDia = Number(visita.fora_do_dia) === 1;
+
+                // Verificar se está fora do dia previsto
+                const foraDia = Boolean(sessao.fora_do_dia);
                 item.className = `visit-item${foraDia ? ' fora-dia' : ''}`;
 
-                const dataBruta = visita.data_hora || visita.created_at;
-                const dataBase = dataBruta ? (isNaN(Number(dataBruta)) ? new Date(dataBruta) : new Date(Number(dataBruta))) : null;
-                const dataFormatada = dataBase ? dataBase.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '-';
-                const tipo = (visita.rv_tipo || visita.tipo || 'campanha').toUpperCase();
-                const chaveSessao = visita.rv_sessao_id || `${visita.rep_id}-${visita.cliente_id}`;
-
-                if (visita.rv_tipo === 'checkin' && dataBase) {
-                    sessoes.set(chaveSessao, dataBase);
+                // Calcular tempo de atendimento
+                let tempoAtendimento = null;
+                if (sessao.checkin_at && sessao.checkout_at) {
+                    const checkinTime = new Date(sessao.checkin_at).getTime();
+                    const checkoutTime = new Date(sessao.checkout_at).getTime();
+                    tempoAtendimento = Math.max(0, Math.round((checkoutTime - checkinTime) / 60000));
                 }
 
-                let tempoTotal = null;
-                if (visita.rv_tipo === 'checkout' && dataBase && sessoes.has(chaveSessao)) {
-                    const inicio = sessoes.get(chaveSessao);
-                    tempoTotal = Math.max(0, Math.round((dataBase.getTime() - inicio.getTime()) / 60000));
-                }
+                const tempoTexto = tempoAtendimento != null ? `⏱️ ${tempoAtendimento} min` : '';
 
-                const tempoTexto = tempoTotal != null
-                    ? `<span style="margin-left:6px;">⏱️ ${tempoTotal} min</span>`
-                    : visita.tempo_minutos != null
-                        ? `<span style="margin-left:6px;">⏱️ ${visita.tempo_minutos} min</span>`
-                        : '';
+                // Formatar datas
+                const checkinFormatado = sessao.checkin_at ? new Date(sessao.checkin_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '-';
+                const checkoutFormatado = sessao.checkout_at ? new Date(sessao.checkout_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'Não finalizado';
 
-                const enderecoCliente = visita.rv_endereco_cliente || visita.endereco_cliente || 'Não informado';
-                const enderecoRegistro = visita.endereco_resolvido || '';
+                // Status badge
+                const statusBadge = sessao.checkout_at
+                    ? '<span style="background: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 6px; font-size: 0.85em; font-weight: 600;">FINALIZADO</span>'
+                    : '<span style="background: #fef3c7; color: #92400e; padding: 4px 8px; border-radius: 6px; font-size: 0.85em; font-weight: 600;">EM ATENDIMENTO</span>';
 
+                // Alerta de dia previsto
                 const alertaDia = foraDia
-                    ? `<div class="fora-dia-badge">Realizado fora do dia previsto<br>Dia previsto: ${visita.dia_previsto_label || '-'} | Realizado: ${visita.dia_real_label || '-'}</div>`
+                    ? `<div class="fora-dia-badge">Realizado fora do dia previsto<br>Dia previsto: ${sessao.dia_previsto_label || '-'} | Realizado: ${sessao.dia_real_label || '-'}</div>`
                     : '';
+
+                // Montar lista de serviços realizados
+                const servicos = [];
+                if (sessao.serv_abastecimento) servicos.push('Abastecimento');
+                if (sessao.serv_espaco_loja) servicos.push('Espaço Loja');
+                if (sessao.serv_ruptura_loja) servicos.push('Ruptura Loja');
+                if (sessao.serv_pontos_extras) servicos.push(`Pontos Extras (${sessao.qtd_pontos_extras || 0})`);
+
+                const servicosTexto = servicos.length > 0
+                    ? `<div style="font-size: 0.9em; color: #2563eb; margin-top: 6px; padding: 8px; background: #eff6ff; border-radius: 6px;">
+                         <strong>🛠️ Serviços:</strong> ${servicos.join(', ')}<br>
+                         <strong>🔢 Frentes:</strong> ${sessao.qtd_frentes || 0} | <strong>📦 Merchandising:</strong> ${sessao.usou_merchandising ? 'Sim' : 'Não'}
+                       </div>`
+                    : '<div style="font-size: 0.9em; color: #6b7280; margin-top: 6px; font-style: italic;">Nenhum serviço registrado</div>';
 
                 item.innerHTML = `
                     <div style="flex: 1;">
-                        <div><strong>${visita.cliente_id}</strong> <span style="font-size:0.85em;color:#ef4444;font-weight:700;">${tipo}</span>${tempoTexto}</div>
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                            <strong style="font-size: 1.1em;">${sessao.cliente_id}</strong>
+                            ${statusBadge}
+                            <span style="color: #6b7280; font-size: 0.9em;">${tempoTexto}</span>
+                        </div>
                         ${alertaDia}
-                        <div style="font-size: 0.9em; color: #666; margin-top: 4px;">
-                            📅 ${dataFormatada}
+                        <div style="font-size: 0.9em; color: #374151; margin-top: 6px; background: #f9fafb; padding: 8px; border-radius: 6px;">
+                            <div><strong>Check-in:</strong> ${checkinFormatado}</div>
+                            <div style="margin-top: 4px;"><strong>Checkout:</strong> ${checkoutFormatado}</div>
                         </div>
-                        <div style="font-size: 0.9em; color: #666; margin-top: 4px;">
-                            🏘️ Endereço cliente: ${enderecoCliente}
+                        <div style="font-size: 0.9em; color: #666; margin-top: 6px;">
+                            🏘️ ${sessao.endereco_cliente || 'Endereço não informado'}
                         </div>
-                        ${enderecoRegistro ? `<div style="font-size: 0.9em; color: #4b5563; margin-top: 4px;">📍 Registro: ${enderecoRegistro}</div>` : ''}
-                        <div style="font-size: 0.9em; color: #666; margin-top: 4px;">GPS: ${visita.latitude}, ${visita.longitude}</div>
-                        <div style="font-size: 0.9em; color: #666; margin-top: 4px;">🧑‍🤝‍🧑 Repositor: ${visita.rep_id}</div>
+                        ${servicosTexto}
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 8px;">
-                        <div style="display: flex; gap: 8px;">
-                            ${visita.drive_file_url ? `
-                                <a href="${visita.drive_file_url}" target="_blank" class="btn-small">
-                                    🖼️ Ver Foto
-                                </a>
-                            ` : ''}
-                            <a href="https://www.google.com/maps?q=${visita.latitude},${visita.longitude}" target="_blank" class="btn-small">
-                                🗺️ Ver Mapa
-                            </a>
-                        </div>
                         ${foraDia ? `
-                            <button class="btn-small btn-warning" data-cliente-id="${visita.cliente_id}" data-rep-id="${visita.rep_id}" style="background: #fbbf24; color: #78350f;">
+                            <button class="btn-small btn-warning" onclick="app.verificarRoteiroCliente('${sessao.cliente_id}', ${sessao.rep_id})" style="background: #fbbf24; color: #78350f;">
                                 🔧 Verificar Roteiro
                             </button>
                         ` : ''}
                     </div>
                 `;
 
-                // Adicionar listener para o botão de verificar roteiro
-                if (foraDia) {
-                    const btnVerificar = item.querySelector('.btn-warning');
-                    if (btnVerificar) {
-                        btnVerificar.onclick = () => this.verificarRoteiroCliente(visita.cliente_id, visita.rep_id);
-                    }
-                }
-
                 container.appendChild(item);
             });
 
-            this.showNotification(`${visitas.length} visita(s) encontrada(s)`, 'success');
+            this.showNotification(`${sessoesComCheckin.length} visita(s) encontrada(s)`, 'success');
         } catch (error) {
             console.error('Erro ao consultar visitas:', error);
             this.showNotification('Erro ao consultar: ' + error.message, 'error');
@@ -6628,6 +6645,7 @@ class App {
 
     async filtrarTempoAtendimento() {
         try {
+            const repositor = document.getElementById('tempoRepositor')?.value || '';
             const dataInicio = document.getElementById('tempoDataInicio').value;
             const dataFim = document.getElementById('tempoDataFim').value;
             const filtroTempo = document.getElementById('tempoFiltro').value;
@@ -6640,9 +6658,12 @@ class App {
             this.showNotification('Carregando dados...', 'info');
 
             // Buscar dados de todas as sessões no período
-            const response = await fetch(
-                `${this.registroRotaState.backendUrl}/api/registro-rota/sessoes?data_inicio=${dataInicio}&data_fim=${dataFim}`
-            );
+            let url = `${this.registroRotaState.backendUrl}/api/registro-rota/sessoes?data_inicio=${dataInicio}&data_fim=${dataFim}`;
+            if (repositor) {
+                url += `&rep_id=${repositor}`;
+            }
+
+            const response = await fetch(url);
 
             if (!response.ok) throw new Error('Erro ao buscar dados');
 
@@ -6654,9 +6675,11 @@ class App {
                 if (!s.tempo_minutos) return false;
 
                 const minutos = s.tempo_minutos;
-                if (filtroTempo === 'rapido') return minutos < 10;
-                if (filtroTempo === 'medio') return minutos >= 10 && minutos <= 60;
-                if (filtroTempo === 'longo') return minutos > 60;
+                if (filtroTempo === '0-15') return minutos < 15;
+                if (filtroTempo === '15-30') return minutos >= 15 && minutos < 30;
+                if (filtroTempo === '30-45') return minutos >= 30 && minutos < 45;
+                if (filtroTempo === '45-60') return minutos >= 45 && minutos < 60;
+                if (filtroTempo === '60+') return minutos >= 60;
                 return true;
             });
 
@@ -6684,8 +6707,24 @@ class App {
         const html = sessoes.map(s => {
             const minutos = s.tempo_minutos || 0;
             let badgeClass = 'badge-medio';
-            if (minutos < 10) badgeClass = 'badge-rapido';
-            else if (minutos > 60) badgeClass = 'badge-longo';
+            let faixaTempo = '';
+
+            if (minutos < 15) {
+                badgeClass = 'badge-rapido';
+                faixaTempo = '< 15min';
+            } else if (minutos < 30) {
+                badgeClass = 'badge-medio';
+                faixaTempo = '15-30min';
+            } else if (minutos < 45) {
+                badgeClass = 'badge-medio';
+                faixaTempo = '30-45min';
+            } else if (minutos < 60) {
+                badgeClass = 'badge-medio';
+                faixaTempo = '45-60min';
+            } else {
+                badgeClass = 'badge-longo';
+                faixaTempo = '> 1h';
+            }
 
             return `
                 <div class="performance-card">
@@ -6699,7 +6738,7 @@ class App {
                     </div>
                     <div class="performance-stat">
                         <span class="performance-stat-label">Tempo em Loja</span>
-                        <span class="badge-tempo ${badgeClass}">${minutos} min</span>
+                        <span class="badge-tempo ${badgeClass}">${minutos} min (${faixaTempo})</span>
                     </div>
                     <div class="performance-stat">
                         <span class="performance-stat-label">Repositor</span>
@@ -6719,8 +6758,10 @@ class App {
 
     async filtrarCampanha() {
         try {
+            const repositor = document.getElementById('campanhaRepositor')?.value || '';
             const dataInicio = document.getElementById('campanhaDataInicio').value;
             const dataFim = document.getElementById('campanhaDataFim').value;
+            const agruparPor = document.getElementById('campanhaAgrupar')?.value || 'sessao';
 
             if (!dataInicio || !dataFim) {
                 this.showNotification('Selecione o período', 'warning');
@@ -6729,90 +6770,132 @@ class App {
 
             this.showNotification('Carregando dados...', 'info');
 
-            const response = await fetch(
-                `${this.registroRotaState.backendUrl}/api/registro-rota/sessoes?data_inicio=${dataInicio}&data_fim=${dataFim}`
-            );
+            let url = `${this.registroRotaState.backendUrl}/api/registro-rota/imagens-campanha?data_inicio=${dataInicio}&data_fim=${dataFim}&agrupar_por=${agruparPor}`;
+            if (repositor) {
+                url += `&rep_id=${repositor}`;
+            }
+
+            const response = await fetch(url);
 
             if (!response.ok) throw new Error('Erro ao buscar dados');
 
             const data = await response.json();
-            const sessoes = data.sessoes || [];
-
-            // Agrupar por cliente
-            const porCliente = {};
-            sessoes.forEach(s => {
-                const key = s.cliente_id;
-                if (!porCliente[key]) {
-                    porCliente[key] = {
-                        cliente_id: s.cliente_id,
-                        cliente_nome: s.cliente_nome,
-                        visitas: [],
-                        total_servicos: 0
-                    };
-                }
-                porCliente[key].visitas.push(s);
-
-                // Contar serviços realizados
-                let servicos = 0;
-                if (s.serv_abastecimento) servicos++;
-                if (s.serv_espaco_loja) servicos++;
-                if (s.serv_ruptura_loja) servicos++;
-                if (s.serv_pontos_extras) servicos++;
-                porCliente[key].total_servicos += servicos;
-            });
-
-            this.renderizarCampanha(Object.values(porCliente));
+            this.renderizarCampanha(data.grupos || [], agruparPor, data.total_imagens || 0);
         } catch (error) {
             console.error('Erro ao filtrar campanha:', error);
             this.showNotification('Erro ao carregar dados: ' + error.message, 'error');
         }
     }
 
-    renderizarCampanha(clientes) {
+    renderizarCampanha(grupos, agruparPor, totalImagens) {
         const container = document.getElementById('campanhaResultados');
         if (!container) return;
 
-        if (clientes.length === 0) {
+        if (grupos.length === 0) {
             container.innerHTML = `
                 <div class="empty-state">
                     <div class="empty-state-icon">📋</div>
-                    <p>Nenhum registro encontrado no período</p>
+                    <p>Nenhuma imagem de campanha encontrada no período</p>
                 </div>
             `;
             return;
         }
 
-        const html = clientes.map(c => `
-            <div class="performance-card">
-                <div class="performance-stat">
-                    <span class="performance-stat-label">Cliente</span>
-                    <span style="font-weight: 700;">${c.cliente_nome || c.cliente_id}</span>
+        const html = grupos.map((grupo, index) => {
+            const titulo = agruparPor === 'cliente'
+                ? `${grupo.cliente_nome || grupo.cliente_id}`
+                : `Visita - ${grupo.cliente_nome || grupo.cliente_id}`;
+
+            const subtitulo = agruparPor === 'cliente'
+                ? `${grupo.imagens.length} foto(s)`
+                : `${grupo.data_planejada} - ${grupo.imagens.length} foto(s)`;
+
+            return `
+                <div class="performance-card" style="cursor: pointer;" onclick="app.visualizarImagensCampanha(${index})">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-weight: 700; font-size: 16px; margin-bottom: 4px;">${titulo}</div>
+                            <div style="color: #6b7280; font-size: 14px;">${subtitulo}</div>
+                        </div>
+                        <button class="btn btn-secondary" style="padding: 8px 16px;">
+                            📷 Ver Fotos
+                        </button>
+                    </div>
                 </div>
-                <div class="performance-stat">
-                    <span class="performance-stat-label">Total de Visitas</span>
-                    <span class="performance-stat-value">${c.visitas.length}</span>
-                </div>
-                <div class="performance-stat">
-                    <span class="performance-stat-label">Total de Serviços</span>
-                    <span class="performance-stat-value">${c.total_servicos}</span>
-                </div>
-                <div class="performance-stat">
-                    <span class="performance-stat-label">Datas</span>
-                    <span style="font-size: 12px;">${c.visitas.map(v => v.data_planejada).join(', ')}</span>
-                </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
 
         container.innerHTML = `
             <div style="margin-bottom: 16px; padding: 12px; background: #f9fafb; border-radius: 8px;">
-                <strong>${clientes.length}</strong> clientes com registros
+                <strong>${totalImagens}</strong> imagem(ns) em <strong>${grupos.length}</strong> ${agruparPor === 'cliente' ? 'cliente(s)' : 'visita(s)'}
             </div>
             ${html}
         `;
+
+        // Armazenar grupos para visualização
+        this.campanhaGruposAtual = grupos;
+    }
+
+    visualizarImagensCampanha(index) {
+        const grupo = this.campanhaGruposAtual[index];
+        if (!grupo || !grupo.imagens || grupo.imagens.length === 0) {
+            this.showNotification('Nenhuma imagem disponível', 'warning');
+            return;
+        }
+
+        // Criar modal de visualização de imagens
+        const modalHtml = `
+            <div class="modal-overlay" id="modalImagensCampanha" style="display: flex; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10000; justify-content: center; align-items: center; padding: 20px; overflow: auto;">
+                <div style="background: white; border-radius: 12px; max-width: 90vw; max-height: 90vh; overflow: auto; padding: 24px; position: relative;">
+                    <button onclick="app.fecharModalImagensCampanha()" style="position: absolute; top: 16px; right: 16px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 18px; line-height: 1;">×</button>
+
+                    <h3 style="margin: 0 0 16px; font-size: 20px; font-weight: 700;">
+                        ${grupo.cliente_nome || grupo.cliente_id}
+                    </h3>
+                    <p style="margin: 0 0 24px; color: #6b7280;">
+                        ${grupo.data_planejada ? `Data: ${grupo.data_planejada} - ` : ''}${grupo.imagens.length} foto(s)
+                    </p>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px;">
+                        ${grupo.imagens.map((img, imgIndex) => `
+                            <div style="border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; background: #f9fafb;">
+                                <div style="aspect-ratio: 4/3; background: #f3f4f6; display: flex; align-items: center; justify-content: center; position: relative;">
+                                    <img src="https://drive.google.com/thumbnail?id=${img.drive_file_id}&sz=w400"
+                                         alt="Foto ${imgIndex + 1}"
+                                         style="width: 100%; height: 100%; object-fit: cover;"
+                                         onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22%3E%3Crect fill=%22%23ddd%22 width=%22100%22 height=%22100%22/%3E%3Ctext fill=%22%23999%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22%3ESem imagem%3C/text%3E%3C/svg%3E'">
+                                </div>
+                                <div style="padding: 12px;">
+                                    <div style="font-size: 12px; color: #6b7280; margin-bottom: 8px;">
+                                        ${new Date(img.data_hora_registro).toLocaleString('pt-BR')}
+                                    </div>
+                                    <a href="${img.drive_file_url}" target="_blank" class="btn btn-secondary" style="width: 100%; text-align: center; padding: 6px; font-size: 13px;">
+                                        🔗 Abrir no Drive
+                                    </a>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Adicionar modal ao body
+        const modalDiv = document.createElement('div');
+        modalDiv.innerHTML = modalHtml;
+        document.body.appendChild(modalDiv.firstElementChild);
+    }
+
+    fecharModalImagensCampanha() {
+        const modal = document.getElementById('modalImagensCampanha');
+        if (modal) {
+            modal.remove();
+        }
     }
 
     async filtrarRoteiro() {
         try {
+            const repositor = document.getElementById('roteiroRepositor')?.value || '';
             const dataInicio = document.getElementById('roteiroDataInicio').value;
             const dataFim = document.getElementById('roteiroDataFim').value;
 
@@ -6824,9 +6907,10 @@ class App {
             this.showNotification('Carregando dados...', 'info');
 
             // Buscar todas as visitas do período
-            // Usar rep_id do repositor atual se disponível
-            const repId = this.registroRotaState.repositor?.repo_cod || '';
-            const url = `${this.registroRotaState.backendUrl}/api/registro-rota/visitas?data_inicio=${dataInicio}&data_fim=${dataFim}&rep_id=${repId || '28'}`;
+            let url = `${this.registroRotaState.backendUrl}/api/registro-rota/visitas?data_inicio=${dataInicio}&data_fim=${dataFim}`;
+            if (repositor) {
+                url += `&rep_id=${repositor}`;
+            }
 
             const response = await fetch(url);
 
@@ -6950,6 +7034,7 @@ class App {
 
     async filtrarServicos() {
         try {
+            const repositor = document.getElementById('servicosRepositor')?.value || '';
             const dataInicio = document.getElementById('servicosDataInicio').value;
             const dataFim = document.getElementById('servicosDataFim').value;
 
@@ -6960,9 +7045,12 @@ class App {
 
             this.showNotification('Carregando dados...', 'info');
 
-            const response = await fetch(
-                `${this.registroRotaState.backendUrl}/api/registro-rota/sessoes?data_inicio=${dataInicio}&data_fim=${dataFim}`
-            );
+            let url = `${this.registroRotaState.backendUrl}/api/registro-rota/sessoes?data_inicio=${dataInicio}&data_fim=${dataFim}`;
+            if (repositor) {
+                url += `&rep_id=${repositor}`;
+            }
+
+            const response = await fetch(url);
 
             if (!response.ok) throw new Error('Erro ao buscar dados');
 

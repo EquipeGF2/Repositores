@@ -1791,10 +1791,17 @@ export const pages = {
 
                             <!-- Merchandising -->
                             <div class="form-group">
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="atv_merchandising">
-                                    <span>Usou Merchandising</span>
-                                </label>
+                                <label style="margin-bottom: 12px; display: block; font-weight: 600;">Usou Merchandising? *</label>
+                                <div style="display: flex; gap: 16px;">
+                                    <label class="checkbox-label" style="flex: 0;">
+                                        <input type="radio" name="atv_merchandising" id="atv_merchandising_sim" value="1" required>
+                                        <span>Sim</span>
+                                    </label>
+                                    <label class="checkbox-label" style="flex: 0;">
+                                        <input type="radio" name="atv_merchandising" id="atv_merchandising_nao" value="0" required>
+                                        <span>Não</span>
+                                    </label>
+                                </div>
                             </div>
 
                             <!-- Checklist de Serviços -->
@@ -2124,38 +2131,33 @@ export const pages = {
 
         return `
             <div class="card">
-                <div class="card-header">
-                    <div>
-                        <h3 class="card-title">🔍 Consulta de Visitas</h3>
-                        <p class="text-muted" style="margin: 4px 0 0;">
-                            Visualize o histórico de visitas registradas
-                        </p>
-                    </div>
-                </div>
-
-                <div class="card-body">
-                    <div class="filter-bar" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
-                        <div class="filter-group">
-                            <label for="consultaRepositor">Repositor</label>
-                            <select id="consultaRepositor">
-                                <option value="">Todos</option>
-                                ${repositorOptions}
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label for="consultaDataInicio">Data Início</label>
-                            <input type="date" id="consultaDataInicio" value="${dataInicio}">
-                        </div>
-                        <div class="filter-group">
-                            <label for="consultaDataFim">Data Fim</label>
-                            <input type="date" id="consultaDataFim" value="${hoje}">
-                        </div>
-                        <div class="filter-group" style="display: flex; align-items: flex-end;">
-                            <button class="btn btn-secondary" id="btnConsultarVisitas" style="width: 100%;">🔍 Consultar</button>
+                <div class="card-body" style="padding: 0;">
+                    <!-- Filtros fixos -->
+                    <div style="position: sticky; top: 0; z-index: 100; background: white; padding: 20px; border-bottom: 2px solid #e5e7eb; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                        <div class="filter-bar" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+                            <div class="filter-group">
+                                <label for="consultaRepositor">Repositor</label>
+                                <select id="consultaRepositor">
+                                    <option value="">Selecione...</option>
+                                    ${repositorOptions}
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="consultaDataInicio">Data Início</label>
+                                <input type="date" id="consultaDataInicio" value="${dataInicio}">
+                            </div>
+                            <div class="filter-group">
+                                <label for="consultaDataFim">Data Fim</label>
+                                <input type="date" id="consultaDataFim" value="${hoje}">
+                            </div>
+                            <div class="filter-group" style="display: flex; align-items: flex-end;">
+                                <button class="btn btn-secondary" id="btnConsultarVisitas" style="width: 100%;">🔍 Consultar</button>
+                            </div>
                         </div>
                     </div>
 
-                    <div id="visitasContainer" style="margin-top: 1.5rem;">
+                    <!-- Container de resultados -->
+                    <div id="visitasContainer" style="padding: 20px;">
                         <div class="empty-state">
                             <div class="empty-state-icon">📋</div>
                             <p>Clique em "Consultar" para visualizar as visitas</p>
@@ -2555,6 +2557,11 @@ export const pages = {
     },
 
     'analise-performance': async () => {
+        const repositores = await db.getAllRepositors();
+        const repositorOptions = repositores
+            .map(repo => `<option value="${repo.repo_cod}">${repo.repo_cod} - ${repo.repo_nome}</option>`)
+            .join('');
+
         return `
             <div class="card">
                 <div class="card-header">
@@ -2579,6 +2586,13 @@ export const pages = {
 
                         <div class="filter-bar" style="margin-bottom: 20px;">
                             <div class="filter-group">
+                                <label for="tempoRepositor">Repositor</label>
+                                <select id="tempoRepositor">
+                                    <option value="">Todos</option>
+                                    ${repositorOptions}
+                                </select>
+                            </div>
+                            <div class="filter-group">
                                 <label for="tempoDataInicio">Data Início</label>
                                 <input type="date" id="tempoDataInicio">
                             </div>
@@ -2590,9 +2604,11 @@ export const pages = {
                                 <label for="tempoFiltro">Filtro de Tempo</label>
                                 <select id="tempoFiltro">
                                     <option value="todos">Todos</option>
-                                    <option value="rapido">Rápido (< 10 min)</option>
-                                    <option value="medio">Médio (10-60 min)</option>
-                                    <option value="longo">Longo (> 1h)</option>
+                                    <option value="0-15">Menos de 15 min</option>
+                                    <option value="15-30">15 a 30 min</option>
+                                    <option value="30-45">30 a 45 min</option>
+                                    <option value="45-60">45 a 60 min</option>
+                                    <option value="60+">Mais de 1 hora</option>
                                 </select>
                             </div>
                             <div class="filter-group" style="display: flex; align-items: flex-end;">
@@ -2614,12 +2630,26 @@ export const pages = {
 
                         <div class="filter-bar" style="margin-bottom: 20px;">
                             <div class="filter-group">
+                                <label for="campanhaRepositor">Repositor</label>
+                                <select id="campanhaRepositor">
+                                    <option value="">Todos</option>
+                                    ${repositorOptions}
+                                </select>
+                            </div>
+                            <div class="filter-group">
                                 <label for="campanhaDataInicio">Data Início</label>
                                 <input type="date" id="campanhaDataInicio">
                             </div>
                             <div class="filter-group">
                                 <label for="campanhaDataFim">Data Fim</label>
                                 <input type="date" id="campanhaDataFim">
+                            </div>
+                            <div class="filter-group">
+                                <label for="campanhaAgrupar">Agrupar por</label>
+                                <select id="campanhaAgrupar">
+                                    <option value="sessao">Visita</option>
+                                    <option value="cliente">Cliente</option>
+                                </select>
                             </div>
                             <div class="filter-group" style="display: flex; align-items: flex-end;">
                                 <button class="btn btn-secondary" id="btnFiltrarCampanha">🔍 Buscar</button>
@@ -2639,6 +2669,13 @@ export const pages = {
                         <h4 style="margin-bottom: 16px; color: #374151; font-weight: 600;">Análise de Serviços Realizados</h4>
 
                         <div class="filter-bar" style="margin-bottom: 20px;">
+                            <div class="filter-group">
+                                <label for="servicosRepositor">Repositor</label>
+                                <select id="servicosRepositor">
+                                    <option value="">Todos</option>
+                                    ${repositorOptions}
+                                </select>
+                            </div>
                             <div class="filter-group">
                                 <label for="servicosDataInicio">Data Início</label>
                                 <input type="date" id="servicosDataInicio">
@@ -2663,8 +2700,18 @@ export const pages = {
                     <!-- Tab Content: Roteiro -->
                     <div class="performance-tab-content" id="tab-roteiro">
                         <h4 style="margin-bottom: 16px; color: #374151; font-weight: 600;">Análise de Roteiro</h4>
+                        <p style="color: #6b7280; font-size: 0.9em; margin-bottom: 16px;">
+                            Esta análise identifica clientes visitados <strong>fora do dia previsto no roteiro</strong>.
+                        </p>
 
                         <div class="filter-bar" style="margin-bottom: 20px;">
+                            <div class="filter-group">
+                                <label for="roteiroRepositor">Repositor</label>
+                                <select id="roteiroRepositor">
+                                    <option value="">Todos</option>
+                                    ${repositorOptions}
+                                </select>
+                            </div>
                             <div class="filter-group">
                                 <label for="roteiroDataInicio">Data Início</label>
                                 <input type="date" id="roteiroDataInicio">
