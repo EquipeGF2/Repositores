@@ -5043,16 +5043,20 @@ class App {
             const endEsc = linhaEndereco.replace(/'/g, "\\'");
             const cadastroEsc = enderecoCadastro.replace(/'/g, "\\'");
 
-            const btnCheckin = `<button onclick="app.abrirModalCaptura(${repId}, '${cliId}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkin', '${cadastroEsc}')" class="btn-small">✅ Check-in</button>`;
-            const btnAtividades = `<button onclick="app.abrirModalAtividades(${repId}, '${cliId}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-atividades">📋 Atividades</button>`;
-            const btnCheckout = `<button onclick="app.abrirModalCaptura(${repId}, '${cliId}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkout', '${cadastroEsc}')" class="btn-small">🚪 Checkout</button>`;
-            const btnCampanha = `<button onclick="app.abrirModalCaptura(${repId}, '${cliId}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'campanha', '${cadastroEsc}')" class="btn-small">🎯 Campanha</button>`;
+            const podeCheckout = statusBase === 'em_atendimento';
+            const checkinDisponivel = statusBase !== 'em_atendimento';
+            const estadoDesabilitado = !podeCheckout ? 'disabled title="Faça o check-in primeiro" style="opacity:0.6;cursor:not-allowed;"' : '';
 
-            const botoes = statusBase === 'sem_checkin'
-                ? btnCheckin
-                : statusBase === 'em_atendimento'
-                    ? `${btnAtividades}${btnCheckout}${btnCampanha}`
-                    : '';
+            const btnCheckin = checkinDisponivel
+                ? `<button onclick="app.abrirModalCaptura(${repId}, '${cliId}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkin', '${cadastroEsc}')" class="btn-small">✅ Check-in</button>`
+                : '';
+            const btnAtividades = podeCheckout
+                ? `<button onclick="app.abrirModalAtividades(${repId}, '${cliId}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-atividades">📋 Atividades</button>`
+                : '';
+            const btnCheckout = `<button onclick="app.abrirModalCaptura(${repId}, '${cliId}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkout', '${cadastroEsc}')" class="btn-small" ${estadoDesabilitado}>🚪 Checkout</button>`;
+            const btnCampanha = `<button onclick="app.abrirModalCaptura(${repId}, '${cliId}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'campanha', '${cadastroEsc}')" class="btn-small" ${estadoDesabilitado}>🎯 Campanha</button>`;
+
+            const botoes = `${btnCheckin}${btnAtividades}${btnCheckout}${btnCampanha}`;
 
             const item = document.createElement('div');
             item.className = 'route-item';
@@ -5088,7 +5092,7 @@ class App {
 
     async buscarResumoVisitas(repId, dataVisita) {
         try {
-            const url = `${this.registroRotaState.backendUrl}/api/registro-rota/visitas?rep_id=${repId}&data_inicio=${dataVisita}&data_fim=${dataVisita}&modo=resumo&contexto=planejado`;
+            const url = `${this.registroRotaState.backendUrl}/api/registro-rota/visitas?rep_id=${repId}&data_inicio=${dataVisita}&data_fim=${dataVisita}&modo=resumo`;
             const response = await fetch(url);
             if (!response.ok) {
                 console.warn('Erro ao buscar resumo de visitas:', response.status);
@@ -5147,16 +5151,20 @@ class App {
         const endEsc = (card.dataset.enderecoLinha || '').replace(/'/g, "\\'");
         const cadastroEsc = (card.dataset.enderecoCadastro || '').replace(/'/g, "\\'");
 
-        const btnCheckin = `<button onclick="app.abrirModalCaptura(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkin', '${cadastroEsc}')" class="btn-small">✅ Check-in</button>`;
-        const btnAtividades = `<button onclick="app.abrirModalAtividades(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-atividades">📋 Atividades</button>`;
-        const btnCheckout = `<button onclick="app.abrirModalCaptura(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkout', '${cadastroEsc}')" class="btn-small">🚪 Checkout</button>`;
-        const btnCampanha = `<button onclick="app.abrirModalCaptura(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'campanha', '${cadastroEsc}')" class="btn-small">🎯 Campanha</button>`;
+        const podeCheckout = statusBase === 'em_atendimento';
+        const checkinDisponivel = statusBase !== 'em_atendimento';
+        const estadoDesabilitado = !podeCheckout ? 'disabled title="Faça o check-in primeiro" style="opacity:0.6;cursor:not-allowed;"' : '';
 
-        const botoes = statusBase === 'sem_checkin'
-            ? btnCheckin
-            : statusBase === 'em_atendimento'
-                ? `${btnAtividades}${btnCheckout}${btnCampanha}`
-                : '';
+        const btnCheckin = checkinDisponivel
+            ? `<button onclick="app.abrirModalCaptura(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkin', '${cadastroEsc}')" class="btn-small">✅ Check-in</button>`
+            : '';
+        const btnAtividades = podeCheckout
+            ? `<button onclick="app.abrirModalAtividades(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-atividades">📋 Atividades</button>`
+            : '';
+        const btnCheckout = `<button onclick="app.abrirModalCaptura(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkout', '${cadastroEsc}')" class="btn-small" ${estadoDesabilitado}>🚪 Checkout</button>`;
+        const btnCampanha = `<button onclick="app.abrirModalCaptura(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'campanha', '${cadastroEsc}')" class="btn-small" ${estadoDesabilitado}>🎯 Campanha</button>`;
+
+        const botoes = `${btnCheckin}${btnAtividades}${btnCheckout}${btnCampanha}`;
 
         const actions = card.querySelector('.route-item-actions');
         if (actions) {
@@ -6958,7 +6966,7 @@ class App {
             this.showNotification('Carregando dados...', 'info');
 
             // Buscar todas as visitas do período
-            let url = `${this.registroRotaState.backendUrl}/api/registro-rota/visitas?data_inicio=${dataInicio}&data_fim=${dataFim}`;
+            let url = `${this.registroRotaState.backendUrl}/api/registro-rota/visitas?data_inicio=${dataInicio}&data_fim=${dataFim}&tipo=checkout`;
             if (repositor) {
                 url += `&rep_id=${repositor}`;
             }
@@ -6968,12 +6976,12 @@ class App {
             if (!response.ok) throw new Error('Erro ao buscar dados');
 
             const data = await response.json();
-            const visitas = data.visitas || [];
+            const todasVisitas = data.visitas || [];
+            const visitasCheckout = todasVisitas.filter(v => (v.rv_tipo || v.tipo || '').toLowerCase() === 'checkout');
 
-            // Filtrar visitas fora do dia previsto
-            const visitasForaDoDia = visitas.filter(v => Number(v.fora_do_dia) === 1);
+            const visitasComPrevisto = visitasCheckout.filter(v => (v.dia_previsto_label || v.dia_previsto_codigo) && v.dia_previsto_label !== 'N/D');
+            const visitasForaDoDia = visitasComPrevisto.filter(v => Number(v.fora_do_dia) === 1);
 
-            // Agrupar por cliente
             const visitasPorCliente = new Map();
             visitasForaDoDia.forEach(v => {
                 const clienteId = String(v.cliente_id || '').trim();
@@ -6983,14 +6991,21 @@ class App {
                 visitasPorCliente.get(clienteId).push(v);
             });
 
+            const totalCheckouts = visitasCheckout.length;
+            const foraDoPrevisto = visitasForaDoDia.length;
+            const noDiaPrevisto = Math.max(0, totalCheckouts - foraDoPrevisto);
+            const percFora = totalCheckouts ? ((foraDoPrevisto / totalCheckouts) * 100).toFixed(1) : '0';
+
             this.renderizarRoteiro({
-                totalVisitas: visitas.length,
-                visitasForaDoDia: visitasForaDoDia.length,
+                totalVisitas: totalCheckouts,
+                visitasForaDoDia: foraDoPrevisto,
                 clientesForaDoDia: visitasPorCliente.size,
-                visitasPorCliente
+                visitasPorCliente,
+                percentualFora: percFora,
+                noDiaPrevisto
             });
 
-            this.showNotification(`${visitasForaDoDia.length} visita(s) fora do dia previsto encontrada(s)`, 'success');
+            this.showNotification(`${totalCheckouts} checkout(s) encontrados. ${foraDoPrevisto} fora do previsto.`, 'success');
         } catch (error) {
             console.error('Erro ao filtrar roteiro:', error);
             this.showNotification('Erro ao carregar dados: ' + error.message, 'error');
@@ -7001,84 +7016,87 @@ class App {
         const container = document.getElementById('roteiroResultados');
         if (!container) return;
 
-        if (dados.visitasForaDoDia === 0) {
-            container.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-state-icon">✅</div>
-                    <p>Todas as visitas foram realizadas no dia previsto!</p>
-                    <p style="color: #6b7280; font-size: 14px; margin-top: 8px;">Total de visitas: ${dados.totalVisitas}</p>
-                </div>
-            `;
-            return;
-        }
-
         // Cards de estatísticas
         const statsHtml = `
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
-                <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 16px;">
-                    <div style="font-size: 32px; font-weight: 700; color: #dc2626;">${dados.visitasForaDoDia}</div>
-                    <div style="font-size: 14px; color: #991b1b; margin-top: 4px;">Visitas Fora do Dia</div>
-                </div>
-                <div style="background: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px; padding: 16px;">
-                    <div style="font-size: 32px; font-weight: 700; color: #ea580c;">${dados.clientesForaDoDia}</div>
-                    <div style="font-size: 14px; color: #9a3412; margin-top: 4px;">Clientes Afetados</div>
-                </div>
                 <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px;">
                     <div style="font-size: 32px; font-weight: 700; color: #16a34a;">${dados.totalVisitas}</div>
-                    <div style="font-size: 14px; color: #15803d; margin-top: 4px;">Total de Visitas</div>
+                    <div style="font-size: 14px; color: #15803d; margin-top: 4px;">Checkouts realizados</div>
+                </div>
+                <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 16px;">
+                    <div style="font-size: 32px; font-weight: 700; color: #dc2626;">${dados.visitasForaDoDia}</div>
+                    <div style="font-size: 14px; color: #991b1b; margin-top: 4px;">Fora do dia previsto</div>
+                </div>
+                <div style="background: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px; padding: 16px;">
+                    <div style="font-size: 32px; font-weight: 700; color: #ea580c;">${dados.percentualFora || '0' }%</div>
+                    <div style="font-size: 14px; color: #9a3412; margin-top: 4px;">% Fora do previsto</div>
+                </div>
+                <div style="background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 12px; padding: 16px;">
+                    <div style="font-size: 32px; font-weight: 700; color: #0284c7;">${dados.noDiaPrevisto ?? 0}</div>
+                    <div style="font-size: 14px; color: #0369a1; margin-top: 4px;">No dia previsto</div>
                 </div>
             </div>
         `;
 
         // Lista de clientes com visitas fora do dia
         let clientesHtml = '<h4 style="margin: 24px 0 16px; color: #374151; font-weight: 600;">Detalhamento por Cliente</h4>';
-        clientesHtml += '<div style="display: flex; flex-direction: column; gap: 12px;">';
-
-        dados.visitasPorCliente.forEach((visitas, clienteId) => {
-            const primeiraVisita = visitas[0];
-            const cliente_nome = primeiraVisita.rv_cliente_nome || primeiraVisita.cliente_nome || clienteId;
-
+        if (dados.visitasPorCliente.size === 0) {
             clientesHtml += `
-                <div style="background: white; border: 1px solid #fca5a5; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
-                        <div>
-                            <div style="font-weight: 700; font-size: 16px; color: #111827;">${clienteId} - ${cliente_nome}</div>
-                            <div style="color: #6b7280; font-size: 13px; margin-top: 4px;">${visitas.length} visita(s) fora do dia previsto</div>
-                        </div>
-                        <div style="background: #fee2e2; color: #991b1b; padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 600;">
-                            Fora do Roteiro
-                        </div>
-                    </div>
-                    <div style="display: flex; flex-direction: column; gap: 8px;">
-                        ${visitas.map(v => {
-                            const dataFormatada = v.data_hora ? new Date(v.data_hora).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '-';
-                            const tipo = (v.rv_tipo || v.tipo || 'campanha').toUpperCase();
-                            return `
-                                <div style="background: #fef2f2; border-left: 3px solid #ef4444; padding: 12px; border-radius: 6px;">
-                                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                                        <div>
-                                            <div style="font-size: 13px; color: #374151;">
-                                                <strong>${tipo}</strong> - ${dataFormatada}
-                                            </div>
-                                            <div style="font-size: 12px; color: #991b1b; margin-top: 4px;">
-                                                📅 Previsto: <strong>${v.dia_previsto_label || '-'}</strong> | Realizado: <strong>${v.dia_real_label || '-'}</strong>
-                                            </div>
-                                        </div>
-                                        ${v.drive_file_url ? `
-                                            <a href="${v.drive_file_url}" target="_blank" style="background: #dc2626; color: white; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 12px; white-space: nowrap;">
-                                                🖼️ Ver Foto
-                                            </a>
-                                        ` : ''}
-                                    </div>
-                                </div>
-                            `;
-                        }).join('')}
-                    </div>
+                <div class="empty-state">
+                    <div class="empty-state-icon">📅</div>
+                    <p>Nenhum checkout fora do previsto no período.</p>
                 </div>
             `;
-        });
+        } else {
+            clientesHtml += '<div style="display: flex; flex-direction: column; gap: 12px;">';
 
-        clientesHtml += '</div>';
+            dados.visitasPorCliente.forEach((visitas, clienteId) => {
+                const primeiraVisita = visitas[0];
+                const cliente_nome = primeiraVisita.rv_cliente_nome || primeiraVisita.cliente_nome || clienteId;
+
+                clientesHtml += `
+                    <div style="background: white; border: 1px solid #fca5a5; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                            <div>
+                                <div style="font-weight: 700; font-size: 16px; color: #111827;">${clienteId} - ${cliente_nome}</div>
+                                <div style="color: #6b7280; font-size: 13px; margin-top: 4px;">${visitas.length} checkout(s) fora do dia previsto</div>
+                            </div>
+                            <div style="background: #fee2e2; color: #991b1b; padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 600;">
+                                Fora do Roteiro
+                            </div>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                            ${visitas.map(v => {
+                                const referenciaData = v.dia_real_data || v.checkout_at || v.data_hora;
+                                const dataFormatada = referenciaData ? new Date(referenciaData).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '-';
+                                const tipo = (v.rv_tipo || v.tipo || 'checkout').toUpperCase();
+                                return `
+                                    <div style="background: #fef2f2; border-left: 3px solid #ef4444; padding: 12px; border-radius: 6px;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <div>
+                                                <div style="font-size: 13px; color: #374151;">
+                                                    <strong>${tipo}</strong> - ${dataFormatada}
+                                                </div>
+                                                <div style="font-size: 12px; color: #991b1b; margin-top: 4px;">
+                                                    📅 Previsto: <strong>${v.dia_previsto_label || '-'}</strong> | Realizado: <strong>${v.dia_real_label || '-'}</strong>
+                                                </div>
+                                            </div>
+                                            ${v.drive_file_url ? `
+                                                <a href="${v.drive_file_url}" target="_blank" style="background: #dc2626; color: white; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 12px; white-space: nowrap;">
+                                                    🖼️ Ver Foto
+                                                </a>
+                                            ` : ''}
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            });
+
+            clientesHtml += '</div>';
+        }
 
         container.innerHTML = statsHtml + clientesHtml;
     }

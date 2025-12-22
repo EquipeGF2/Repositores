@@ -393,11 +393,19 @@ class TursoService {
         ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) ASC
         LIMIT 1
       ))`;
+    const checkoutDataExpr = `COALESCE(s.checkout_at, (
+        SELECT COALESCE(rv_data_hora_registro, data_hora)
+        FROM cc_registro_visita rv
+        WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id AND rv.rv_tipo = 'checkout'
+        ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) DESC
+        LIMIT 1
+      ))`;
+    const dataAtendimentoExpr = `COALESCE(${checkoutDataExpr}, ${checkinDataExpr})`;
     const filtroData = usarDataPlanejada
-      ? 'date(COALESCE(s.data_planejada, date(' + checkinDataExpr + '))) BETWEEN date(?) AND date(?)'
-      : `date(${checkinDataExpr}) BETWEEN date(?) AND date(?)`;
+      ? 'date(COALESCE(s.data_planejada, date(' + dataAtendimentoExpr + '))) BETWEEN date(?) AND date(?)'
+      : `date(${dataAtendimentoExpr}) BETWEEN date(?) AND date(?)`;
     const sql = `
-      SELECT s.*, (${checkinDataExpr}) AS checkin_data_ref, (
+      SELECT s.*, (${checkinDataExpr}) AS checkin_data_ref, (${checkoutDataExpr}) AS checkout_data_hora, (
         SELECT rv_endereco_registro
         FROM cc_registro_visita v
         WHERE COALESCE(v.rv_sessao_id, v.sessao_id) = s.sessao_id
@@ -407,7 +415,7 @@ class TursoService {
       FROM cc_visita_sessao s
       WHERE s.rep_id = ?
         AND ${filtroData}
-      ORDER BY (${checkinDataExpr}) ASC, COALESCE(s.checkin_at, s.criado_em) ASC
+      ORDER BY (${dataAtendimentoExpr}) ASC, COALESCE(s.checkin_at, s.criado_em) ASC
     `;
 
     const result = await this.execute(sql, [repId, dataInicio, dataFim]);
@@ -421,16 +429,17 @@ class TursoService {
         statusFinal = 'finalizado';
       }
 
-      return {
-        cliente_id: normalizeClienteId(row.cliente_id),
-        checkin_data_hora: row.checkin_data_ref || row.checkin_at,
-        checkout_data_hora: row.checkout_at,
-        status: statusFinal,
-        tempo_minutos: row.tempo_minutos,
-        endereco_cliente: row.endereco_cliente,
-        ultimo_endereco_registro: row.ultimo_endereco_registro,
-        sessao_id: row.sessao_id
-      };
+        return {
+          cliente_id: normalizeClienteId(row.cliente_id),
+          checkin_data_hora: row.checkin_data_ref || row.checkin_at,
+          checkout_data_hora: row.checkout_data_hora || row.checkout_at,
+          checkout_at: row.checkout_at,
+          status: statusFinal,
+          tempo_minutos: row.tempo_minutos,
+          endereco_cliente: row.endereco_cliente,
+          ultimo_endereco_registro: row.ultimo_endereco_registro,
+          sessao_id: row.sessao_id
+        };
     });
   }
 
@@ -484,6 +493,37 @@ class TursoService {
     sql += ' AND co.id IS NULL ORDER BY c.data_hora DESC LIMIT 1';
 
     const result = await this.execute(sql, args);
+    return result.rows[0] || null;
+  }
+
+  async obterSessaoPorDataReal(repId, clienteId, dataIso) {
+    const sql = `
+      SELECT *
+      FROM cc_visita_sessao
+      WHERE rep_id = ?
+        AND cliente_id = ?
+        AND date(checkin_at) = date(?)
+      ORDER BY checkin_at DESC
+      LIMIT 1
+    `;
+
+    const result = await this.execute(sql, [repId, normalizeClienteId(clienteId), dataIso]);
+    return result.rows[0] || null;
+  }
+
+  async obterSessaoEmAndamento(repId, clienteId) {
+    const sql = `
+      SELECT *
+      FROM cc_visita_sessao
+      WHERE rep_id = ?
+        AND cliente_id = ?
+        AND checkin_at IS NOT NULL
+        AND checkout_at IS NULL
+      ORDER BY checkin_at DESC
+      LIMIT 1
+    `;
+
+    const result = await this.execute(sql, [repId, normalizeClienteId(clienteId)]);
     return result.rows[0] || null;
   }
 

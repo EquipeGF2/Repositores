@@ -258,17 +258,27 @@ router.post('/visitas', upload.any(), async (req, res) => {
     const clienteIdNorm = normalizeClienteId(cliente_id);
     const dataPlanejadaValida = validarDataPlanejada(data_planejada);
     const dataReferencia = dataPlanejadaValida || dataLocalIso(dataHoraRegistro);
+    const dataOperacional = dataLocalIso(dataHoraRegistro);
     const roteiroId = req.body.roteiro_id || req.body.rv_roteiro_id || null;
     const diaPrevistoCodigo = dataPlanejadaValida
       ? DIAS_SEMANA_CODIGO[new Date(`${dataPlanejadaValida}T12:00:00-03:00`).getDay()] || null
       : null;
-    const { inicioIso, fimIso } = buildUtcRangeFromLocalDates(dataReferencia, dataReferencia);
+    const { inicioIso: inicioOperacaoIso, fimIso: fimOperacaoIso } = buildUtcRangeFromLocalDates(
+      dataOperacional,
+      dataOperacional
+    );
 
     const sessaoAberta = await tursoService.buscarSessaoAbertaPorRep(repIdNumber, {
-      dataPlanejada: dataPlanejadaValida,
-      inicioIso,
-      fimIso
+      dataPlanejada: null,
+      inicioIso: inicioOperacaoIso,
+      fimIso: fimOperacaoIso
     });
+    const sessaoEmAndamentoCliente = await tursoService.obterSessaoEmAndamento(repIdNumber, clienteIdNorm);
+    const sessaoDiaOperacional = await tursoService.obterSessaoPorDataReal(
+      repIdNumber,
+      clienteIdNorm,
+      dataOperacional
+    );
 
     const repositor = await tursoService.obterRepositor(repIdNumber);
     if (!repositor) {
@@ -287,7 +297,14 @@ router.post('/visitas', upload.any(), async (req, res) => {
       : null;
 
     if (rvTipo === 'checkin') {
-      if (sessaoExistente?.checkin_at) {
+      if (sessaoEmAndamentoCliente) {
+        return res.status(409).json({
+          ok: false,
+          code: 'CHECKIN_EXISTENTE',
+          message: 'Já existe um atendimento em andamento para este cliente. Finalize o checkout primeiro.'
+        });
+      }
+      if (sessaoDiaOperacional?.checkin_at) {
         return res.status(409).json({ ok: false, code: 'CHECKIN_EXISTENTE', message: 'Já existe check-in para este cliente no dia.' });
       }
       if (sessaoAberta && normalizeClienteId(sessaoAberta.cliente_id) !== clienteIdNorm) {
@@ -297,8 +314,9 @@ router.post('/visitas', upload.any(), async (req, res) => {
           message: `Há um atendimento em aberto para o cliente ${sessaoAberta.cliente_id}. Finalize o checkout antes de iniciar outro check-in.`
         });
       }
-      sessaoId = sessaoExistente?.sessao_id || crypto.randomUUID();
-      if (!sessaoExistente) {
+      const sessaoBase = sessaoExistente && !sessaoExistente.checkin_at ? sessaoExistente : null;
+      sessaoId = sessaoBase?.sessao_id || crypto.randomUUID();
+      if (!sessaoBase) {
         await tursoService.criarSessaoVisita({
           sessaoId,
           repId: repIdNumber,
@@ -313,18 +331,19 @@ router.post('/visitas', upload.any(), async (req, res) => {
         });
       } else {
         await tursoService.execute(
-          'UPDATE cc_visita_sessao SET checkin_at = ?, status = \"ABERTA\", endereco_cliente = ?, endereco_checkin = ?, dia_previsto = ?, roteiro_id = ? WHERE sessao_id = ?',
+          'UPDATE cc_visita_sessao SET checkin_at = ?, status = "ABERTA", endereco_cliente = ?, endereco_checkin = ?, dia_previsto = ?, roteiro_id = ? WHERE sessao_id = ?',
           [dataHoraRegistro, enderecoCliente, enderecoSnapshot, diaPrevistoCodigo, roteiroId, sessaoId]
         );
       }
     }
 
     if (rvTipo === 'checkout') {
-      if (!sessaoExistente || !sessaoExistente.checkin_at) {
-        return res.status(409).json({ ok: false, code: 'CHECKIN_NAO_ENCONTRADO', message: 'Não há check-in para este cliente no dia.' });
-      }
-      if (sessaoExistente.checkout_at) {
-        return res.status(409).json({ ok: false, code: 'CHECKOUT_EXISTENTE', message: 'Check-out já registrado para este cliente no dia.' });
+      if (!sessaoEmAndamentoCliente) {
+        return res.status(400).json({
+          ok: false,
+          code: 'CHECKIN_NAO_ENCONTRADO',
+          message: 'Não há check-in em aberto para este cliente. Faça o check-in primeiro.'
+        });
       }
       if (sessaoAberta && normalizeClienteId(sessaoAberta.cliente_id) !== clienteIdNorm) {
         return res.status(409).json({
@@ -333,10 +352,11 @@ router.post('/visitas', upload.any(), async (req, res) => {
           message: `Existe um check-in aberto para o cliente ${sessaoAberta.cliente_id}. Realize o checkout nele antes de finalizar outro cliente.`
         });
       }
-      sessaoId = sessaoExistente.sessao_id.toString();
-      tempoTrabalhoMin = Math.round((new Date(dataHoraRegistro).getTime() - new Date(sessaoExistente.checkin_at).getTime()) / 60000);
+      sessaoId = sessaoEmAndamentoCliente.sessao_id.toString();
+      tempoTrabalhoMin = sessaoEmAndamentoCliente.checkin_at
+        ? Math.round((new Date(dataHoraRegistro).getTime() - new Date(sessaoEmAndamentoCliente.checkin_at).getTime()) / 60000)
+        : null;
     }
-
     if (rvTipo === 'campanha') {
       if (!sessaoExistente || !sessaoExistente.checkin_at) {
         return res.status(409).json({ ok: false, code: 'CAMPANHA_SEM_CHECKIN', message: 'Faça o check-in antes de registrar campanha.' });
@@ -567,20 +587,22 @@ router.get('/visitas', async (req, res) => {
 
     const visitasComDia = visitas.map((visita) => {
       const diaPrevistoCodigo = visita.dia_previsto_codigo || visita.rv_dia_previsto || null;
-      const checkinReferencia = visita.checkin_data_hora
-        || visita.checkin_at
+      const referenciaAtendimento = visita.checkout_at
+        || visita.checkout_data_hora
         || visita.rv_data_hora_registro
         || visita.data_hora_registro
+        || visita.checkin_data_hora
+        || visita.checkin_at
         || visita.data_hora
         || null;
-      const diaRealNumero = checkinReferencia ? new Date(checkinReferencia).getDay() : null;
+      const diaRealNumero = referenciaAtendimento ? new Date(referenciaAtendimento).getDay() : null;
       const diaPrevistoLabel = diaPrevistoCodigo
         ? obterDiaSemanaLabel(String(diaPrevistoCodigo).toLowerCase())
         : 'N/D';
       const diaRealLabel = diaRealNumero != null ? obterDiaSemanaLabel(diaRealNumero) : '';
+      const considerarPrevisto = diaPrevistoCodigo && diaPrevistoLabel !== 'N/D';
       const foraDoDia = Boolean(
-        diaPrevistoCodigo
-          && diaPrevistoLabel !== 'N/D'
+        considerarPrevisto
           && diaRealNumero != null
           && obterDiaSemanaLabel(String(diaPrevistoCodigo).toLowerCase()) !== diaRealLabel
       );
@@ -589,7 +611,8 @@ router.get('/visitas', async (req, res) => {
         ...visita,
         fora_do_dia: foraDoDia ? 1 : 0,
         dia_previsto_label: diaPrevistoLabel,
-        dia_real_label: diaRealLabel
+        dia_real_label: diaRealLabel,
+        dia_real_data: referenciaAtendimento
       };
     });
 
