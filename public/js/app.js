@@ -113,6 +113,16 @@ class App {
             'roteiro-repositor': 'mod_repositores'
         };
         this.filtroStatusRepositores = 'ativos';
+        this.performanceState = {
+            tabAtiva: 'tempo',
+            filtros: {
+                repositor: '',
+                dataInicio: null,
+                dataFim: null,
+                tempoFiltro: 'todos',
+                campanhaAgrupar: 'sessao'
+            }
+        };
         this.init();
     }
 
@@ -6274,13 +6284,24 @@ class App {
 
     async inicializarConsultaVisitas() {
         const btnConsultar = document.getElementById('btnConsultarVisitas');
+        const btnLimpar = document.getElementById('btnLimparConsulta');
 
         if (btnConsultar) {
             btnConsultar.onclick = () => this.consultarVisitas();
         }
 
-        // Carregar lista de repositores (já está no HTML)
-        // Datas já estão definidas no HTML
+        if (btnLimpar) {
+            btnLimpar.onclick = () => {
+                const hoje = new Date().toISOString().split('T')[0];
+                const umMesAtras = new Date();
+                umMesAtras.setMonth(umMesAtras.getMonth() - 1);
+
+                document.getElementById('consultaRepositor').value = '';
+                document.getElementById('consultaStatus').value = 'todos';
+                document.getElementById('consultaDataInicio').value = umMesAtras.toISOString().split('T')[0];
+                document.getElementById('consultaDataFim').value = hoje;
+            };
+        }
     }
 
     async consultarVisitas() {
@@ -6288,9 +6309,10 @@ class App {
             const repId = document.getElementById('consultaRepositor')?.value;
             const dataInicio = document.getElementById('consultaDataInicio')?.value;
             const dataFim = document.getElementById('consultaDataFim')?.value;
+            const status = document.getElementById('consultaStatus')?.value || 'todos';
 
-            if (!repId) {
-                this.showNotification('Selecione o repositor', 'warning');
+            if (!repId && status !== 'em_atendimento') {
+                this.showNotification('Selecione o repositor ou altere o status para "Em atendimento"', 'warning');
                 return;
             }
 
@@ -6300,9 +6322,13 @@ class App {
             }
 
             // Usar rota de sessões para agrupar checkin/checkout
-            const url = `${this.registroRotaState.backendUrl}/api/registro-rota/sessoes?data_checkin_inicio=${dataInicio}&data_checkin_fim=${dataFim}&rep_id=${repId}`;
+            const url = new URL(`${this.registroRotaState.backendUrl}/api/registro-rota/sessoes`);
+            url.searchParams.set('data_checkin_inicio', dataInicio);
+            url.searchParams.set('data_checkin_fim', dataFim);
+            if (repId) url.searchParams.set('rep_id', repId);
+            url.searchParams.set('status', status);
 
-            const response = await fetch(url);
+            const response = await fetch(url.toString());
 
             if (!response.ok) {
                 throw new Error('Erro ao consultar visitas');
@@ -7045,30 +7071,35 @@ class App {
                 };
             });
 
-            // Configurar botões de filtro
-            const btnTempo = document.getElementById('btnFiltrarTempo');
-            const btnCampanha = document.getElementById('btnFiltrarCampanha');
-            const btnServicos = document.getElementById('btnFiltrarServicos');
-            const btnRoteiro = document.getElementById('btnFiltrarRoteiro');
-
-            if (btnTempo) btnTempo.onclick = () => this.filtrarTempoAtendimento();
-            if (btnCampanha) btnCampanha.onclick = () => this.filtrarCampanha();
-            if (btnServicos) btnServicos.onclick = () => this.filtrarServicos();
-            if (btnRoteiro) btnRoteiro.onclick = () => this.filtrarRoteiro();
-
             // Definir datas padrão (último mês)
             const hoje = new Date().toISOString().split('T')[0];
             const umMesAtras = new Date();
             umMesAtras.setMonth(umMesAtras.getMonth() - 1);
             const dataInicio = umMesAtras.toISOString().split('T')[0];
 
-            const campos = ['tempo', 'campanha', 'servicos', 'roteiro'];
-            campos.forEach(campo => {
-                const inputInicio = document.getElementById(`${campo}DataInicio`);
-                const inputFim = document.getElementById(`${campo}DataFim`);
-                if (inputInicio) inputInicio.value = dataInicio;
-                if (inputFim) inputFim.value = hoje;
+            this.performanceState.filtros = {
+                ...this.performanceState.filtros,
+                dataInicio,
+                dataFim: hoje,
+                repositor: this.performanceState.filtros.repositor || ''
+            };
+
+            this.sincronizarCamposPerformance();
+
+            const btnAplicar = document.getElementById('btnAplicarPerformance');
+            const btnLimpar = document.getElementById('btnLimparPerformance');
+
+            if (btnAplicar) btnAplicar.onclick = () => this.aplicarFiltrosPerformance();
+            if (btnLimpar) btnLimpar.onclick = () => this.limparFiltrosPerformance();
+
+            ['perfRepositor', 'perfDataInicio', 'perfDataFim', 'perfTempoFiltro', 'perfCampanhaAgrupar'].forEach((id) => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.onchange = () => this.atualizarPerformanceStateFromInputs();
+                }
             });
+
+            this.aplicarFiltrosPerformance('tempo', false);
         } catch (error) {
             console.error('Erro ao inicializar análise de performance:', error);
         }
@@ -7086,21 +7117,85 @@ class App {
             content.classList.remove('active');
         });
         document.getElementById(`tab-${tabName}`)?.classList.add('active');
+
+        this.performanceState.tabAtiva = tabName;
+        this.aplicarFiltrosPerformance(tabName, false);
     }
 
-    async filtrarTempoAtendimento() {
+    sincronizarCamposPerformance() {
+        const filtros = this.performanceState.filtros || {};
+        const map = {
+            perfRepositor: filtros.repositor || '',
+            perfDataInicio: filtros.dataInicio || '',
+            perfDataFim: filtros.dataFim || '',
+            perfTempoFiltro: filtros.tempoFiltro || 'todos',
+            perfCampanhaAgrupar: filtros.campanhaAgrupar || 'sessao'
+        };
+
+        Object.entries(map).forEach(([id, value]) => {
+            const el = document.getElementById(id);
+            if (el) el.value = value;
+        });
+    }
+
+    atualizarPerformanceStateFromInputs() {
+        const repositor = document.getElementById('perfRepositor')?.value || '';
+        const dataInicio = document.getElementById('perfDataInicio')?.value || '';
+        const dataFim = document.getElementById('perfDataFim')?.value || '';
+        const tempoFiltro = document.getElementById('perfTempoFiltro')?.value || 'todos';
+        const campanhaAgrupar = document.getElementById('perfCampanhaAgrupar')?.value || 'sessao';
+
+        this.performanceState.filtros = {
+            repositor,
+            dataInicio,
+            dataFim,
+            tempoFiltro,
+            campanhaAgrupar
+        };
+    }
+
+    limparFiltrosPerformance() {
+        const hoje = new Date().toISOString().split('T')[0];
+        const umMesAtras = new Date();
+        umMesAtras.setMonth(umMesAtras.getMonth() - 1);
+
+        this.performanceState.filtros = {
+            repositor: '',
+            dataInicio: umMesAtras.toISOString().split('T')[0],
+            dataFim: hoje,
+            tempoFiltro: 'todos',
+            campanhaAgrupar: 'sessao'
+        };
+
+        this.sincronizarCamposPerformance();
+        this.aplicarFiltrosPerformance();
+    }
+
+    aplicarFiltrosPerformance(tabName = this.performanceState.tabAtiva, mostrarAviso = true) {
+        this.atualizarPerformanceStateFromInputs();
+        this.performanceState.tabAtiva = tabName;
+
+        if (tabName === 'campanha') {
+            this.filtrarCampanha(mostrarAviso);
+        } else if (tabName === 'servicos') {
+            this.filtrarServicos(mostrarAviso);
+        } else if (tabName === 'roteiro') {
+            this.filtrarRoteiro(mostrarAviso);
+        } else {
+            this.filtrarTempoAtendimento(mostrarAviso);
+        }
+    }
+
+    async filtrarTempoAtendimento(notificar = true) {
         try {
-            const repositor = document.getElementById('tempoRepositor')?.value || '';
-            const dataInicio = document.getElementById('tempoDataInicio').value;
-            const dataFim = document.getElementById('tempoDataFim').value;
-            const filtroTempo = document.getElementById('tempoFiltro').value;
+            const { repositor, dataInicio, dataFim, tempoFiltro } = this.performanceState.filtros;
 
             if (!dataInicio || !dataFim) {
                 this.showNotification('Selecione o período', 'warning');
                 return;
             }
 
-            this.showNotification('Carregando dados...', 'info');
+            if (notificar) this.showNotification('Carregando dados...', 'info');
 
             // Buscar dados de todas as sessões no período
             let url = `${this.registroRotaState.backendUrl}/api/registro-rota/sessoes?data_inicio=${dataInicio}&data_fim=${dataFim}`;
@@ -7120,15 +7215,16 @@ class App {
                 if (!s.tempo_minutos) return false;
 
                 const minutos = s.tempo_minutos;
-                if (filtroTempo === '0-15') return minutos < 15;
-                if (filtroTempo === '15-30') return minutos >= 15 && minutos < 30;
-                if (filtroTempo === '30-45') return minutos >= 30 && minutos < 45;
-                if (filtroTempo === '45-60') return minutos >= 45 && minutos < 60;
-                if (filtroTempo === '60+') return minutos >= 60;
+                if (tempoFiltro === '0-15') return minutos < 15;
+                if (tempoFiltro === '15-30') return minutos >= 15 && minutos < 30;
+                if (tempoFiltro === '30-45') return minutos >= 30 && minutos < 45;
+                if (tempoFiltro === '45-60') return minutos >= 45 && minutos < 60;
+                if (tempoFiltro === '60+') return minutos >= 60;
                 return true;
             });
 
             this.renderizarTempoAtendimento(sessoesFiltradas);
+            if (notificar) this.showNotification(`${sessoesFiltradas.length} visita(s) encontrada(s)`, 'success');
         } catch (error) {
             console.error('Erro ao filtrar tempo de atendimento:', error);
             this.showNotification('Erro ao carregar dados: ' + error.message, 'error');
@@ -7201,19 +7297,17 @@ class App {
         `;
     }
 
-    async filtrarCampanha() {
+    async filtrarCampanha(notificar = true) {
         try {
-            const repositor = document.getElementById('campanhaRepositor')?.value || '';
-            const dataInicio = document.getElementById('campanhaDataInicio').value;
-            const dataFim = document.getElementById('campanhaDataFim').value;
-            const agruparPor = document.getElementById('campanhaAgrupar')?.value || 'sessao';
+            const { repositor, dataInicio, dataFim, campanhaAgrupar } = this.performanceState.filtros;
+            const agruparPor = campanhaAgrupar || 'sessao';
 
             if (!dataInicio || !dataFim) {
                 this.showNotification('Selecione o período', 'warning');
                 return;
             }
 
-            this.showNotification('Carregando dados...', 'info');
+            if (notificar) this.showNotification('Carregando dados...', 'info');
 
             let url = `${this.registroRotaState.backendUrl}/api/registro-rota/imagens-campanha?data_inicio=${dataInicio}&data_fim=${dataFim}&agrupar_por=${agruparPor}`;
             if (repositor) {
@@ -7439,16 +7533,32 @@ class App {
         lightbox.innerHTML = `
             <div class="campanha-lightbox-content">
                 <button class="close-btn" aria-label="Fechar" onclick="app.fecharViewerCampanha()">×</button>
-                <img src="${urlImagem}" alt="Imagem da campanha">
-                <div style="color:#e5e7eb; font-size:14px; display:flex; gap:12px; flex-wrap:wrap;">
-                    <span>📍 ${grupo.cliente_nome || grupo.cliente_id || 'Cliente'}</span>
-                    <span>🖼️ Foto ${posicao}</span>
-                    <span>⏱️ ${dataRegistro}</span>
+                <div class="campanha-image-wrapper">
+                    <img src="${urlImagem}" alt="Imagem da campanha">
+                    <div class="foto-overlay compacto" id="campanhaOverlayInfo">
+                        <div class="overlay-text" id="campanhaOverlayTexto">
+                            <div>📍 ${grupo.cliente_nome || grupo.cliente_id || 'Cliente'}</div>
+                            <div>🖼️ Foto ${posicao} · ⏱️ ${dataRegistro}</div>
+                        </div>
+                        <button class="overlay-toggle" id="campanhaDetalhesToggle">Detalhes</button>
+                    </div>
                 </div>
             </div>
         `;
 
         document.body.appendChild(lightbox);
+
+        const toggle = lightbox.querySelector('#campanhaDetalhesToggle');
+        const overlay = lightbox.querySelector('#campanhaOverlayInfo');
+        const overlayTexto = lightbox.querySelector('#campanhaOverlayTexto');
+
+        if (toggle && overlay && overlayTexto) {
+            toggle.onclick = () => {
+                overlay.classList.toggle('expandido');
+                overlayTexto.classList.toggle('expandido');
+                toggle.textContent = overlay.classList.contains('expandido') ? 'Fechar' : 'Detalhes';
+            };
+        }
 
         this.campanhaViewerKeyHandler = (event) => {
             if (event.key === 'Escape') {
@@ -7467,18 +7577,16 @@ class App {
         }
     }
 
-    async filtrarRoteiro() {
+    async filtrarRoteiro(notificar = true) {
         try {
-            const repositor = document.getElementById('roteiroRepositor')?.value || '';
-            const dataInicio = document.getElementById('roteiroDataInicio').value;
-            const dataFim = document.getElementById('roteiroDataFim').value;
+            const { repositor, dataInicio, dataFim } = this.performanceState.filtros;
 
             if (!dataInicio || !dataFim) {
                 this.showNotification('Selecione o período', 'warning');
                 return;
             }
 
-            this.showNotification('Carregando dados...', 'info');
+            if (notificar) this.showNotification('Carregando dados...', 'info');
 
             // Buscar todas as visitas do período
             let url = `${this.registroRotaState.backendUrl}/api/registro-rota/visitas?data_inicio=${dataInicio}&data_fim=${dataFim}&tipo=checkout`;
@@ -7616,18 +7724,16 @@ class App {
         container.innerHTML = statsHtml + clientesHtml;
     }
 
-    async filtrarServicos() {
+    async filtrarServicos(notificar = true) {
         try {
-            const repositor = document.getElementById('servicosRepositor')?.value || '';
-            const dataInicio = document.getElementById('servicosDataInicio').value;
-            const dataFim = document.getElementById('servicosDataFim').value;
+            const { repositor, dataInicio, dataFim } = this.performanceState.filtros;
 
             if (!dataInicio || !dataFim) {
                 this.showNotification('Selecione o período', 'warning');
                 return;
             }
 
-            this.showNotification('Carregando dados...', 'info');
+            if (notificar) this.showNotification('Carregando dados...', 'info');
 
             let url = `${this.registroRotaState.backendUrl}/api/registro-rota/sessoes?data_inicio=${dataInicio}&data_fim=${dataFim}`;
             if (repositor) {

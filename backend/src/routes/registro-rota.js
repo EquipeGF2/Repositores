@@ -815,16 +815,24 @@ router.post('/disparar-resumo', async (req, res) => {
 // GET /api/registro-rota/sessoes - Lista sessões com filtros
 router.get('/sessoes', async (req, res) => {
   try {
-    const { data_inicio, data_fim, data_checkin_inicio, data_checkin_fim, rep_id, contexto } = req.query;
+    const { data_inicio, data_fim, data_checkin_inicio, data_checkin_fim, rep_id, contexto, status } = req.query;
     const usarDataPlanejada = String(contexto || '').toLowerCase() === 'planejado'
       || String(contexto || '').toLowerCase() === 'roteiro';
     const dataInicioFiltro = usarDataPlanejada ? data_inicio : (data_checkin_inicio || data_inicio);
     const dataFimFiltro = usarDataPlanejada ? data_fim : (data_checkin_fim || data_fim);
+    const statusFiltro = String(status || 'todos').toLowerCase();
 
     if (!dataInicioFiltro || !dataFimFiltro) {
       return res.status(400).json({
         ok: false,
         message: 'data_inicio e data_fim são obrigatórios'
+      });
+    }
+
+    if (!rep_id && statusFiltro !== 'em_atendimento' && statusFiltro !== 'todos') {
+      return res.status(400).json({
+        ok: false,
+        message: 'rep_id é obrigatório para este filtro de status'
       });
     }
 
@@ -843,6 +851,18 @@ router.get('/sessoes', async (req, res) => {
       ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) ASC
       LIMIT 1
     )`;
+    const checkoutDataExpr = `(
+      SELECT COALESCE(rv_data_hora_registro, data_hora)
+      FROM cc_registro_visita rv
+      WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id AND rv.rv_tipo = 'checkout'
+      ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) DESC
+      LIMIT 1
+    )`;
+    const statusExpr = `CASE
+      WHEN ${checkoutDataExpr} IS NOT NULL OR s.checkout_at IS NOT NULL THEN 'finalizado'
+      WHEN ${checkinDataExpr} IS NOT NULL OR s.checkin_at IS NOT NULL THEN 'em_atendimento'
+      ELSE 'sem_checkin'
+    END`;
     const filtroDataExpr = usarDataPlanejada
       ? `date(COALESCE(s.data_planejada, ${checkinDataExpr}))`
       : `date(${checkinDataExpr})`;
@@ -851,6 +871,8 @@ router.get('/sessoes', async (req, res) => {
       SELECT
         s.*,
         ${checkinDataExpr} AS checkin_data_hora,
+        ${checkoutDataExpr} AS checkout_data_hora,
+        ${statusExpr} AS status_calculado,
         COALESCE(s.dia_previsto, (
           SELECT rv_dia_previsto
           FROM cc_registro_visita rv
@@ -889,6 +911,12 @@ router.get('/sessoes', async (req, res) => {
       params.push(parseInt(rep_id));
     }
 
+    if (statusFiltro === 'em_atendimento') {
+      sql += ' AND (s.checkout_at IS NULL AND ' + checkoutDataExpr + ' IS NULL) AND (' + checkinDataExpr + ' IS NOT NULL OR s.checkin_at IS NOT NULL)';
+    } else if (statusFiltro === 'finalizado') {
+      sql += ' AND (s.checkout_at IS NOT NULL OR ' + checkoutDataExpr + ' IS NOT NULL)';
+    }
+
     sql += ` ORDER BY ${checkinDataExpr} DESC, COALESCE(s.checkin_at, s.criado_em) DESC`;
 
     const result = await tursoService.execute(sql, params);
@@ -908,8 +936,11 @@ router.get('/sessoes', async (req, res) => {
           && obterDiaSemanaLabel(String(diaPrevistoCodigo).toLowerCase()) !== diaRealLabel
       );
 
+      const statusCalculado = sessao.status_calculado || (sessao.checkout_at ? 'finalizado' : sessao.checkin_at ? 'em_atendimento' : 'sem_checkin');
+
       return {
         ...sessao,
+        status: statusCalculado,
         fora_do_dia: foraDoDia ? 1 : 0,
         dia_previsto_label: diaPrevistoLabel,
         dia_real_label: diaRealLabel
