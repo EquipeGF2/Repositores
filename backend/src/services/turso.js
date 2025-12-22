@@ -26,6 +26,96 @@ class TursoService {
     }
   }
 
+  async logDocumentosDdl() {
+    try {
+      const ddlResult = await this.getClient().execute({
+        sql: "SELECT sql FROM sqlite_master WHERE type='table' AND name='cc_documentos'",
+        args: []
+      });
+
+      const ddl = ddlResult.rows?.[0]?.sql || 'N/A';
+      console.log(JSON.stringify({
+        code: 'DOCS_DDL_SNAPSHOT',
+        tabela: 'cc_documentos',
+        ddl
+      }));
+
+      return ddl;
+    } catch (error) {
+      console.error('⚠️  Falha ao consultar DDL de cc_documentos:', error.message || error);
+      return '';
+    }
+  }
+
+  async rebuildCcDocumentosIfNeeded(ddlAtual) {
+    const ddl = ddlAtual || (await this.logDocumentosDdl());
+    const checkCorreto = ddl.includes("doc_data_ref GLOB '????-??-??'") && ddl.includes('length(doc_data_ref) = 10');
+
+    if (checkCorreto) {
+      return false;
+    }
+
+    console.log('♻️  Reconstruindo cc_documentos para corrigir constraint de data...');
+    const client = this.getClient();
+
+    const rebuildStatements = [
+      'BEGIN TRANSACTION;',
+      'ALTER TABLE cc_documentos RENAME TO cc_documentos_old;',
+      `CREATE TABLE cc_documentos (
+          doc_id INTEGER PRIMARY KEY AUTOINCREMENT,
+          doc_repositor_id INTEGER NOT NULL,
+          doc_dct_id INTEGER NOT NULL,
+          doc_nome_original TEXT NOT NULL,
+          doc_nome_drive TEXT NOT NULL,
+          doc_ext TEXT NOT NULL,
+          doc_mime TEXT,
+          doc_tamanho INTEGER,
+          doc_observacao TEXT,
+          doc_data_ref TEXT NOT NULL CHECK (doc_data_ref GLOB '????-??-??' AND length(doc_data_ref) = 10),
+          doc_hora_ref TEXT NOT NULL CHECK (doc_hora_ref GLOB '??:??' AND length(doc_hora_ref) = 5),
+          doc_drive_file_id TEXT,
+          doc_drive_folder_id TEXT,
+          doc_status TEXT NOT NULL DEFAULT 'ENVIADO',
+          doc_erro_msg TEXT,
+          doc_criado_em TEXT NOT NULL DEFAULT (datetime('now')),
+          doc_atualizado_em TEXT,
+          FOREIGN KEY (doc_dct_id) REFERENCES cc_documento_tipos(dct_id)
+        );`,
+      `INSERT INTO cc_documentos (
+          doc_id, doc_repositor_id, doc_dct_id, doc_nome_original, doc_nome_drive,
+          doc_ext, doc_mime, doc_tamanho, doc_observacao, doc_data_ref, doc_hora_ref,
+          doc_drive_file_id, doc_drive_folder_id, doc_status, doc_erro_msg,
+          doc_criado_em, doc_atualizado_em
+        )
+        SELECT
+          doc_id, doc_repositor_id, doc_dct_id, doc_nome_original, doc_nome_drive,
+          doc_ext, doc_mime, doc_tamanho, doc_observacao, doc_data_ref, doc_hora_ref,
+          doc_drive_file_id, doc_drive_folder_id, doc_status, doc_erro_msg,
+          doc_criado_em, doc_atualizado_em
+        FROM cc_documentos_old;`,
+      'DROP TABLE cc_documentos_old;',
+      'COMMIT;'
+    ];
+
+    try {
+      for (const sql of rebuildStatements) {
+        await client.execute({ sql, args: [] });
+      }
+
+      console.log('✅ Tabela cc_documentos reconstruída com CHECK atualizado.');
+      await this.logDocumentosDdl();
+      return true;
+    } catch (error) {
+      console.error('❌ Erro ao reconstruir cc_documentos:', error.message || error);
+      try {
+        await client.execute({ sql: 'ROLLBACK;', args: [] });
+      } catch (rollbackError) {
+        console.error('⚠️  Falha ao realizar rollback da reconstrução de cc_documentos:', rollbackError.message || rollbackError);
+      }
+      throw error;
+    }
+  }
+
   getClient() {
     if (!this.client) {
       this.client = getDbClient();
@@ -620,6 +710,12 @@ class TursoService {
       `,
       args: []
     });
+
+    const ddlAtual = await this.logDocumentosDdl();
+    const foiReconstruida = await this.rebuildCcDocumentosIfNeeded(ddlAtual);
+    if (foiReconstruida) {
+      console.log('📌 Reaplicando índices e triggers após reconstrução de cc_documentos...');
+    }
 
     // Índices
     const indices = [

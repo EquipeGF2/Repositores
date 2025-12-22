@@ -10,6 +10,7 @@ import { formatarDataISO, normalizarDataISO, normalizarSupervisor, normalizarTex
 
 const AUTH_STORAGE_KEY = 'GERMANI_AUTH_USER';
 const API_BASE_URL = (typeof window !== 'undefined' && window.API_BASE_URL) || 'https://repositor-backend.onrender.com';
+const MAX_UPLOAD_MB = 10;
 
 function exibirErroGlobal(mensagem, detalhe = '') {
     let banner = document.getElementById('erroGlobalBanner');
@@ -6270,7 +6271,8 @@ class App {
         tipos: [],
         documentosSelecionados: new Set(),
         enviando: false,
-        maxUploadBytes: 10 * 1024 * 1024
+        maxUploadBytes: MAX_UPLOAD_MB * 1024 * 1024,
+        maxUploadMb: MAX_UPLOAD_MB
     };
 
     async inicializarDocumentos() {
@@ -6351,6 +6353,7 @@ class App {
     async uploadDocumento() {
         let btnUpload;
         let inputArquivo;
+        let btnFiltrar;
         let textoOriginal = '';
         try {
             if (this.documentosState.enviando) {
@@ -6364,6 +6367,7 @@ class App {
             const observacao = document.getElementById('uploadObservacao').value;
             btnUpload = document.getElementById('btnUploadDocumento');
             inputArquivo = document.getElementById('uploadArquivo');
+            btnFiltrar = document.getElementById('btnFiltrarDocumentos');
 
             if (!repositorId || !tipoId || arquivos.length === 0) {
                 this.showNotification('Preencha todos os campos obrigatórios', 'warning');
@@ -6373,7 +6377,7 @@ class App {
             const limite = this.documentosState.maxUploadBytes;
             for (let i = 0; i < arquivos.length; i++) {
                 if (arquivos[i].size > limite) {
-                    this.showNotification(`Arquivo "${arquivos[i].name}" excede o limite de 10 MB.`, 'warning');
+                    this.showNotification(`Arquivo "${arquivos[i].name}" excede o limite de ${this.documentosState.maxUploadMb} MB.`, 'warning');
                     return;
                 }
             }
@@ -6382,10 +6386,13 @@ class App {
             textoOriginal = btnUpload ? btnUpload.innerHTML : '';
             if (btnUpload) {
                 btnUpload.disabled = true;
-                btnUpload.innerHTML = '⏳ Carregando / Enviando documento...';
+                btnUpload.innerHTML = `<span class="spinner" style="width:16px;height:16px;border-width:2px;margin-right:8px;"></span> Enviando documento...`;
             }
             if (inputArquivo) {
                 inputArquivo.disabled = true;
+            }
+            if (btnFiltrar) {
+                btnFiltrar.disabled = true;
             }
 
             const formData = new FormData();
@@ -6432,6 +6439,16 @@ class App {
                         'error'
                     );
                 }
+            }
+
+            if (data.resultados && data.resultados.length > 0) {
+                const detalhesSucesso = data.resultados.map(r => `${r.original || r.nome_drive} → ${r.nome_drive || r.original}`).join('; ');
+                this.showNotification(`Sucesso: ${detalhesSucesso}`, 'success');
+            }
+
+            if (data.erros && data.erros.length > 0) {
+                const detalhesErro = data.erros.map(e => `${e.arquivo || 'arquivo'}: ${e.erro}`).join('; ');
+                this.showNotification(`Falhas: ${detalhesErro}`, 'error');
             } else {
                 this.showNotification(
                     `${qtdArquivos} documento(s) enviado(s) com sucesso!`,
@@ -6458,6 +6475,9 @@ class App {
             }
             if (inputArquivo) {
                 inputArquivo.disabled = false;
+            }
+            if (btnFiltrar) {
+                btnFiltrar.disabled = false;
             }
             this.documentosState.enviando = false;
         }

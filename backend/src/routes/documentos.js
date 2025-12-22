@@ -17,6 +17,23 @@ const EXTENSOES_PERMITIDAS = [
   '.xls', '.xlsx', '.txt', '.zip'
 ];
 
+function obterReferenciaAtual(dataBase = new Date()) {
+  const agora = dataBase instanceof Date ? dataBase : new Date(dataBase);
+  const isoString = agora.toISOString();
+  const data_ref = isoString.slice(0, 10);
+  const hora_ref = isoString.slice(11, 16);
+  const { ddmmaa, hhmm } = formatarDataHoraLocal(isoString);
+
+  const dataRefRegex = /^\d{4}-\d{2}-\d{2}$/;
+  const horaRefRegex = /^\d{2}:\d{2}$/;
+
+  if (!dataRefRegex.test(data_ref) || data_ref.length !== 10 || !horaRefRegex.test(hora_ref)) {
+    throw new Error('Falha ao gerar referência de data/hora');
+  }
+
+  return { data_ref, hora_ref, ddmmaa, hhmm };
+}
+
 function sanitizeBigInt(value) {
   if (typeof value === 'bigint') return value.toString();
   if (Array.isArray(value)) return value.map(sanitizeBigInt);
@@ -49,25 +66,13 @@ function formatarDataHoraLocal(iso) {
 }
 
 function validarEPadronizarReferencia(isoReferencia = new Date().toISOString()) {
-  const data = new Date(isoReferencia);
+  const baseDate = isoReferencia instanceof Date ? isoReferencia : new Date(isoReferencia);
 
-  if (Number.isNaN(data.getTime())) {
+  if (Number.isNaN(baseDate.getTime())) {
     throw new Error('Data de referência inválida');
   }
 
-  const { data_ref, hora_ref, ddmmaa, hhmm } = formatarDataHoraLocal(data.toISOString());
-  const dataRefRegex = /^\d{4}-\d{2}-\d{2}$/;
-  const horaRefRegex = /^\d{2}:\d{2}$/;
-
-  if (!dataRefRegex.test(data_ref) || data_ref.length !== 10) {
-    throw new Error('doc_data_ref inválido. Use YYYY-MM-DD');
-  }
-
-  if (!horaRefRegex.test(hora_ref) || hora_ref.length !== 5) {
-    throw new Error('doc_hora_ref inválido. Use HH:MM');
-  }
-
-  return { data_ref, hora_ref, ddmmaa, hhmm };
+  return obterReferenciaAtual(baseDate);
 }
 
 function registrarFalhaValidacao(contexto, detalhe) {
@@ -75,6 +80,15 @@ function registrarFalhaValidacao(contexto, detalhe) {
     code: 'DOC_UPLOAD_VALIDATE_FAIL',
     contexto,
     detalhe
+  }));
+}
+
+function registrarFalhaBanco(contexto, detalhe, payload = {}) {
+  console.error(JSON.stringify({
+    code: 'DOC_UPLOAD_DB_FAIL',
+    contexto,
+    detalhe: detalhe?.message || detalhe,
+    ...payload
   }));
 }
 
@@ -247,24 +261,24 @@ router.post('/upload', upload.single('arquivo'), async (req, res) => {
     const arquivo = req.file;
 
     if (!repositor_id || (!dct_id && !dct_codigo)) {
-      console.log('❌ Erro: repositor_id ou dct_id ausente');
+      registrarFalhaValidacao('upload_unico', 'repositor_id ou dct_id ausente');
       return res.status(400).json({ ok: false, message: 'repositor_id e dct_id (ou dct_codigo) são obrigatórios' });
     }
 
     if (!arquivo) {
-      console.log('❌ Erro: arquivo ausente');
+      registrarFalhaValidacao('upload_unico', 'arquivo ausente');
       return res.status(400).json({ ok: false, message: 'Arquivo é obrigatório' });
     }
 
     const ext = arquivo.originalname.substring(arquivo.originalname.lastIndexOf('.')).toLowerCase();
     if (!EXTENSOES_PERMITIDAS.includes(ext)) {
-      console.log('❌ Erro: extensão não permitida:', ext);
+      registrarFalhaValidacao('upload_unico', `extensão não permitida: ${ext}`);
       return res.status(400).json({ ok: false, message: 'Extensão de arquivo não permitida' });
     }
 
     let referencia;
     try {
-      referencia = validarEPadronizarReferencia();
+      referencia = validarEPadronizarReferencia(new Date());
     } catch (error) {
       registrarFalhaValidacao('upload_unico', error.message);
       return res.status(400).json({ ok: false, message: error.message });
@@ -348,27 +362,37 @@ router.post('/upload', upload.single('arquivo'), async (req, res) => {
 
     // Salvar no banco
     console.log('💾 Salvando no banco de dados...');
-    const insertResult = await tursoService.execute(
-      `INSERT INTO cc_documentos (
-        doc_repositor_id, doc_dct_id, doc_nome_original, doc_nome_drive,
-        doc_ext, doc_mime, doc_tamanho, doc_observacao, doc_data_ref, doc_hora_ref,
-        doc_drive_file_id, doc_drive_folder_id, doc_status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ENVIADO')`,
-      [
-        parseInt(repositor_id),
-        tipo.dct_id,
-        arquivo.originalname,
-        nomeFinal,
-        ext,
-        arquivo.mimetype,
-        arquivo.size,
-        observacao || null,
-        data_ref,
-        hora_ref,
-        uploadResult.fileId,
-        tipoFolderId
-      ]
-    );
+    let insertResult;
+    try {
+      insertResult = await tursoService.execute(
+        `INSERT INTO cc_documentos (
+          doc_repositor_id, doc_dct_id, doc_nome_original, doc_nome_drive,
+          doc_ext, doc_mime, doc_tamanho, doc_observacao, doc_data_ref, doc_hora_ref,
+          doc_drive_file_id, doc_drive_folder_id, doc_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ENVIADO')`,
+        [
+          parseInt(repositor_id),
+          tipo.dct_id,
+          arquivo.originalname,
+          nomeFinal,
+          ext,
+          arquivo.mimetype,
+          arquivo.size,
+          observacao || null,
+          data_ref,
+          hora_ref,
+          uploadResult.fileId,
+          tipoFolderId
+        ]
+      );
+    } catch (dbError) {
+      registrarFalhaBanco('upload_unico', dbError, {
+        doc_nome_original: arquivo.originalname,
+        doc_data_ref: data_ref,
+        doc_hora_ref: hora_ref
+      });
+      throw dbError;
+    }
 
     const docId = insertResult.lastInsertRowid;
     console.log('✅ Documento salvo com ID:', docId.toString());
@@ -399,12 +423,12 @@ router.post('/upload-multiplo', upload.array('arquivos', 10), async (req, res) =
     const arquivos = req.files;
 
     if (!repositor_id || !dct_id) {
-      console.log('❌ Erro: repositor_id ou dct_id ausente');
+      registrarFalhaValidacao('upload_multiplo', 'repositor_id ou dct_id ausente');
       return res.status(400).json({ ok: false, message: 'repositor_id e dct_id são obrigatórios' });
     }
 
     if (!arquivos || arquivos.length === 0) {
-      console.log('❌ Erro: nenhum arquivo enviado');
+      registrarFalhaValidacao('upload_multiplo', 'nenhum arquivo enviado');
       return res.status(400).json({ ok: false, message: 'Pelo menos um arquivo é obrigatório' });
     }
 
@@ -414,6 +438,7 @@ router.post('/upload-multiplo', upload.array('arquivos', 10), async (req, res) =
     for (const arquivo of arquivos) {
       const ext = arquivo.originalname.substring(arquivo.originalname.lastIndexOf('.')).toLowerCase();
       if (!EXTENSOES_PERMITIDAS.includes(ext)) {
+        registrarFalhaValidacao('upload_multiplo', `extensão não permitida: ${ext}`);
         return res.status(400).json({
           ok: false,
           message: `Extensão não permitida: ${ext} (arquivo: ${arquivo.originalname})`
@@ -552,8 +577,11 @@ router.post('/upload-multiplo', upload.array('arquivos', 10), async (req, res) =
 
           console.log(`✅ Arquivo processado e salvo no banco: ${arquivo.originalname} -> ${nomeFinal} (doc_id: ${insertResult.lastInsertRowid})`);
         } catch (dbError) {
-          console.error(`❌ ERRO AO SALVAR NO BANCO - Arquivo: ${arquivo.originalname}`, dbError);
-          console.error(`   Valores tentados: data_ref="${data_ref}", hora_ref="${hora_ref}"`);
+          registrarFalhaBanco('upload_multiplo', dbError, {
+            doc_nome_original: arquivo.originalname,
+            doc_data_ref: data_ref,
+            doc_hora_ref: hora_ref
+          });
           throw new Error(`Erro ao salvar no banco: ${dbError.message}`);
         }
       } catch (error) {
