@@ -5056,6 +5056,12 @@ class App {
 
             const item = document.createElement('div');
             item.className = 'route-item';
+            item.dataset.clienteId = cliId;
+            item.dataset.repId = repId;
+            item.dataset.dataVisita = dataVisita;
+            item.dataset.clienteNome = cliNome;
+            item.dataset.enderecoLinha = linhaEndereco;
+            item.dataset.enderecoCadastro = enderecoCadastro;
             item.innerHTML = `
                 <div class="route-item-info">
                     <div class="route-item-name">${cliId} - ${cliNome}</div>
@@ -5082,7 +5088,7 @@ class App {
 
     async buscarResumoVisitas(repId, dataVisita) {
         try {
-            const url = `${this.registroRotaState.backendUrl}/api/registro-rota/visitas?rep_id=${repId}&data_checkin_inicio=${dataVisita}&data_checkin_fim=${dataVisita}&modo=resumo`;
+            const url = `${this.registroRotaState.backendUrl}/api/registro-rota/visitas?rep_id=${repId}&data_inicio=${dataVisita}&data_fim=${dataVisita}&modo=resumo&contexto=planejado`;
             const response = await fetch(url);
             if (!response.ok) {
                 console.warn('Erro ao buscar resumo de visitas:', response.status);
@@ -5093,6 +5099,83 @@ class App {
         } catch (error) {
             console.warn('Erro ao buscar resumo de visitas:', error);
             return [];
+        }
+    }
+
+    atualizarStatusClienteLocal(clienteId, novoStatus = {}) {
+        const normalizeClienteId = (v) => String(v ?? '').trim().replace(/\.0$/, '');
+        const clienteIdNorm = normalizeClienteId(clienteId);
+        const mapaResumo = this.registroRotaState.resumoVisitas || new Map();
+        const atual = mapaResumo.get(clienteIdNorm) || { status: 'sem_checkin' };
+
+        const combinado = {
+            ...atual,
+            ...novoStatus,
+            cliente_id: clienteIdNorm
+        };
+
+        mapaResumo.set(clienteIdNorm, combinado);
+        this.registroRotaState.resumoVisitas = mapaResumo;
+        this.atualizarCardCliente(clienteIdNorm);
+    }
+
+    atualizarCardCliente(clienteId) {
+        const normalizeClienteId = (v) => String(v ?? '').trim().replace(/\.0$/, '');
+        const clienteIdNorm = normalizeClienteId(clienteId);
+        const card = document.querySelector(`.route-item[data-cliente-id="${clienteIdNorm}"]`);
+
+        if (!card) return;
+
+        const statusCliente = this.registroRotaState.resumoVisitas.get(clienteIdNorm) || { status: 'sem_checkin' };
+        const statusBase = statusCliente.status || 'sem_checkin';
+
+        const statusClasse = statusBase === 'finalizado'
+            ? 'status-visited'
+            : statusBase === 'em_atendimento'
+                ? 'status-visited'
+                : 'status-pending';
+
+        const statusTexto = statusBase === 'em_atendimento'
+            ? 'Em atendimento'
+            : statusBase === 'finalizado'
+                ? `Finalizado${statusCliente.tempo_minutos ? ` ${String(statusCliente.tempo_minutos).padStart(2, '0')} min` : ''}`
+                : 'Pendente';
+
+        const repId = card.dataset.repId;
+        const dataVisita = card.dataset.dataVisita;
+        const nomeEsc = (card.dataset.clienteNome || '').replace(/'/g, "\\'");
+        const endEsc = (card.dataset.enderecoLinha || '').replace(/'/g, "\\'");
+        const cadastroEsc = (card.dataset.enderecoCadastro || '').replace(/'/g, "\\'");
+
+        const btnCheckin = `<button onclick="app.abrirModalCaptura(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkin', '${cadastroEsc}')" class="btn-small">✅ Check-in</button>`;
+        const btnAtividades = `<button onclick="app.abrirModalAtividades(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-atividades">📋 Atividades</button>`;
+        const btnCheckout = `<button onclick="app.abrirModalCaptura(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkout', '${cadastroEsc}')" class="btn-small">🚪 Checkout</button>`;
+        const btnCampanha = `<button onclick="app.abrirModalCaptura(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'campanha', '${cadastroEsc}')" class="btn-small">🎯 Campanha</button>`;
+
+        const botoes = statusBase === 'sem_checkin'
+            ? btnCheckin
+            : statusBase === 'em_atendimento'
+                ? `${btnAtividades}${btnCheckout}${btnCampanha}`
+                : '';
+
+        const actions = card.querySelector('.route-item-actions');
+        if (actions) {
+            actions.innerHTML = `<span class="route-status ${statusClasse}">${statusTexto}</span>${botoes}`;
+        }
+
+        const tempoDivAtual = card.querySelector('.route-item-time');
+        if (tempoDivAtual && tempoDivAtual.parentElement) {
+            tempoDivAtual.parentElement.removeChild(tempoDivAtual);
+        }
+
+        if (statusBase === 'finalizado' && statusCliente?.tempo_minutos != null) {
+            const tempoDivNovo = document.createElement('div');
+            tempoDivNovo.className = 'route-item-time';
+            tempoDivNovo.textContent = `⏱️ ${statusCliente.tempo_minutos} min`;
+            const info = card.querySelector('.route-item-info');
+            if (info) {
+                info.appendChild(tempoDivNovo);
+            }
         }
     }
 
@@ -5263,7 +5346,7 @@ class App {
             if (!resumoDiv || !conteudoDiv) return;
 
             // Buscar sessão do cliente
-            const url = `${this.registroRotaState.backendUrl}/api/registro-rota/sessoes?data_inicio=${dataVisita}&data_fim=${dataVisita}&rep_id=${repId}`;
+            const url = `${this.registroRotaState.backendUrl}/api/registro-rota/sessoes?data_inicio=${dataVisita}&data_fim=${dataVisita}&rep_id=${repId}&contexto=planejado`;
             const response = await fetch(url);
 
             if (!response.ok) {
@@ -5811,12 +5894,29 @@ class App {
                 throw new Error(detalhesErro || `Erro ao salvar visita (status ${response.status})`);
             }
 
-            await response.json();
+            const resposta = await response.json();
+            const dataRegistro = resposta?.data_hora || new Date().toISOString();
+
+            if (tipoRegistro === 'checkin') {
+                this.atualizarStatusClienteLocal(clienteId, {
+                    status: 'em_atendimento',
+                    checkin_data_hora: dataRegistro,
+                    checkout_data_hora: null
+                });
+            }
+
+            if (tipoRegistro === 'checkout') {
+                this.atualizarStatusClienteLocal(clienteId, {
+                    status: 'finalizado',
+                    checkout_data_hora: dataRegistro,
+                    tempo_minutos: resposta?.tempo_trabalho_min ?? statusCliente?.tempo_minutos ?? null
+                });
+            }
 
             this.showNotification('Visita registrada com sucesso!', 'success');
 
             this.fecharModalCaptura();
-            await this.carregarRoteiroRepositor();
+            this.carregarRoteiroRepositor();
         } catch (error) {
             console.error('Erro ao salvar visita:', error);
             this.showNotification('Erro ao salvar: ' + error.message, 'error');

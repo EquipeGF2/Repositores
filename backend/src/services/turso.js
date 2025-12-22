@@ -385,7 +385,7 @@ class TursoService {
     return result.rows;
   }
 
-  async listarResumoVisitas({ repId, dataInicio, dataFim, inicioIso, fimIso }) {
+  async listarResumoVisitas({ repId, dataInicio, dataFim, inicioIso, fimIso, usarDataPlanejada = false }) {
     const checkinDataExpr = `COALESCE(s.checkin_at, (
         SELECT COALESCE(rv_data_hora_registro, data_hora)
         FROM cc_registro_visita rv
@@ -393,6 +393,9 @@ class TursoService {
         ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) ASC
         LIMIT 1
       ))`;
+    const filtroData = usarDataPlanejada
+      ? 'date(COALESCE(s.data_planejada, date(' + checkinDataExpr + '))) BETWEEN date(?) AND date(?)'
+      : `date(${checkinDataExpr}) BETWEEN date(?) AND date(?)`;
     const sql = `
       SELECT s.*, (${checkinDataExpr}) AS checkin_data_ref, (
         SELECT rv_endereco_registro
@@ -403,7 +406,7 @@ class TursoService {
       ) AS ultimo_endereco_registro
       FROM cc_visita_sessao s
       WHERE s.rep_id = ?
-        AND date((${checkinDataExpr})) BETWEEN date(?) AND date(?)
+        AND ${filtroData}
       ORDER BY (${checkinDataExpr}) ASC, COALESCE(s.checkin_at, s.criado_em) ASC
     `;
 

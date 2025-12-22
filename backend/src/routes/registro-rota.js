@@ -494,9 +494,22 @@ router.post('/visitas', upload.any(), async (req, res) => {
 // Consultar visitas
 router.get('/visitas', async (req, res) => {
   try {
-    const { rep_id, data_inicio, data_fim, data_checkin_inicio, data_checkin_fim, modo = 'detalhado', tipo, servico } = req.query;
-    const dataInicioFiltro = data_checkin_inicio || data_inicio;
-    const dataFimFiltro = data_checkin_fim || data_fim;
+    const {
+      rep_id,
+      data_inicio,
+      data_fim,
+      data_checkin_inicio,
+      data_checkin_fim,
+      modo = 'detalhado',
+      tipo,
+      servico,
+      contexto
+    } = req.query;
+
+    const usarDataPlanejada = String(contexto || '').toLowerCase() === 'planejado'
+      || String(contexto || '').toLowerCase() === 'roteiro';
+    const dataInicioFiltro = usarDataPlanejada ? data_inicio : (data_checkin_inicio || data_inicio);
+    const dataFimFiltro = usarDataPlanejada ? data_fim : (data_checkin_fim || data_fim);
 
     if (!rep_id || !dataInicioFiltro || !dataFimFiltro) {
       return res.status(400).json({ ok: false, code: 'INVALID_QUERY', message: 'rep_id, data_inicio e data_fim são obrigatórios' });
@@ -523,7 +536,8 @@ router.get('/visitas', async (req, res) => {
           dataInicio: dataInicioFiltro,
           dataFim: dataFimFiltro,
           inicioIso,
-          fimIso
+          fimIso,
+          usarDataPlanejada
         });
 
         const resumoFormatado = resumo.map((item) => ({
@@ -719,9 +733,11 @@ router.post('/disparar-resumo', async (req, res) => {
 // GET /api/registro-rota/sessoes - Lista sessões com filtros
 router.get('/sessoes', async (req, res) => {
   try {
-    const { data_inicio, data_fim, data_checkin_inicio, data_checkin_fim, rep_id } = req.query;
-    const dataInicioFiltro = data_checkin_inicio || data_inicio;
-    const dataFimFiltro = data_checkin_fim || data_fim;
+    const { data_inicio, data_fim, data_checkin_inicio, data_checkin_fim, rep_id, contexto } = req.query;
+    const usarDataPlanejada = String(contexto || '').toLowerCase() === 'planejado'
+      || String(contexto || '').toLowerCase() === 'roteiro';
+    const dataInicioFiltro = usarDataPlanejada ? data_inicio : (data_checkin_inicio || data_inicio);
+    const dataFimFiltro = usarDataPlanejada ? data_fim : (data_checkin_fim || data_fim);
 
     if (!dataInicioFiltro || !dataFimFiltro) {
       return res.status(400).json({
@@ -745,6 +761,9 @@ router.get('/sessoes', async (req, res) => {
       ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) ASC
       LIMIT 1
     )`;
+    const filtroDataExpr = usarDataPlanejada
+      ? `date(COALESCE(s.data_planejada, ${checkinDataExpr}))`
+      : `date(${checkinDataExpr})`;
 
     let sql = `
       SELECT
@@ -779,7 +798,7 @@ router.get('/sessoes', async (req, res) => {
           LIMIT 1
         )) AS endereco_gps_checkout
       FROM cc_visita_sessao s
-      WHERE date(${checkinDataExpr}) >= date(?) AND date(${checkinDataExpr}) <= date(?)
+      WHERE ${filtroDataExpr} >= date(?) AND ${filtroDataExpr} <= date(?)
     `;
     const params = [dataInicioFiltro, dataFimFiltro];
 
