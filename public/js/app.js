@@ -5082,7 +5082,7 @@ class App {
 
     async buscarResumoVisitas(repId, dataVisita) {
         try {
-            const url = `${this.registroRotaState.backendUrl}/api/registro-rota/visitas?rep_id=${repId}&data_inicio=${dataVisita}&data_fim=${dataVisita}&modo=resumo`;
+            const url = `${this.registroRotaState.backendUrl}/api/registro-rota/visitas?rep_id=${repId}&data_checkin_inicio=${dataVisita}&data_checkin_fim=${dataVisita}&modo=resumo`;
             const response = await fetch(url);
             if (!response.ok) {
                 console.warn('Erro ao buscar resumo de visitas:', response.status);
@@ -6034,7 +6034,7 @@ class App {
             }
 
             // Usar rota de sessões para agrupar checkin/checkout
-            const url = `${this.registroRotaState.backendUrl}/api/registro-rota/sessoes?data_inicio=${dataInicio}&data_fim=${dataFim}&rep_id=${repId}`;
+            const url = `${this.registroRotaState.backendUrl}/api/registro-rota/sessoes?data_checkin_inicio=${dataInicio}&data_checkin_fim=${dataFim}&rep_id=${repId}`;
 
             const response = await fetch(url);
 
@@ -6131,13 +6131,6 @@ class App {
                         </div>
                         ${servicosTexto}
                     </div>
-                    <div style="display: flex; flex-direction: column; gap: 8px;">
-                        ${foraDia ? `
-                            <button class="btn-small btn-warning" onclick="app.verificarRoteiroCliente('${sessao.cliente_id}', ${sessao.rep_id})" style="background: #fbbf24; color: #78350f;">
-                                🔧 Verificar Roteiro
-                            </button>
-                        ` : ''}
-                    </div>
                 `;
 
                 container.appendChild(item);
@@ -6148,127 +6141,6 @@ class App {
             console.error('Erro ao consultar visitas:', error);
             this.showNotification('Erro ao consultar: ' + error.message, 'error');
         }
-    }
-
-    async verificarRoteiroCliente(clienteId, repId) {
-        try {
-            this.showNotification('Consultando roteiro...', 'info');
-
-            const url = `${this.registroRotaState.backendUrl}/api/registro-rota/cliente/${clienteId}/roteiro?rep_id=${repId}`;
-            const response = await fetch(url);
-
-            if (!response.ok) {
-                throw new Error('Erro ao consultar roteiro');
-            }
-
-            const result = await response.json();
-
-            if (!result.roteiro) {
-                this.showNotification('Cliente não encontrado no roteiro', 'warning');
-                return;
-            }
-
-            const roteiro = result.roteiro;
-
-            // Criar modal para editar o dia do roteiro
-            const modalHtml = `
-                <div id="modalRoteiro" class="modal-overlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000;">
-                    <div class="modal-content" style="background: white; border-radius: 16px; padding: 24px; max-width: 500px; width: 90%; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);">
-                        <h3 style="margin: 0 0 20px; color: #111827; font-size: 20px;">🔧 Roteiro do Cliente ${clienteId}</h3>
-
-                        <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-                            <p style="margin: 0 0 8px; color: #6b7280; font-size: 14px;"><strong>Cidade:</strong> ${roteiro.rot_cidade || '-'}</p>
-                            <p style="margin: 0 0 8px; color: #6b7280; font-size: 14px;"><strong>Dia atual no roteiro:</strong> <span style="font-weight: 700; color: #ef4444; font-size: 16px;">${this.formatarDiaSemanaLabel(roteiro.rot_dia_semana)}</span></p>
-                            <p style="margin: 0; color: #6b7280; font-size: 14px;"><strong>Ordem de visita:</strong> ${roteiro.rot_ordem_visita || '-'}</p>
-                        </div>
-
-                        <div style="margin-bottom: 20px;">
-                            <label style="display: block; font-weight: 600; margin-bottom: 8px; color: #374151;">Novo dia da semana:</label>
-                            <select id="novoDiaSemana" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px;">
-                                <option value="dom" ${roteiro.rot_dia_semana === 'dom' ? 'selected' : ''}>Domingo</option>
-                                <option value="seg" ${roteiro.rot_dia_semana === 'seg' ? 'selected' : ''}>Segunda-feira</option>
-                                <option value="ter" ${roteiro.rot_dia_semana === 'ter' ? 'selected' : ''}>Terça-feira</option>
-                                <option value="qua" ${roteiro.rot_dia_semana === 'qua' ? 'selected' : ''}>Quarta-feira</option>
-                                <option value="qui" ${roteiro.rot_dia_semana === 'qui' ? 'selected' : ''}>Quinta-feira</option>
-                                <option value="sex" ${roteiro.rot_dia_semana === 'sex' ? 'selected' : ''}>Sexta-feira</option>
-                                <option value="sab" ${roteiro.rot_dia_semana === 'sab' ? 'selected' : ''}>Sábado</option>
-                            </select>
-                        </div>
-
-                        <div style="display: flex; gap: 12px; justify-content: flex-end;">
-                            <button id="btnCancelarRoteiro" class="btn btn-secondary" style="background: #e5e7eb; color: #374151;">Cancelar</button>
-                            <button id="btnSalvarRoteiro" class="btn btn-primary">Salvar Alteração</button>
-                        </div>
-                    </div>
-                </div>
-            `;
-
-            // Adicionar modal ao DOM
-            const modalDiv = document.createElement('div');
-            modalDiv.innerHTML = modalHtml;
-            document.body.appendChild(modalDiv.firstElementChild);
-
-            // Event listeners
-            document.getElementById('btnCancelarRoteiro').onclick = () => {
-                document.getElementById('modalRoteiro').remove();
-            };
-
-            document.getElementById('btnSalvarRoteiro').onclick = async () => {
-                const novoDia = document.getElementById('novoDiaSemana').value;
-                await this.corrigirRoteiroCliente(clienteId, repId, novoDia);
-                document.getElementById('modalRoteiro').remove();
-            };
-
-        } catch (error) {
-            console.error('Erro ao verificar roteiro:', error);
-            this.showNotification('Erro ao verificar roteiro: ' + error.message, 'error');
-        }
-    }
-
-    async corrigirRoteiroCliente(clienteId, repId, novoDiaSemana) {
-        try {
-            this.showNotification('Salvando alteração...', 'info');
-
-            const url = `${this.registroRotaState.backendUrl}/api/registro-rota/cliente/${clienteId}/roteiro`;
-            const response = await fetch(url, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    rep_id: parseInt(repId),
-                    novo_dia_semana: novoDiaSemana
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error('Erro ao corrigir roteiro');
-            }
-
-            const result = await response.json();
-
-            this.showNotification(`Roteiro atualizado: ${result.dia_anterior} → ${result.dia_novo}`, 'success');
-
-            // Recarregar visitas para atualizar a visualização
-            await this.consultarVisitas();
-
-        } catch (error) {
-            console.error('Erro ao corrigir roteiro:', error);
-            this.showNotification('Erro ao corrigir roteiro: ' + error.message, 'error');
-        }
-    }
-
-    formatarDiaSemanaLabel(dia) {
-        const mapa = {
-            'dom': 'Domingo',
-            'seg': 'Segunda-feira',
-            'ter': 'Terça-feira',
-            'qua': 'Quarta-feira',
-            'qui': 'Quinta-feira',
-            'sex': 'Sexta-feira',
-            'sab': 'Sábado'
-        };
-        return mapa[String(dia).toLowerCase()] || dia;
     }
 
     // ==================== DOCUMENTOS ====================

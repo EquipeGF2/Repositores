@@ -230,10 +230,14 @@ class TursoService {
     rvPastaDriveId,
     rvDataHoraRegistro,
     rvEnderecoRegistro,
+    rvEnderecoCheckin,
+    rvEnderecoCheckout,
     rvDriveFileId,
     rvDriveFileUrl,
     rvLatitude,
     rvLongitude,
+    rvDiaPrevisto,
+    rvRoteiroId,
     sessao_id,
     tipo,
     data_hora_registro,
@@ -260,10 +264,14 @@ class TursoService {
       rv_pasta_drive_id: rvPastaDriveId,
       rv_data_hora_registro: rvDataHoraRegistro,
       rv_endereco_registro: rvEnderecoRegistro,
+      rv_endereco_checkin: rvEnderecoCheckin,
+      rv_endereco_checkout: rvEnderecoCheckout,
       rv_drive_file_id: rvDriveFileId || driveFileId || drive_file_id,
       rv_drive_file_url: rvDriveFileUrl || driveFileUrl || drive_file_url,
       rv_latitude: rvLatitude ?? latitude ?? latitudeBase,
       rv_longitude: rvLongitude ?? longitude ?? longitudeBase,
+      rv_dia_previsto: rvDiaPrevisto,
+      rv_roteiro_id: rvRoteiroId,
       sessao_id: sessao_id,
       tipo: tipo,
       data_hora_registro: data_hora_registro || rvDataHoraRegistro,
@@ -274,7 +282,16 @@ class TursoService {
   }
 
   async listarVisitasDetalhadas({ repId, inicioIso, fimIso, tipo, servico }) {
-    const filtros = ['v.rep_id = ?', '(COALESCE(v.data_hora_registro, v.data_hora) BETWEEN ? AND ?)'];
+    const sessaoRefExpr = 'COALESCE(v.rv_sessao_id, v.sessao_id)';
+    const checkinDataExpr = `(
+      SELECT COALESCE(rv_data_hora_registro, data_hora)
+      FROM cc_registro_visita rv
+      WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = ${sessaoRefExpr} AND rv.rv_tipo = 'checkin'
+      ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) ASC
+      LIMIT 1
+    )`;
+
+    const filtros = ['v.rep_id = ?', `date(${checkinDataExpr}) BETWEEN date(?) AND date(?)`];
     const args = [repId, inicioIso, fimIso];
 
     if (tipo) {
@@ -301,11 +318,27 @@ class TursoService {
       SELECT v.id, v.rep_id, v.cliente_id, v.data_hora, v.latitude, v.longitude, v.endereco_resolvido,
              v.drive_file_id, v.drive_file_url, v.created_at,
              v.rv_tipo, v.rv_sessao_id, v.rv_data_planejada, v.rv_cliente_nome, v.rv_endereco_cliente, v.rv_pasta_drive_id,
-             v.rv_data_hora_registro, v.rv_endereco_registro, v.rv_drive_file_id, v.rv_drive_file_url, v.rv_latitude, v.rv_longitude,
+             v.rv_data_hora_registro, v.rv_endereco_registro, v.rv_endereco_checkin, v.rv_endereco_checkout, v.rv_drive_file_id,
+             v.rv_drive_file_url, v.rv_latitude, v.rv_longitude, v.rv_dia_previsto, v.rv_roteiro_id,
              v.sessao_id, v.tipo, v.data_hora_registro, v.endereco_registro, v.latitude AS lat_base, v.longitude AS long_base,
              s.cliente_nome AS sessao_cliente_nome, s.endereco_cliente AS sessao_endereco_cliente, s.checkin_at, s.checkout_at,
              s.tempo_minutos, s.status, s.serv_abastecimento, s.serv_espaco_loja, s.serv_ruptura_loja, s.serv_pontos_extras,
              s.qtd_pontos_extras, s.qtd_frentes, s.usou_merchandising,
+             ${checkinDataExpr} AS checkin_data_hora,
+             COALESCE(s.dia_previsto, (
+               SELECT rv_dia_previsto
+               FROM cc_registro_visita rv
+               WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id AND rv.rv_tipo = 'checkin'
+               ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) ASC
+               LIMIT 1
+             )) AS dia_previsto_codigo,
+             COALESCE(s.roteiro_id, (
+               SELECT rv_roteiro_id
+               FROM cc_registro_visita rv
+               WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id AND rv.rv_tipo = 'checkin'
+               ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) ASC
+               LIMIT 1
+             )) AS roteiro_id_origem,
              COALESCE(NULLIF(s.endereco_cliente, ''), (
                SELECT rv_endereco_cliente
                FROM cc_registro_visita rv
@@ -314,14 +347,14 @@ class TursoService {
                LIMIT 1
              )) AS endereco_cliente_roteiro,
              COALESCE(NULLIF(s.endereco_checkin, ''), (
-               SELECT COALESCE(rv_endereco_registro, endereco_registro, endereco_resolvido)
+               SELECT COALESCE(rv_endereco_checkin, rv_endereco_registro, endereco_registro, endereco_resolvido)
                FROM cc_registro_visita rv
                WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id AND rv.rv_tipo = 'checkin'
                ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) ASC
                LIMIT 1
              )) AS endereco_gps_checkin,
              COALESCE(NULLIF(s.endereco_checkout, ''), (
-               SELECT COALESCE(rv_endereco_registro, endereco_registro, endereco_resolvido)
+               SELECT COALESCE(rv_endereco_checkout, rv_endereco_registro, endereco_registro, endereco_resolvido)
                FROM cc_registro_visita rv
                WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id AND rv.rv_tipo = 'checkout'
                ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) DESC
@@ -330,7 +363,7 @@ class TursoService {
       FROM cc_registro_visita v
       LEFT JOIN cc_visita_sessao s ON s.sessao_id = COALESCE(v.rv_sessao_id, v.sessao_id)
       WHERE ${filtros.join(' AND ')}
-      ORDER BY COALESCE(v.data_hora_registro, v.data_hora) ASC
+      ORDER BY ${checkinDataExpr} ASC
     `;
 
     const result = await this.execute(sql, args);
@@ -353,8 +386,15 @@ class TursoService {
   }
 
   async listarResumoVisitas({ repId, dataInicio, dataFim, inicioIso, fimIso }) {
+    const checkinDataExpr = `COALESCE(s.checkin_at, (
+        SELECT COALESCE(rv_data_hora_registro, data_hora)
+        FROM cc_registro_visita rv
+        WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id AND rv.rv_tipo = 'checkin'
+        ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) ASC
+        LIMIT 1
+      ))`;
     const sql = `
-      SELECT s.*, (
+      SELECT s.*, (${checkinDataExpr}) AS checkin_data_ref, (
         SELECT rv_endereco_registro
         FROM cc_registro_visita v
         WHERE COALESCE(v.rv_sessao_id, v.sessao_id) = s.sessao_id
@@ -363,8 +403,8 @@ class TursoService {
       ) AS ultimo_endereco_registro
       FROM cc_visita_sessao s
       WHERE s.rep_id = ?
-        AND s.data_planejada BETWEEN ? AND ?
-      ORDER BY s.data_planejada ASC, COALESCE(s.checkin_at, s.criado_em) ASC
+        AND date((${checkinDataExpr})) BETWEEN date(?) AND date(?)
+      ORDER BY (${checkinDataExpr}) ASC, COALESCE(s.checkin_at, s.criado_em) ASC
     `;
 
     const result = await this.execute(sql, [repId, dataInicio, dataFim]);
@@ -380,7 +420,7 @@ class TursoService {
 
       return {
         cliente_id: normalizeClienteId(row.cliente_id),
-        checkin_data_hora: row.checkin_at,
+        checkin_data_hora: row.checkin_data_ref || row.checkin_at,
         checkout_data_hora: row.checkout_at,
         status: statusFinal,
         tempo_minutos: row.tempo_minutos,
@@ -517,11 +557,23 @@ class TursoService {
     return result.rows[0] || null;
   }
 
-  async criarSessaoVisita({ sessaoId, repId, clienteId, clienteNome, enderecoCliente, dataPlanejada, checkinAt, enderecoCheckin }) {
+  async criarSessaoVisita({
+    sessaoId,
+    repId,
+    clienteId,
+    clienteNome,
+    enderecoCliente,
+    dataPlanejada,
+    checkinAt,
+    enderecoCheckin,
+    diaPrevisto,
+    roteiroId
+  }) {
     const sql = `
       INSERT INTO cc_visita_sessao (
-        sessao_id, rep_id, cliente_id, cliente_nome, endereco_cliente, data_planejada, checkin_at, endereco_checkin, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ABERTA')
+        sessao_id, rep_id, cliente_id, cliente_nome, endereco_cliente, data_planejada, checkin_at, endereco_checkin, status,
+        dia_previsto, roteiro_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ABERTA', ?, ?)
     `;
 
     await this.execute(sql, [
@@ -532,7 +584,9 @@ class TursoService {
       enderecoCliente,
       dataPlanejada,
       checkinAt,
-      enderecoCheckin || null
+      enderecoCheckin || null,
+      diaPrevisto || null,
+      roteiroId || null
     ]);
 
     return this.obterSessaoPorId(sessaoId);
@@ -594,11 +648,15 @@ class TursoService {
       "ALTER TABLE cc_registro_visita ADD COLUMN rv_cliente_nome TEXT",
       "ALTER TABLE cc_registro_visita ADD COLUMN rv_endereco_cliente TEXT",
       "ALTER TABLE cc_registro_visita ADD COLUMN rv_endereco_registro TEXT",
+      "ALTER TABLE cc_registro_visita ADD COLUMN rv_endereco_checkin TEXT",
+      "ALTER TABLE cc_registro_visita ADD COLUMN rv_endereco_checkout TEXT",
       "ALTER TABLE cc_registro_visita ADD COLUMN rv_drive_file_id TEXT",
       "ALTER TABLE cc_registro_visita ADD COLUMN rv_drive_file_url TEXT",
       "ALTER TABLE cc_registro_visita ADD COLUMN rv_latitude REAL",
       "ALTER TABLE cc_registro_visita ADD COLUMN rv_longitude REAL",
       "ALTER TABLE cc_registro_visita ADD COLUMN rv_pasta_drive_id TEXT",
+      "ALTER TABLE cc_registro_visita ADD COLUMN rv_dia_previsto TEXT",
+      "ALTER TABLE cc_registro_visita ADD COLUMN rv_roteiro_id TEXT",
       "ALTER TABLE cc_registro_visita ADD COLUMN sessao_id TEXT",
       "ALTER TABLE cc_registro_visita ADD COLUMN tipo TEXT",
       "ALTER TABLE cc_registro_visita ADD COLUMN data_hora_registro TEXT",
@@ -608,7 +666,9 @@ class TursoService {
       "ALTER TABLE cc_registro_visita ADD COLUMN latitude REAL",
       "ALTER TABLE cc_registro_visita ADD COLUMN longitude REAL",
       "ALTER TABLE cc_visita_sessao ADD COLUMN endereco_checkin TEXT",
-      "ALTER TABLE cc_visita_sessao ADD COLUMN endereco_checkout TEXT"
+      "ALTER TABLE cc_visita_sessao ADD COLUMN endereco_checkout TEXT",
+      "ALTER TABLE cc_visita_sessao ADD COLUMN dia_previsto TEXT",
+      "ALTER TABLE cc_visita_sessao ADD COLUMN roteiro_id TEXT"
     ];
 
     for (const sql of alteracoes) {
