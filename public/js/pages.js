@@ -1738,6 +1738,13 @@ export const pages = {
                         <div id="gpsStatus" class="gps-chip">Aguardando geolocalização...</div>
                         <button class="modal-close" onclick="window.app.fecharModalCaptura()">&times;</button>
                     </div>
+
+                    <!-- Resumo de Atividades (aparece apenas no checkout) -->
+                    <div id="resumoAtividades" style="display: none; background: #f9fafb; border-bottom: 2px solid #e5e7eb; padding: 16px 24px;">
+                        <h4 style="margin: 0 0 12px; color: #374151; font-size: 14px; font-weight: 600;">📋 Resumo das Atividades</h4>
+                        <div id="resumoAtividadesConteudo" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; font-size: 13px;"></div>
+                    </div>
+
                     <div class="modal-body captura-body">
                         <div class="camera-wrapper">
                             <div id="cameraArea" class="camera-area">

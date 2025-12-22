@@ -5239,10 +5239,83 @@ class App {
             window.addEventListener('resize', this.registroRotaState.resizeHandler);
         }
 
+        // Carregar e exibir resumo de atividades se for checkout
+        if (tipoPadrao === 'checkout') {
+            await this.carregarResumoAtividades(repId, clienteIdNorm, dataVisita);
+        } else {
+            // Esconder resumo se não for checkout
+            const resumoDiv = document.getElementById('resumoAtividades');
+            if (resumoDiv) resumoDiv.style.display = 'none';
+        }
+
         this.atualizarGaleriaCaptura();
         this.ajustarAreaCamera();
         await this.ativarCamera();
         this.iniciarCapturaGPS();
+    }
+
+    async carregarResumoAtividades(repId, clienteId, dataVisita) {
+        try {
+            const resumoDiv = document.getElementById('resumoAtividades');
+            const conteudoDiv = document.getElementById('resumoAtividadesConteudo');
+
+            if (!resumoDiv || !conteudoDiv) return;
+
+            // Buscar sessão do cliente
+            const url = `${this.registroRotaState.backendUrl}/api/registro-rota/sessoes?data_inicio=${dataVisita}&data_fim=${dataVisita}&rep_id=${repId}`;
+            const response = await fetch(url);
+
+            if (!response.ok) {
+                resumoDiv.style.display = 'none';
+                return;
+            }
+
+            const result = await response.json();
+            const sessoes = result.sessoes || [];
+            const sessaoCliente = sessoes.find(s => String(s.cliente_id).trim() === String(clienteId).trim());
+
+            if (!sessaoCliente) {
+                resumoDiv.style.display = 'none';
+                return;
+            }
+
+            // Construir HTML do resumo
+            const atividades = [];
+
+            if (sessaoCliente.qtd_frentes) {
+                atividades.push(`<div style="color: #059669;"><strong>🔢 Frentes:</strong> ${sessaoCliente.qtd_frentes}</div>`);
+            }
+
+            if (sessaoCliente.usou_merchandising) {
+                atividades.push(`<div style="color: #7c3aed;">✅ <strong>Merchandising</strong></div>`);
+            }
+
+            const servicos = [];
+            if (sessaoCliente.serv_abastecimento) servicos.push('Abastecimento');
+            if (sessaoCliente.serv_espaco_loja) servicos.push('Espaço Loja');
+            if (sessaoCliente.serv_ruptura_loja) servicos.push('Ruptura Loja');
+
+            if (servicos.length > 0) {
+                atividades.push(`<div style="color: #2563eb;"><strong>🛠️ Serviços:</strong> ${servicos.join(', ')}</div>`);
+            }
+
+            if (sessaoCliente.serv_pontos_extras && sessaoCliente.qtd_pontos_extras) {
+                atividades.push(`<div style="color: #dc2626;"><strong>⭐ Pontos Extras:</strong> ${sessaoCliente.qtd_pontos_extras}</div>`);
+            }
+
+            if (atividades.length === 0) {
+                conteudoDiv.innerHTML = '<div style="color: #9ca3af;">Nenhuma atividade registrada ainda</div>';
+            } else {
+                conteudoDiv.innerHTML = atividades.join('');
+            }
+
+            resumoDiv.style.display = 'block';
+
+        } catch (error) {
+            console.error('Erro ao carregar resumo de atividades:', error);
+            const resumoDiv = document.getElementById('resumoAtividades');
+            if (resumoDiv) resumoDiv.style.display = 'none';
+        }
     }
 
 
