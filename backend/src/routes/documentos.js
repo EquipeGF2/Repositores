@@ -466,37 +466,56 @@ router.post('/upload-multiplo', upload.array('arquivos', 10), async (req, res) =
         console.log(`   hora_ref: "${hora_ref}" (tipo: ${typeof hora_ref})`);
         console.log(`   ddmmaa: "${ddmmaa}", hhmm: "${hhmm}"`);
 
+        // Validar formatos antes do INSERT
+        const dataRefRegex = /^\d{4}-\d{2}-\d{2}$/;
+        const horaRefRegex = /^\d{2}:\d{2}$/;
+
+        if (!dataRefRegex.test(data_ref)) {
+          throw new Error(`Formato de data_ref inválido: "${data_ref}". Esperado: YYYY-MM-DD`);
+        }
+
+        if (!horaRefRegex.test(hora_ref)) {
+          throw new Error(`Formato de hora_ref inválido: "${hora_ref}". Esperado: HH:MM`);
+        }
+
         // Salvar no banco
-        const insertResult = await tursoService.execute(
-          `INSERT INTO cc_documentos (
-            doc_repositor_id, doc_dct_id, doc_nome_original, doc_nome_drive,
-            doc_ext, doc_mime, doc_tamanho, doc_observacao, doc_data_ref, doc_hora_ref,
-            doc_drive_file_id, doc_drive_folder_id, doc_status
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ENVIADO')`,
-          [
-            parseInt(repositor_id),
-            tipo.dct_id,
-            arquivo.originalname,
-            nomeFinal,
-            ext,
-            arquivo.mimetype,
-            arquivo.size,
-            observacao || null,
-            data_ref,
-            hora_ref,
-            uploadResult.fileId,
-            tipoFolderId
-          ]
-        );
+        try {
+          const insertResult = await tursoService.execute(
+            `INSERT INTO cc_documentos (
+              doc_repositor_id, doc_dct_id, doc_nome_original, doc_nome_drive,
+              doc_ext, doc_mime, doc_tamanho, doc_observacao, doc_data_ref, doc_hora_ref,
+              doc_drive_file_id, doc_drive_folder_id, doc_status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ENVIADO')`,
+            [
+              parseInt(repositor_id),
+              tipo.dct_id,
+              arquivo.originalname,
+              nomeFinal,
+              ext,
+              arquivo.mimetype,
+              arquivo.size,
+              observacao || null,
+              data_ref,
+              hora_ref,
+              uploadResult.fileId,
+              tipoFolderId
+            ]
+          );
 
-        resultados.push({
-          original: arquivo.originalname,
-          doc_id: insertResult.lastInsertRowid.toString(),
-          nome_drive: nomeFinal,
-          drive_file_id: uploadResult.fileId
-        });
+          resultados.push({
+            original: arquivo.originalname,
+            doc_id: insertResult.lastInsertRowid.toString(),
+            nome_drive: nomeFinal,
+            drive_file_id: uploadResult.fileId,
+            drive_file_url: uploadResult.webViewLink || null
+          });
 
-        console.log(`✅ Arquivo processado: ${arquivo.originalname} -> ${nomeFinal}`);
+          console.log(`✅ Arquivo processado e salvo no banco: ${arquivo.originalname} -> ${nomeFinal} (doc_id: ${insertResult.lastInsertRowid})`);
+        } catch (dbError) {
+          console.error(`❌ ERRO AO SALVAR NO BANCO - Arquivo: ${arquivo.originalname}`, dbError);
+          console.error(`   Valores tentados: data_ref="${data_ref}", hora_ref="${hora_ref}"`);
+          throw new Error(`Erro ao salvar no banco: ${dbError.message}`);
+        }
       } catch (error) {
         console.error(`❌ Erro ao processar ${arquivo.originalname}:`, error);
         erros.push({
