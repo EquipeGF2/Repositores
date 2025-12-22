@@ -6117,8 +6117,10 @@ class App {
                             <div><strong>Check-in:</strong> ${checkinFormatado}</div>
                             <div style="margin-top: 4px;"><strong>Checkout:</strong> ${checkoutFormatado}</div>
                         </div>
-                        <div style="font-size: 0.9em; color: #666; margin-top: 6px;">
-                            🏘️ ${sessao.endereco_cliente || 'Endereço não informado'}
+                        <div style="font-size: 0.9em; margin-top: 8px; padding: 8px; background: #f0fdf4; border-radius: 6px; border-left: 3px solid #22c55e;">
+                            <div style="margin-bottom: 6px;"><strong>🏘️ Endereço Cliente:</strong><br>${sessao.endereco_cliente || 'Não informado'}</div>
+                            <div><strong>📍 Endereço GPS (Check-in):</strong><br>${sessao.endereco_checkin || 'Não informado'}</div>
+                            ${sessao.endereco_checkout ? `<div style="margin-top: 6px;"><strong>📍 Endereço GPS (Checkout):</strong><br>${sessao.endereco_checkout}</div>` : ''}
                         </div>
                         ${servicosTexto}
                     </div>
@@ -6384,10 +6386,22 @@ class App {
 
             if (data.erros && data.erros.length > 0) {
                 this.showNotification(
-                    `Upload concluído: ${data.sucesso} sucesso, ${data.erros.length} erros. Verifique o console.`,
+                    `Upload concluído: ${data.sucesso || 0} sucesso, ${data.erros.length} erros`,
                     'warning'
                 );
-                console.warn('Erros no upload:', data.erros);
+                console.error('❌ Erros detalhados no upload:');
+                data.erros.forEach((erro, idx) => {
+                    console.error(`  ${idx + 1}. Arquivo: ${erro.arquivo || 'desconhecido'}`);
+                    console.error(`     Erro: ${erro.erro || erro.message || JSON.stringify(erro)}`);
+                });
+                // Mostrar primeiro erro na notificação
+                if (data.erros[0]) {
+                    const primeiroErro = data.erros[0];
+                    this.showNotification(
+                        `Erro: ${primeiroErro.erro || primeiroErro.message || 'Erro desconhecido'}`,
+                        'error'
+                    );
+                }
             } else {
                 this.showNotification(
                     `${qtdArquivos} documento(s) enviado(s) com sucesso!`,

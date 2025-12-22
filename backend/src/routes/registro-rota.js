@@ -918,7 +918,7 @@ router.get('/imagens-campanha', async (req, res) => {
     // Buscar todas as imagens de campanha no período
     let sql = `
       SELECT
-        rv.rv_id,
+        rv.id AS rv_id,
         rv.rv_sessao_id,
         rv.rv_tipo,
         rv.cliente_id,
@@ -928,7 +928,7 @@ router.get('/imagens-campanha', async (req, res) => {
         rv.rv_drive_file_url,
         rv.rv_drive_file_id,
         rv.rep_id
-      FROM cc_visitas rv
+      FROM cc_registro_visita rv
       WHERE rv.rv_tipo = 'campanha'
         AND rv.rv_data_planejada >= ?
         AND rv.rv_data_planejada <= ?

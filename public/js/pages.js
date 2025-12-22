@@ -760,10 +760,7 @@ export const pages = {
 
         return `
             <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Validação de Dados</h3>
-                </div>
-                <div class="card-body">
+                <div class="card-body" style="padding-top: 20px;">
                     <div class="filter-bar">
                         <div class="filter-group">
                             <label for="filtro_supervisor_validacao">Supervisor</label>
@@ -967,10 +964,7 @@ export const pages = {
 
             return `
             <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Consulta de Alterações</h3>
-                </div>
-                <div class="card-body">
+                <div class="card-body" style="padding-top: 20px;">
                     <div class="info-banner">
                         <span class="info-icon">ℹ️</span>
                         <div>
@@ -1108,13 +1102,7 @@ export const pages = {
 
         return `
             <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Consulta Roteiro</h3>
-                    <p class="text-muted" style="margin: 4px 0 0;">
-                        Utilize os filtros para visualizar e exportar um resumo estruturado do roteiro.
-                    </p>
-                </div>
-                <div class="card-body">
+                <div class="card-body" style="padding-top: 20px;">
                     <div class="filter-bar filter-bar-wide">
                         <div class="filter-group">
                             <label for="filtro_data_inicio_consulta_roteiro">Data Início</label>
@@ -1690,16 +1678,7 @@ export const pages = {
 
         return `
             <div class="card">
-                <div class="card-header">
-                    <div>
-                        <h3 class="card-title">📸 Registro de Rota</h3>
-                        <p class="text-muted" style="margin: 4px 0 0;">
-                            Registre visitas com foto e geolocalização
-                        </p>
-                    </div>
-                </div>
-
-                <div class="card-body">
+                <div class="card-body" style="padding-top: 20px;">
                     <div class="filter-bar">
                         <div class="filter-group">
                             <label for="registroRepositor">Repositor *</label>
@@ -2313,16 +2292,7 @@ export const pages = {
 
         return `
             <div class="card">
-                <div class="card-header">
-                    <div>
-                        <h3 class="card-title">📄 Registro de Documentos</h3>
-                        <p class="text-muted" style="margin: 4px 0 0;">
-                            Gerencie documentos de despesas, visitas, atestados e outros
-                        </p>
-                    </div>
-                </div>
-
-                <div class="card-body">
+                <div class="card-body" style="padding-top: 20px;">
                     <!-- Upload de Documento -->
                     <div class="doc-upload-section">
                         <h4 style="margin-bottom: 20px; color: #374151; font-size: 16px; font-weight: 600;">📤 Novo Documento</h4>
@@ -2564,14 +2534,7 @@ export const pages = {
 
         return `
             <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">📊 Análise de Performance</h3>
-                    <p class="text-muted" style="margin: 4px 0 0;">
-                        Análise detalhada de tempo de atendimento, campanhas e roteiro
-                    </p>
-                </div>
-
-                <div class="card-body">
+                <div class="card-body" style="padding-top: 20px;">
                     <!-- Tabs -->
                     <div class="performance-tabs">
                         <button class="performance-tab active" data-tab="tempo">⏱️ Tempo de Atendimento</button>
