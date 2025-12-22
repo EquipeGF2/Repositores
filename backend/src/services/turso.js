@@ -363,11 +363,11 @@ class TursoService {
     return result.rows[0] || null;
   }
 
-  async criarSessaoVisita({ sessaoId, repId, clienteId, clienteNome, enderecoCliente, dataPlanejada, checkinAt }) {
+  async criarSessaoVisita({ sessaoId, repId, clienteId, clienteNome, enderecoCliente, dataPlanejada, checkinAt, enderecoCheckin }) {
     const sql = `
       INSERT INTO cc_visita_sessao (
-        sessao_id, rep_id, cliente_id, cliente_nome, endereco_cliente, data_planejada, checkin_at, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'ABERTA')
+        sessao_id, rep_id, cliente_id, cliente_nome, endereco_cliente, data_planejada, checkin_at, endereco_checkin, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ABERTA')
     `;
 
     await this.execute(sql, [
@@ -377,7 +377,8 @@ class TursoService {
       clienteNome,
       enderecoCliente,
       dataPlanejada,
-      checkinAt
+      checkinAt,
+      enderecoCheckin || null
     ]);
 
     return this.obterSessaoPorId(sessaoId);
@@ -388,13 +389,13 @@ class TursoService {
     return result.rows[0] || null;
   }
 
-  async registrarCheckoutSessao(sessaoId, checkoutAt, tempoMinutos) {
+  async registrarCheckoutSessao(sessaoId, checkoutAt, tempoMinutos, enderecoCheckout) {
     const sql = `
       UPDATE cc_visita_sessao
-      SET checkout_at = ?, tempo_minutos = ?, status = 'FECHADA'
+      SET checkout_at = ?, tempo_minutos = ?, endereco_checkout = ?, status = 'FECHADA'
       WHERE sessao_id = ?
     `;
-    await this.execute(sql, [checkoutAt, tempoMinutos, sessaoId]);
+    await this.execute(sql, [checkoutAt, tempoMinutos, enderecoCheckout || null, sessaoId]);
     return this.obterSessaoPorId(sessaoId);
   }
 
@@ -451,7 +452,9 @@ class TursoService {
       "ALTER TABLE cc_registro_visita ADD COLUMN drive_file_id TEXT",
       "ALTER TABLE cc_registro_visita ADD COLUMN drive_file_url TEXT",
       "ALTER TABLE cc_registro_visita ADD COLUMN latitude REAL",
-      "ALTER TABLE cc_registro_visita ADD COLUMN longitude REAL"
+      "ALTER TABLE cc_registro_visita ADD COLUMN longitude REAL",
+      "ALTER TABLE cc_visita_sessao ADD COLUMN endereco_checkin TEXT",
+      "ALTER TABLE cc_visita_sessao ADD COLUMN endereco_checkout TEXT"
     ];
 
     for (const sql of alteracoes) {

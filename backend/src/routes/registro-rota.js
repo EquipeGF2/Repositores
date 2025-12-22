@@ -301,12 +301,13 @@ router.post('/visitas', upload.any(), async (req, res) => {
           clienteNome: cliente_nome,
           enderecoCliente,
           dataPlanejada: dataReferencia,
-          checkinAt: dataHoraRegistro
+          checkinAt: dataHoraRegistro,
+          enderecoCheckin: enderecoSnapshot
         });
       } else {
         await tursoService.execute(
-          'UPDATE cc_visita_sessao SET checkin_at = ?, status = \"ABERTA\", endereco_cliente = ? WHERE sessao_id = ?',
-          [dataHoraRegistro, enderecoCliente, sessaoId]
+          'UPDATE cc_visita_sessao SET checkin_at = ?, status = \"ABERTA\", endereco_cliente = ?, endereco_checkin = ? WHERE sessao_id = ?',
+          [dataHoraRegistro, enderecoCliente, enderecoSnapshot, sessaoId]
         );
       }
     }
@@ -437,7 +438,7 @@ router.post('/visitas', upload.any(), async (req, res) => {
     }
 
     if (rvTipo === 'checkout') {
-      await tursoService.registrarCheckoutSessao(sessaoId, dataHoraRegistro, tempoTrabalhoMin ?? null);
+      await tursoService.registrarCheckoutSessao(sessaoId, dataHoraRegistro, tempoTrabalhoMin ?? null, enderecoSnapshot);
     }
 
     const payload = {
