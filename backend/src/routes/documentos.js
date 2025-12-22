@@ -60,6 +60,7 @@ function formatarDataHoraLocal(iso) {
   return {
     ddmmaa: `${dia}${mes}${ano2Digitos}`,
     hhmm: `${hora}${minuto}`,
+    yyyymmdd: `${ano}${mes}${dia}`,
     data_ref: `${ano}-${mes}-${dia}`,
     hora_ref: `${hora}:${minuto}`
   };
@@ -90,6 +91,24 @@ function registrarFalhaBanco(contexto, detalhe, payload = {}) {
     detalhe: detalhe?.message || detalhe,
     ...payload
   }));
+}
+
+function gerarNomeDocumento({ repositorId, tipoCodigo, referencia, ext, nomesUsados = new Set() }) {
+  const codigoSanitizado = (String(tipoCodigo || '').trim() || 'doc').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const repoParte = (String(repositorId || '').trim() || 'repo').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const base = `${repoParte}_${codigoSanitizado}_${referencia.yyyymmdd}_${referencia.hhmm}`;
+
+  let sequencia = 1;
+  let nomeFinal = '';
+
+  do {
+    const sufixo = `_${String(sequencia).padStart(2, '0')}`;
+    nomeFinal = `${base}${sufixo}${ext}`;
+    sequencia++;
+  } while (nomesUsados.has(nomeFinal));
+
+  nomesUsados.add(nomeFinal);
+  return nomeFinal;
 }
 
 async function ensureRepositorFolders(repositorId, repositorNome) {
@@ -334,20 +353,18 @@ router.post('/upload', upload.single('arquivo'), async (req, res) => {
     console.log('✅ Pasta tipo:', tipoFolderId);
 
     // Gerar nome do arquivo
-    const { ddmmaa, hhmm, data_ref, hora_ref } = referencia;
-    let nomeBase = `${tipo.dct_codigo}_${ddmmaa}_${hhmm}${ext}`;
-
-    // Verificar se já existe arquivo com mesmo nome e gerar sufixo se necessário
+    const { data_ref, hora_ref } = referencia;
     console.log('🔍 Verificando arquivos existentes...');
     const arquivosExistentes = await googleDriveService.listarArquivosPorPasta(tipoFolderId);
-    let contador = 2;
-    let nomeFinal = nomeBase;
+    const nomesUsados = new Set(arquivosExistentes.map(a => a.name));
 
-    while (arquivosExistentes.some(a => a.name === nomeFinal)) {
-      const sufixo = `_${String(contador).padStart(2, '0')}`;
-      nomeFinal = `${tipo.dct_codigo}_${ddmmaa}_${hhmm}${sufixo}${ext}`;
-      contador++;
-    }
+    const nomeFinal = gerarNomeDocumento({
+      repositorId: repositor_id,
+      tipoCodigo: tipo.dct_codigo,
+      referencia,
+      ext,
+      nomesUsados
+    });
     console.log('✅ Nome final:', nomeFinal);
 
     // Upload no Drive
@@ -502,20 +519,15 @@ router.post('/upload-multiplo', upload.array('arquivos', 10), async (req, res) =
           throw new Error(err.message);
         }
 
-        const { ddmmaa, hhmm, data_ref, hora_ref } = referencia;
-        let nomeBase = `${tipo.dct_codigo}_${ddmmaa}_${hhmm}${ext}`;
+        const { data_ref, hora_ref } = referencia;
 
-        // Gerar nome único
-        let contador = 2;
-        let nomeFinal = nomeBase;
-
-        while (nomesUsados.has(nomeFinal)) {
-          const sufixo = `_${String(contador).padStart(2, '0')}`;
-          nomeFinal = `${tipo.dct_codigo}_${ddmmaa}_${hhmm}${sufixo}${ext}`;
-          contador++;
-        }
-
-        nomesUsados.add(nomeFinal);
+        const nomeFinal = gerarNomeDocumento({
+          repositorId: repositor_id,
+          tipoCodigo: tipo.dct_codigo,
+          referencia,
+          ext,
+          nomesUsados
+        });
 
         // Upload no Drive
         const uploadResult = await googleDriveService.uploadArquivo({
@@ -529,7 +541,7 @@ router.post('/upload-multiplo', upload.array('arquivos', 10), async (req, res) =
         console.log(`📋 Valores para INSERT do arquivo ${arquivo.originalname}:`);
         console.log(`   data_ref: "${data_ref}" (tipo: ${typeof data_ref}, length: ${data_ref.length})`);
         console.log(`   hora_ref: "${hora_ref}" (tipo: ${typeof hora_ref})`);
-        console.log(`   ddmmaa: "${ddmmaa}", hhmm: "${hhmm}"`);
+        console.log(`   nome_final: "${nomeFinal}"`);
 
         // Validar formatos antes do INSERT
         const dataRefRegex = /^\d{4}-\d{2}-\d{2}$/;
@@ -599,9 +611,9 @@ router.post('/upload-multiplo', upload.array('arquivos', 10), async (req, res) =
       ok: true,
       total: arquivos.length,
       sucesso: resultados.length,
-      erros: erros.length,
+      erros_total: erros.length,
       resultados,
-      erros: erros.length > 0 ? erros : undefined
+      erros: erros
     }));
   } catch (error) {
     console.error('❌ Erro ao fazer upload múltiplo:', error);

@@ -6258,7 +6258,10 @@ class App {
         documentosSelecionados: new Set(),
         enviando: false,
         maxUploadBytes: MAX_UPLOAD_MB * 1024 * 1024,
-        maxUploadMb: MAX_UPLOAD_MB
+        maxUploadMb: MAX_UPLOAD_MB,
+        filaUploads: [],
+        cameraStream: null,
+        cameraModal: null
     };
 
     async inicializarDocumentos() {
@@ -6266,24 +6269,30 @@ class App {
             // Carregar tipos de documentos
             await this.carregarTiposDocumentos();
 
+            // Resetar fila de uploads
+            this.documentosState.filaUploads = [];
+            this.renderizarFilaUploads();
+
             // Configurar event listeners
             const btnUpload = document.getElementById('btnUploadDocumento');
             const btnFiltrar = document.getElementById('btnFiltrarDocumentos');
             const btnDownloadZip = document.getElementById('btnDownloadZip');
             const inputArquivo = document.getElementById('uploadArquivo');
+            const btnAnexarFoto = document.getElementById('btnAnexarFoto');
 
             if (btnUpload) btnUpload.onclick = () => this.uploadDocumento();
             if (btnFiltrar) btnFiltrar.onclick = () => this.filtrarDocumentos();
             if (btnDownloadZip) btnDownloadZip.onclick = () => this.downloadZip();
+            if (btnAnexarFoto) btnAnexarFoto.onclick = () => this.abrirCameraDocumentos();
 
             // Mostrar arquivos selecionados
             if (inputArquivo) {
                 inputArquivo.onchange = (e) => {
-                    const qtd = e.target.files.length;
-                    const span = document.getElementById('arquivosSelecionados');
-                    if (span) {
-                        span.textContent = qtd > 0 ? `${qtd} arquivo(s) selecionado(s)` : '';
+                    const arquivosSelecionados = Array.from(e.target.files || []);
+                    if (arquivosSelecionados.length > 0) {
+                        this.adicionarArquivosFila(arquivosSelecionados, 'upload');
                     }
+                    e.target.value = '';
                 };
             }
         } catch (error) {
@@ -6336,9 +6345,242 @@ class App {
         }
     }
 
+    formatarBytes(tamanho) {
+        if (tamanho < 1024) return `${tamanho} B`;
+        if (tamanho < 1024 * 1024) return `${(tamanho / 1024).toFixed(1)} KB`;
+        return `${(tamanho / 1024 / 1024).toFixed(2)} MB`;
+    }
+
+    adicionarArquivosFila(arquivos = [], origem = 'upload') {
+        const limite = this.documentosState.maxUploadBytes;
+        const novosItens = [];
+
+        arquivos.forEach(arquivo => {
+            if (arquivo.size > limite) {
+                this.showNotification(`Arquivo "${arquivo.name}" excede o limite de ${this.documentosState.maxUploadMb} MB.`, 'warning');
+                return;
+            }
+
+            const id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+            const preview = arquivo.type?.startsWith('image/') ? URL.createObjectURL(arquivo) : null;
+
+            novosItens.push({
+                id,
+                file: arquivo,
+                nome: arquivo.name,
+                tamanho: arquivo.size,
+                status: 'pendente',
+                origem,
+                preview
+            });
+        });
+
+        if (novosItens.length === 0) return;
+
+        this.documentosState.filaUploads = [...this.documentosState.filaUploads, ...novosItens];
+        this.renderizarFilaUploads();
+        this.showNotification(`${novosItens.length} item(ns) adicionado(s) à fila`, 'success');
+    }
+
+    removerItemFila(id) {
+        const item = this.documentosState.filaUploads.find(i => i.id === id);
+        if (item?.preview) {
+            URL.revokeObjectURL(item.preview);
+        }
+        this.documentosState.filaUploads = this.documentosState.filaUploads.filter(i => i.id !== id);
+        this.renderizarFilaUploads();
+    }
+
+    renderizarFilaUploads() {
+        const container = document.getElementById('filaUploads');
+        const contador = document.getElementById('arquivosSelecionados');
+
+        if (!container) return;
+
+        if (this.documentosState.filaUploads.length === 0) {
+            container.classList.add('empty');
+            container.innerHTML = `
+                <div class="upload-queue-title">📁 Fila de anexos</div>
+                <div style="font-size: 13px; color: #6b7280;">Nenhum arquivo ou foto selecionado</div>
+            `;
+            if (contador) contador.textContent = '';
+            return;
+        }
+
+        container.classList.remove('empty');
+
+        const statusLabel = {
+            pendente: 'Pendente',
+            enviando: 'Enviando...',
+            sucesso: 'Enviado',
+            erro: 'Erro'
+        };
+
+        const itensHtml = this.documentosState.filaUploads.map(item => {
+            const icone = item.preview
+                ? `<img src="${item.preview}" alt="Pré-visualização">`
+                : '📎';
+            const statusClasse = item.status || 'pendente';
+            const legendaStatus = statusLabel[statusClasse] || 'Pendente';
+
+            return `
+                <div class="upload-item" data-upload-id="${item.id}">
+                    <div class="upload-thumb">${icone}</div>
+                    <div class="upload-info">
+                        <div class="upload-nome">${item.nome}</div>
+                        <div class="upload-meta">
+                            <span>${this.formatarBytes(item.tamanho)}</span>
+                            <span class="upload-status ${statusClasse}">${legendaStatus}</span>
+                            <span style="color: #6b7280;">${item.origem === 'camera' ? '📸 Foto' : '📎 Arquivo'}</span>
+                        </div>
+                    </div>
+                    <button class="btn-remover-upload" data-remove-id="${item.id}">Remover</button>
+                </div>
+            `;
+        }).join('');
+
+        container.innerHTML = `
+            <div class="upload-queue-title">📁 Fila de anexos</div>
+            ${itensHtml}
+        `;
+
+        container.querySelectorAll('[data-remove-id]').forEach(btn => {
+            btn.onclick = () => this.removerItemFila(btn.dataset.removeId);
+        });
+
+        if (contador) {
+            const totalPendentes = this.documentosState.filaUploads.filter(i => i.status !== 'sucesso').length;
+            contador.textContent = `${totalPendentes} item(ns) na fila`;
+        }
+    }
+
+    atualizarStatusFila(status, errosMap = new Map()) {
+        this.documentosState.filaUploads = this.documentosState.filaUploads.map(item => {
+            if (status === 'enviando' && item.status === 'sucesso') return item;
+
+            if (status === 'resultado') {
+                if (errosMap.has(item.nome)) {
+                    return { ...item, status: 'erro', erroMsg: errosMap.get(item.nome) };
+                }
+                if (item.status !== 'sucesso') {
+                    return { ...item, status: 'sucesso' };
+                }
+                return item;
+            }
+
+            return { ...item, status };
+        });
+        this.renderizarFilaUploads();
+    }
+
+    async abrirCameraDocumentos() {
+        try {
+            const modal = document.createElement('div');
+            modal.className = 'modal-overlay';
+            modal.id = 'modalCameraDocumentos';
+            modal.style.display = 'flex';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 720px; width: 100%;">
+                    <div class="modal-header">
+                        <div>
+                            <h3 style="margin: 0;">Anexar por foto</h3>
+                            <p style="margin: 4px 0 0; color: #6b7280;">Use a câmera para capturar o documento</p>
+                        </div>
+                        <button class="modal-close" aria-label="Fechar" onclick="app.fecharCameraDocumentos()">&times;</button>
+                    </div>
+                    <div class="modal-body" style="display: flex; flex-direction: column; gap: 12px;">
+                        <div style="background: #0f172a; border-radius: 12px; overflow: hidden; position: relative; min-height: 260px;">
+                            <video id="videoCameraDocumento" autoplay playsinline muted style="width: 100%; height: 100%; object-fit: cover; display: block;"></video>
+                            <div id="cameraDocumentoErro" style="display:none; position:absolute; inset:0; background: rgba(255,255,255,0.95); color:#b91c1c; display:flex; align-items:center; justify-content:center; padding:16px; text-align:center; font-weight:700;"></div>
+                        </div>
+                        <div style="display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;">
+                            <button class="btn btn-secondary" type="button" onclick="app.fecharCameraDocumentos()">Cancelar</button>
+                            <button class="btn btn-primary" type="button" id="btnCapturarFotoDocumento">📸 Capturar foto</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+            this.documentosState.cameraModal = modal;
+
+            const video = document.getElementById('videoCameraDocumento');
+            const btnCapturar = document.getElementById('btnCapturarFotoDocumento');
+            const erroBox = document.getElementById('cameraDocumentoErro');
+
+            if (btnCapturar) {
+                btnCapturar.onclick = () => this.capturarFotoDocumento();
+            }
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                this.documentosState.cameraStream = stream;
+                if (video) {
+                    video.srcObject = stream;
+                    await video.play();
+                }
+            } catch (error) {
+                console.error('Erro ao abrir câmera:', error);
+                if (erroBox) {
+                    erroBox.style.display = 'flex';
+                    erroBox.textContent = 'Não foi possível acessar a câmera. Verifique permissões ou conecte um dispositivo de captura.';
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao abrir captura por foto:', error);
+            this.showNotification('Não foi possível abrir a câmera', 'error');
+        }
+    }
+
+    fecharCameraDocumentos() {
+        const modal = this.documentosState.cameraModal || document.getElementById('modalCameraDocumentos');
+        if (this.documentosState.cameraStream) {
+            this.documentosState.cameraStream.getTracks().forEach(track => track.stop());
+            this.documentosState.cameraStream = null;
+        }
+        if (modal) {
+            modal.remove();
+        }
+        this.documentosState.cameraModal = null;
+    }
+
+    capturarFotoDocumento() {
+        try {
+            const video = document.getElementById('videoCameraDocumento');
+
+            if (!video || !video.videoWidth) {
+                this.showNotification('Câmera não está pronta para capturar', 'warning');
+                return;
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            canvas.toBlob(blob => {
+                if (!blob) {
+                    this.showNotification('Não foi possível gerar a foto', 'error');
+                    return;
+                }
+
+                const agora = new Date();
+                const nomeFoto = `foto_${agora.getFullYear()}${String(agora.getMonth() + 1).padStart(2, '0')}${String(agora.getDate()).padStart(2, '0')}_${String(agora.getHours()).padStart(2, '0')}${String(agora.getMinutes()).padStart(2, '0')}${String(agora.getSeconds()).padStart(2, '0')}.jpg`;
+                const arquivo = new File([blob], nomeFoto, { type: 'image/jpeg' });
+
+                this.adicionarArquivosFila([arquivo], 'camera');
+                this.showNotification('Foto adicionada à fila de envio', 'success');
+                this.fecharCameraDocumentos();
+            }, 'image/jpeg', 0.92);
+        } catch (error) {
+            console.error('Erro ao capturar foto:', error);
+            this.showNotification('Erro ao capturar foto', 'error');
+        }
+    }
+
     async uploadDocumento() {
         let btnUpload;
-        let inputArquivo;
         let btnFiltrar;
         let textoOriginal = '';
         try {
@@ -6349,21 +6591,21 @@ class App {
 
             const repositorId = document.getElementById('uploadRepositor').value;
             const tipoId = document.getElementById('uploadTipo').value;
-            const arquivos = document.getElementById('uploadArquivo').files;
             const observacao = document.getElementById('uploadObservacao').value;
             btnUpload = document.getElementById('btnUploadDocumento');
-            inputArquivo = document.getElementById('uploadArquivo');
             btnFiltrar = document.getElementById('btnFiltrarDocumentos');
 
-            if (!repositorId || !tipoId || arquivos.length === 0) {
-                this.showNotification('Preencha todos os campos obrigatórios', 'warning');
+            const arquivosParaEnvio = this.documentosState.filaUploads.filter(i => i.status !== 'sucesso');
+
+            if (!repositorId || !tipoId || arquivosParaEnvio.length === 0) {
+                this.showNotification('Preencha todos os campos obrigatórios e adicione ao menos um anexo', 'warning');
                 return;
             }
 
             const limite = this.documentosState.maxUploadBytes;
-            for (let i = 0; i < arquivos.length; i++) {
-                if (arquivos[i].size > limite) {
-                    this.showNotification(`Arquivo "${arquivos[i].name}" excede o limite de ${this.documentosState.maxUploadMb} MB.`, 'warning');
+            for (const item of arquivosParaEnvio) {
+                if (item.file.size > limite) {
+                    this.showNotification(`Arquivo "${item.file.name}" excede o limite de ${this.documentosState.maxUploadMb} MB.`, 'warning');
                     return;
                 }
             }
@@ -6372,28 +6614,27 @@ class App {
             textoOriginal = btnUpload ? btnUpload.innerHTML : '';
             if (btnUpload) {
                 btnUpload.disabled = true;
-                btnUpload.innerHTML = `<span class="spinner" style="width:16px;height:16px;border-width:2px;margin-right:8px;"></span> Enviando documento...`;
-            }
-            if (inputArquivo) {
-                inputArquivo.disabled = true;
+                btnUpload.innerHTML = `<span class="spinner" style="width:16px;height:16px;border-width:2px;margin-right:8px;"></span> Enviando anexos...`;
             }
             if (btnFiltrar) {
                 btnFiltrar.disabled = true;
             }
+
+            this.atualizarStatusFila('enviando');
 
             const formData = new FormData();
             formData.append('repositor_id', repositorId);
             formData.append('dct_id', tipoId);
 
             // Adicionar todos os arquivos
-            for (let i = 0; i < arquivos.length; i++) {
-                formData.append('arquivos', arquivos[i]);
-            }
+            arquivosParaEnvio.forEach(item => {
+                formData.append('arquivos', item.file);
+            });
 
             if (observacao) formData.append('observacao', observacao);
 
-            const qtdArquivos = arquivos.length;
-            this.showNotification(`Carregando / enviando ${qtdArquivos} documento(s)...`, 'info');
+            const qtdArquivos = arquivosParaEnvio.length;
+            this.showNotification(`Carregando / enviando ${qtdArquivos} anexo(s)...`, 'info');
 
             const response = await fetch(`${API_BASE_URL}/api/documentos/upload-multiplo`, {
                 method: 'POST',
@@ -6407,45 +6648,35 @@ class App {
 
             const data = await response.json();
 
-            if (data.erros && data.erros.length > 0) {
-                this.showNotification(
-                    `Upload concluído: ${data.sucesso || 0} sucesso, ${data.erros.length} erros`,
-                    'warning'
-                );
-                console.error('❌ Erros detalhados no upload:');
-                data.erros.forEach((erro, idx) => {
-                    console.error(`  ${idx + 1}. Arquivo: ${erro.arquivo || 'desconhecido'}`);
-                    console.error(`     Erro: ${erro.erro || erro.message || JSON.stringify(erro)}`);
-                });
-                // Mostrar primeiro erro na notificação
-                if (data.erros[0]) {
-                    const primeiroErro = data.erros[0];
-                    this.showNotification(
-                        `Erro: ${primeiroErro.erro || primeiroErro.message || 'Erro desconhecido'}`,
-                        'error'
-                    );
-                }
-            }
+            const errosDetalhados = Array.isArray(data.erros) ? data.erros : [];
+            const errosMap = new Map();
+            errosDetalhados.forEach(erro => {
+                const chave = erro.arquivo || erro.original || erro.nome || erro.nome_original || 'desconhecido';
+                errosMap.set(chave, erro.erro || erro.message || 'Erro ao enviar');
+            });
+
+            this.atualizarStatusFila('resultado', errosMap);
 
             if (data.resultados && data.resultados.length > 0) {
-                const detalhesSucesso = data.resultados.map(r => `${r.original || r.nome_drive} → ${r.nome_drive || r.original}`).join('; ');
+                const detalhesSucesso = data.resultados.map(r => `${r.original || r.nome_drive}`).join('; ');
                 this.showNotification(`Sucesso: ${detalhesSucesso}`, 'success');
             }
 
-            if (data.erros && data.erros.length > 0) {
-                const detalhesErro = data.erros.map(e => `${e.arquivo || 'arquivo'}: ${e.erro}`).join('; ');
+            if (errosDetalhados.length > 0) {
+                const detalhesErro = errosDetalhados.map(e => `${e.arquivo || 'arquivo'}: ${e.erro}`).join('; ');
                 this.showNotification(`Falhas: ${detalhesErro}`, 'error');
-            } else {
-                this.showNotification(
-                    `${qtdArquivos} documento(s) enviado(s) com sucesso!`,
-                    'success'
-                );
             }
 
-            // Limpar formulário
+            const enviadosComSucesso = qtdArquivos - errosDetalhados.length;
+            this.showNotification(
+                `Envio concluído: ${enviadosComSucesso} sucesso(s)` + (errosDetalhados.length ? `, ${errosDetalhados.length} erro(s)` : ''),
+                errosDetalhados.length ? 'warning' : 'success'
+            );
+
+            // Limpar campos e manter fila apenas com itens pendentes/erro
             document.getElementById('uploadArquivo').value = '';
             document.getElementById('uploadObservacao').value = '';
-            document.getElementById('arquivosSelecionados').textContent = '';
+            this.renderizarFilaUploads();
 
             // Recarregar lista se filtro estiver ativo
             if (document.getElementById('filtroRepositor').value) {
@@ -6458,9 +6689,6 @@ class App {
             if (btnUpload) {
                 btnUpload.disabled = false;
                 btnUpload.innerHTML = textoOriginal || '📤 Enviar Documento';
-            }
-            if (inputArquivo) {
-                inputArquivo.disabled = false;
             }
             if (btnFiltrar) {
                 btnFiltrar.disabled = false;
@@ -6902,53 +7130,182 @@ class App {
             return;
         }
 
-        // Criar modal de visualização de imagens
+        this.campanhaViewState = this.campanhaViewState || { tamanho: 'media', layout: 'blocos' };
+        this.campanhaGrupoSelecionado = grupo;
+
         const modalHtml = `
-            <div class="modal-overlay" id="modalImagensCampanha" style="display: flex; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10000; justify-content: center; align-items: center; padding: 20px; overflow: auto;">
-                <div style="background: white; border-radius: 12px; max-width: 90vw; max-height: 90vh; overflow: auto; padding: 24px; position: relative;">
-                    <button onclick="app.fecharModalImagensCampanha()" style="position: absolute; top: 16px; right: 16px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 18px; line-height: 1;">×</button>
-
-                    <h3 style="margin: 0 0 16px; font-size: 20px; font-weight: 700;">
-                        ${grupo.cliente_nome || grupo.cliente_id}
-                    </h3>
-                    <p style="margin: 0 0 24px; color: #6b7280;">
-                        ${grupo.data_planejada ? `Data: ${grupo.data_planejada} - ` : ''}${grupo.imagens.length} foto(s)
-                    </p>
-
-                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px;">
-                        ${grupo.imagens.map((img, imgIndex) => `
-                            <div style="border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; background: #f9fafb;">
-                                <div style="aspect-ratio: 4/3; background: #f3f4f6; display: flex; align-items: center; justify-content: center; position: relative;">
-                                    <img src="https://drive.google.com/thumbnail?id=${img.drive_file_id}&sz=w400"
-                                         alt="Foto ${imgIndex + 1}"
-                                         style="width: 100%; height: 100%; object-fit: cover;"
-                                         onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22%3E%3Crect fill=%22%23ddd%22 width=%22100%22 height=%22100%22/%3E%3Ctext fill=%22%23999%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22%3ESem imagem%3C/text%3E%3C/svg%3E'">
-                                </div>
-                                <div style="padding: 12px;">
-                                    <div style="font-size: 12px; color: #6b7280; margin-bottom: 8px;">
-                                        ${new Date(img.data_hora_registro).toLocaleString('pt-BR')}
-                                    </div>
-                                    <a href="${img.drive_file_url}" target="_blank" class="btn btn-secondary" style="width: 100%; text-align: center; padding: 6px; font-size: 13px;">
-                                        🔗 Abrir no Drive
-                                    </a>
-                                </div>
+            <div class="modal-overlay" id="modalImagensCampanha" style="display:flex;">
+                <div class="campanha-modal">
+                    <div class="campanha-modal-header">
+                        <div>
+                            <h3 style="margin:0;">${grupo.cliente_nome || grupo.cliente_id}</h3>
+                            <p style="margin:4px 0 0; color:#6b7280;">
+                                ${grupo.data_planejada ? `Data: ${grupo.data_planejada} · ` : ''}${grupo.imagens.length} foto(s)
+                            </p>
+                        </div>
+                        <button class="modal-close" aria-label="Fechar" onclick="app.fecharModalImagensCampanha()">&times;</button>
+                    </div>
+                    <div class="campanha-modal-body">
+                        <div class="campanha-control-bar">
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                <span style="font-weight:700; color:#374151;">Tamanho:</span>
+                                <button class="toggle-chip" data-campanha-tamanho="pequeno">Pequenas</button>
+                                <button class="toggle-chip" data-campanha-tamanho="media">Médias</button>
+                                <button class="toggle-chip" data-campanha-tamanho="grande">Grandes</button>
                             </div>
-                        `).join('')}
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                <span style="font-weight:700; color:#374151;">Layout:</span>
+                                <button class="toggle-chip" data-campanha-layout="lista">Lista</button>
+                                <button class="toggle-chip" data-campanha-layout="detalhes">Detalhes</button>
+                                <button class="toggle-chip" data-campanha-layout="blocos">Blocos</button>
+                            </div>
+                        </div>
+                        <div id="campanhaGaleriaWrapper" style="display:flex; flex-direction:column; gap:10px; flex:1; min-height:200px;">
+                            <div class="campanha-loading" id="campanhaGaleriaLoading">Carregando imagens...</div>
+                            <div id="campanhaGaleria" class="campanha-grid"></div>
+                        </div>
                     </div>
                 </div>
             </div>
         `;
 
-        // Adicionar modal ao body
         const modalDiv = document.createElement('div');
         modalDiv.innerHTML = modalHtml;
         document.body.appendChild(modalDiv.firstElementChild);
+
+        this.aplicarEstadoCampanha();
+        this.renderizarGaleriaCampanha();
+
+        this.campanhaModalEscHandler = (event) => {
+            if (event.key === 'Escape') {
+                this.fecharModalImagensCampanha();
+            }
+        };
+        document.addEventListener('keydown', this.campanhaModalEscHandler);
     }
 
     fecharModalImagensCampanha() {
         const modal = document.getElementById('modalImagensCampanha');
-        if (modal) {
-            modal.remove();
+        if (modal) modal.remove();
+        this.fecharViewerCampanha();
+        if (this.campanhaModalEscHandler) {
+            document.removeEventListener('keydown', this.campanhaModalEscHandler);
+            this.campanhaModalEscHandler = null;
+        }
+    }
+
+    aplicarEstadoCampanha() {
+        const modal = document.getElementById('modalImagensCampanha');
+        if (!modal) return;
+
+        const { tamanho = 'media', layout = 'blocos' } = this.campanhaViewState || {};
+
+        modal.querySelectorAll('[data-campanha-tamanho]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.campanhaTamanho === tamanho);
+            btn.onclick = () => {
+                this.campanhaViewState = { ...(this.campanhaViewState || {}), tamanho: btn.dataset.campanhaTamanho };
+                this.aplicarEstadoCampanha();
+                this.renderizarGaleriaCampanha();
+            };
+        });
+
+        modal.querySelectorAll('[data-campanha-layout]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.campanhaLayout === layout);
+            btn.onclick = () => {
+                this.campanhaViewState = { ...(this.campanhaViewState || {}), layout: btn.dataset.campanhaLayout };
+                this.aplicarEstadoCampanha();
+                this.renderizarGaleriaCampanha();
+            };
+        });
+    }
+
+    renderizarGaleriaCampanha() {
+        const grid = document.getElementById('campanhaGaleria');
+        const loading = document.getElementById('campanhaGaleriaLoading');
+        const grupo = this.campanhaGrupoSelecionado;
+
+        if (!grid || !loading || !grupo) return;
+
+        loading.style.display = 'block';
+        grid.innerHTML = '';
+
+        const { tamanho = 'media', layout = 'blocos' } = this.campanhaViewState || {};
+        grid.className = `campanha-grid tamanho-${tamanho} layout-${layout}`;
+
+        setTimeout(() => {
+            const itens = grupo.imagens.map((img, imgIndex) => {
+                const urlImagem = img.rv_drive_file_url || img.drive_file_url || img.url || '';
+                const dataRegistro = img.data_hora_registro ? new Date(img.data_hora_registro).toLocaleString('pt-BR') : '-';
+
+                return `
+                    <div class="campanha-card" data-campanha-index="${imgIndex}">
+                        <div class="thumb">
+                            <img src="${urlImagem}" alt="Foto ${imgIndex + 1}" loading="lazy">
+                        </div>
+                        <div class="card-info">
+                            <div style="font-weight:700; color:#111827;">Foto ${imgIndex + 1}</div>
+                            <div class="card-meta">
+                                <span>📅 ${grupo.data_planejada || '-'}</span>
+                                <span>⏱️ ${dataRegistro}</span>
+                            </div>
+                            <a href="${urlImagem}" target="_blank" class="btn btn-secondary" style="text-align:center; padding:8px 10px;">🔗 Abrir no Drive</a>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            grid.innerHTML = itens;
+            loading.style.display = 'none';
+
+            grid.querySelectorAll('[data-campanha-index]').forEach(card => {
+                card.onclick = () => {
+                    const idx = parseInt(card.dataset.campanhaIndex, 10);
+                    const imagem = grupo.imagens[idx];
+                    if (imagem) {
+                        this.abrirViewerCampanha(imagem, idx + 1, grupo);
+                    }
+                };
+            });
+        }, 100);
+    }
+
+    abrirViewerCampanha(imagem, posicao = 1, grupo = {}) {
+        this.fecharViewerCampanha();
+
+        const urlImagem = imagem?.rv_drive_file_url || imagem?.drive_file_url || imagem?.url || '';
+        const dataRegistro = imagem?.data_hora_registro ? new Date(imagem.data_hora_registro).toLocaleString('pt-BR') : '-';
+
+        const lightbox = document.createElement('div');
+        lightbox.className = 'campanha-lightbox';
+        lightbox.id = 'campanhaLightbox';
+        lightbox.innerHTML = `
+            <div class="campanha-lightbox-content">
+                <button class="close-btn" aria-label="Fechar" onclick="app.fecharViewerCampanha()">×</button>
+                <img src="${urlImagem}" alt="Imagem da campanha">
+                <div style="color:#e5e7eb; font-size:14px; display:flex; gap:12px; flex-wrap:wrap;">
+                    <span>📍 ${grupo.cliente_nome || grupo.cliente_id || 'Cliente'}</span>
+                    <span>🖼️ Foto ${posicao}</span>
+                    <span>⏱️ ${dataRegistro}</span>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(lightbox);
+
+        this.campanhaViewerKeyHandler = (event) => {
+            if (event.key === 'Escape') {
+                this.fecharViewerCampanha();
+            }
+        };
+        document.addEventListener('keydown', this.campanhaViewerKeyHandler);
+    }
+
+    fecharViewerCampanha() {
+        const lightbox = document.getElementById('campanhaLightbox');
+        if (lightbox) lightbox.remove();
+        if (this.campanhaViewerKeyHandler) {
+            document.removeEventListener('keydown', this.campanhaViewerKeyHandler);
+            this.campanhaViewerKeyHandler = null;
         }
     }
 

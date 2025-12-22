@@ -2314,7 +2314,10 @@ export const pages = {
                             </div>
                             <div class="filter-group doc-file-input">
                                 <label for="uploadArquivo">Arquivos * <span style="font-size: 12px; color: #6b7280;">(múltiplos permitidos)</span></label>
-                                <input type="file" id="uploadArquivo" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt,.zip" multiple required>
+                                <div class="doc-input-row">
+                                    <input type="file" id="uploadArquivo" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt,.zip" multiple required>
+                                    <button type="button" class="btn-camera" id="btnAnexarFoto">📸 Anexar por foto</button>
+                                </div>
                                 <span style="font-size: 12px; color: #6b7280;">Tamanho máximo por arquivo: ${MAX_UPLOAD_MB} MB</span>
                                 <span id="arquivosSelecionados" style="font-size: 13px; color: #6b7280; margin-top: 4px;"></span>
                             </div>
@@ -2325,6 +2328,11 @@ export const pages = {
                         </div>
                         <div style="margin-top: 20px; display: flex; justify-content: flex-end;">
                             <button class="btn btn-primary" id="btnUploadDocumento" style="min-width: 160px;">📤 Enviar Documento</button>
+                        </div>
+
+                        <div class="upload-queue" id="filaUploads">
+                            <div class="upload-queue-title">📁 Fila de anexos</div>
+                            <div style="font-size: 13px; color: #6b7280;">Nenhum arquivo ou foto selecionado</div>
                         </div>
                     </div>
 
