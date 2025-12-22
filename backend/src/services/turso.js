@@ -1,4 +1,5 @@
 import { getDbClient, DatabaseNotConfiguredError } from '../config/db.js';
+import { config } from '../config/env.js';
 
 function normalizeClienteId(clienteId) {
   return String(clienteId ?? '').trim().replace(/\.0$/, '');
@@ -48,19 +49,35 @@ class TursoService {
   }
 
   async rebuildCcDocumentosIfNeeded(ddlAtual) {
-    const ddl = ddlAtual || (await this.logDocumentosDdl());
-    const checkCorreto = ddl.includes("doc_data_ref GLOB '????-??-??'") && ddl.includes('length(doc_data_ref) = 10');
-
-    if (checkCorreto) {
+    if (config.skipMigrations) {
+      console.log('⏭️  Reconstrução de cc_documentos ignorada por SKIP_MIGRATIONS.');
       return false;
     }
 
-    console.log('♻️  Reconstruindo cc_documentos para corrigir constraint de data...');
-    const client = this.getClient();
+    const ddl = ddlAtual || (await this.logDocumentosDdl());
+    const checkCorreto = ddl.includes("doc_data_ref GLOB '????-??-??'") && ddl.includes('length(doc_data_ref) = 10');
 
-    const rebuildStatements = [
-      'BEGIN TRANSACTION;',
-      'ALTER TABLE cc_documentos RENAME TO cc_documentos_old;',
+    const client = this.getClient();
+    const hasTabelaAtual = await this.hasTabela('cc_documentos');
+    const hasTabelaAntiga = await this.hasTabela('cc_documentos_old');
+
+    if (checkCorreto && !hasTabelaAntiga) {
+      return false;
+    }
+
+    console.log(JSON.stringify({ code: 'DOCS_REBUILD_START', tabela: 'cc_documentos', hasTabelaAntiga, hasTabelaAtual }));
+
+    const rebuildStatements = [];
+
+    if (hasTabelaAntiga && hasTabelaAtual) {
+      rebuildStatements.push('DROP TABLE IF EXISTS cc_documentos;');
+    }
+
+    if (!hasTabelaAntiga) {
+      rebuildStatements.push('ALTER TABLE cc_documentos RENAME TO cc_documentos_old;');
+    }
+
+    rebuildStatements.push(
       `CREATE TABLE cc_documentos (
           doc_id INTEGER PRIMARY KEY AUTOINCREMENT,
           doc_repositor_id INTEGER NOT NULL,
@@ -93,26 +110,52 @@ class TursoService {
           doc_drive_file_id, doc_drive_folder_id, doc_status, doc_erro_msg,
           doc_criado_em, doc_atualizado_em
         FROM cc_documentos_old;`,
-      'DROP TABLE cc_documentos_old;',
-      'COMMIT;'
-    ];
+      'DROP TABLE cc_documentos_old;'
+    );
 
     try {
-      for (const sql of rebuildStatements) {
-        await client.execute({ sql, args: [] });
+      if (typeof client.transaction === 'function') {
+        const tx = await client.transaction('write');
+        try {
+          for (const sql of rebuildStatements) {
+            await tx.execute({ sql, args: [] });
+          }
+          await tx.commit();
+        } catch (txError) {
+          await tx.rollback();
+          throw txError;
+        }
+      } else {
+        for (const sql of rebuildStatements) {
+          await client.execute({ sql, args: [] });
+        }
       }
 
-      console.log('✅ Tabela cc_documentos reconstruída com CHECK atualizado.');
+      console.log(JSON.stringify({ code: 'DOCS_REBUILD_OK', tabela: 'cc_documentos' }));
       await this.logDocumentosDdl();
       return true;
     } catch (error) {
-      console.error('❌ Erro ao reconstruir cc_documentos:', error.message || error);
-      try {
-        await client.execute({ sql: 'ROLLBACK;', args: [] });
-      } catch (rollbackError) {
-        console.error('⚠️  Falha ao realizar rollback da reconstrução de cc_documentos:', rollbackError.message || rollbackError);
-      }
-      throw error;
+      console.error(JSON.stringify({
+        code: 'DOCS_REBUILD_FAIL',
+        tabela: 'cc_documentos',
+        step: 'rebuild',
+        message: error?.message || String(error)
+      }));
+      return false;
+    }
+  }
+
+  async hasTabela(nome) {
+    try {
+      const result = await this.getClient().execute({
+        sql: "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
+        args: [nome]
+      });
+
+      return result.rows?.length > 0;
+    } catch (error) {
+      console.warn(`⚠️  Não foi possível verificar existência da tabela ${nome}:`, error?.message || error);
+      return false;
     }
   }
 
@@ -262,7 +305,28 @@ class TursoService {
              v.sessao_id, v.tipo, v.data_hora_registro, v.endereco_registro, v.latitude AS lat_base, v.longitude AS long_base,
              s.cliente_nome AS sessao_cliente_nome, s.endereco_cliente AS sessao_endereco_cliente, s.checkin_at, s.checkout_at,
              s.tempo_minutos, s.status, s.serv_abastecimento, s.serv_espaco_loja, s.serv_ruptura_loja, s.serv_pontos_extras,
-             s.qtd_pontos_extras, s.qtd_frentes, s.usou_merchandising
+             s.qtd_pontos_extras, s.qtd_frentes, s.usou_merchandising,
+             COALESCE(NULLIF(s.endereco_cliente, ''), (
+               SELECT rv_endereco_cliente
+               FROM cc_registro_visita rv
+               WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id AND rv.rv_tipo = 'checkin'
+               ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) ASC
+               LIMIT 1
+             )) AS endereco_cliente_roteiro,
+             COALESCE(NULLIF(s.endereco_checkin, ''), (
+               SELECT COALESCE(rv_endereco_registro, endereco_registro, endereco_resolvido)
+               FROM cc_registro_visita rv
+               WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id AND rv.rv_tipo = 'checkin'
+               ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) ASC
+               LIMIT 1
+             )) AS endereco_gps_checkin,
+             COALESCE(NULLIF(s.endereco_checkout, ''), (
+               SELECT COALESCE(rv_endereco_registro, endereco_registro, endereco_resolvido)
+               FROM cc_registro_visita rv
+               WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id AND rv.rv_tipo = 'checkout'
+               ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) DESC
+               LIMIT 1
+             )) AS endereco_gps_checkout
       FROM cc_registro_visita v
       LEFT JOIN cc_visita_sessao s ON s.sessao_id = COALESCE(v.rv_sessao_id, v.sessao_id)
       WHERE ${filtros.join(' AND ')}
@@ -601,6 +665,8 @@ class TursoService {
           cliente_id TEXT NOT NULL,
           cliente_nome TEXT,
           endereco_cliente TEXT,
+          endereco_checkin TEXT,
+          endereco_checkout TEXT,
           data_planejada TEXT NOT NULL,
           checkin_at TEXT,
           checkout_at TEXT,
@@ -634,6 +700,11 @@ class TursoService {
   }
 
   async ensureSchemaDocumentos() {
+    if (config.skipMigrations) {
+      console.log('⏭️  Migrações de documentos ignoradas por SKIP_MIGRATIONS.');
+      return;
+    }
+
     const client = this.getClient();
 
     // Tabela de tipos de documentos
@@ -712,9 +783,13 @@ class TursoService {
     });
 
     const ddlAtual = await this.logDocumentosDdl();
-    const foiReconstruida = await this.rebuildCcDocumentosIfNeeded(ddlAtual);
-    if (foiReconstruida) {
-      console.log('📌 Reaplicando índices e triggers após reconstrução de cc_documentos...');
+    try {
+      const foiReconstruida = await this.rebuildCcDocumentosIfNeeded(ddlAtual);
+      if (foiReconstruida) {
+        console.log('📌 Reaplicando índices e triggers após reconstrução de cc_documentos...');
+      }
+    } catch (error) {
+      console.error(JSON.stringify({ code: 'DOCS_REBUILD_FAIL', message: error?.message || error }));
     }
 
     // Índices

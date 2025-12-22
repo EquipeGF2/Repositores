@@ -5795,7 +5795,8 @@ class App {
             formData.append('endereco_resolvido', enderecoResolvido || '');
             formData.append('tipo', tipoRegistro);
             formData.append('cliente_nome', clienteNome);
-            formData.append('cliente_endereco', enderecoResolvido || '');
+            const enderecoRoteiro = this.registroRotaState.clienteAtual?.clienteEndereco || '';
+            formData.append('cliente_endereco', enderecoRoteiro);
             if (dataVisita) formData.append('data_planejada', dataVisita);
 
             arquivos.forEach((arquivo) => formData.append('fotos[]', arquivo));
@@ -6092,6 +6093,11 @@ class App {
                     ? `<div class="fora-dia-badge">Realizado fora do dia previsto<br>Dia previsto: ${sessao.dia_previsto_label || '-'} | Realizado: ${sessao.dia_real_label || '-'}</div>`
                     : '';
 
+                // Endereços com fallbacks claros
+                const enderecoRoteiro = sessao.endereco_cliente_roteiro || sessao.endereco_cliente || 'Não informado';
+                const enderecoGpsCheckin = sessao.endereco_gps_checkin || sessao.endereco_checkin || 'Não capturado';
+                const enderecoGpsCheckout = sessao.endereco_gps_checkout || sessao.endereco_checkout || null;
+
                 // Montar lista de serviços realizados
                 const servicos = [];
                 if (sessao.serv_abastecimento) servicos.push('Abastecimento');
@@ -6119,9 +6125,9 @@ class App {
                             <div style="margin-top: 4px;"><strong>Checkout:</strong> ${checkoutFormatado}</div>
                         </div>
                         <div style="font-size: 0.9em; margin-top: 8px; padding: 8px; background: #f0fdf4; border-radius: 6px; border-left: 3px solid #22c55e;">
-                            <div style="margin-bottom: 6px;"><strong>🏘️ Endereço Cliente:</strong><br>${sessao.endereco_cliente || 'Não informado'}</div>
-                            <div><strong>📍 Endereço GPS (Check-in):</strong><br>${sessao.endereco_checkin || 'Não informado'}</div>
-                            ${sessao.endereco_checkout ? `<div style="margin-top: 6px;"><strong>📍 Endereço GPS (Checkout):</strong><br>${sessao.endereco_checkout}</div>` : ''}
+                            <div style="margin-bottom: 6px;"><strong>🏘️ Endereço do Cliente (Roteiro):</strong><br>${enderecoRoteiro}</div>
+                            <div><strong>📍 Endereço GPS (Check-in):</strong><br>${enderecoGpsCheckin}</div>
+                            ${enderecoGpsCheckout ? `<div style="margin-top: 6px;"><strong>📍 Endereço GPS (Checkout):</strong><br>${enderecoGpsCheckout}</div>` : '<div style="margin-top: 6px;"><strong>📍 Endereço GPS (Checkout):</strong><br>Não capturado</div>'}
                         </div>
                         ${servicosTexto}
                     </div>

@@ -721,8 +721,30 @@ router.get('/sessoes', async (req, res) => {
     }
 
     let sql = `
-      SELECT *
-      FROM cc_visita_sessao
+      SELECT
+        s.*,
+        COALESCE(NULLIF(s.endereco_cliente, ''), (
+          SELECT rv_endereco_cliente
+          FROM cc_registro_visita rv
+          WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id AND rv.rv_tipo = 'checkin'
+          ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) ASC
+          LIMIT 1
+        )) AS endereco_cliente_roteiro,
+        COALESCE(NULLIF(s.endereco_checkin, ''), (
+          SELECT COALESCE(rv_endereco_registro, endereco_registro, endereco_resolvido)
+          FROM cc_registro_visita rv
+          WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id AND rv.rv_tipo = 'checkin'
+          ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) ASC
+          LIMIT 1
+        )) AS endereco_gps_checkin,
+        COALESCE(NULLIF(s.endereco_checkout, ''), (
+          SELECT COALESCE(rv_endereco_registro, endereco_registro, endereco_resolvido)
+          FROM cc_registro_visita rv
+          WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id AND rv.rv_tipo = 'checkout'
+          ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) DESC
+          LIMIT 1
+        )) AS endereco_gps_checkout
+      FROM cc_visita_sessao s
       WHERE data_planejada >= ? AND data_planejada <= ?
     `;
     const params = [data_inicio, data_fim];
