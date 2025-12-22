@@ -142,6 +142,8 @@ class App {
             rateioAlertLink: document.getElementById('rateioAlertaDetalhes')
         };
 
+        this.setupShellResponsiva();
+
         // Event Listeners
         this.setupEventListeners();
 
@@ -280,12 +282,55 @@ class App {
         }
     }
 
+    setupShellResponsiva() {
+        const sidebar = document.querySelector('.sidebar');
+        const sidebarBackdrop = document.querySelector('.sidebar-backdrop');
+        const sidebarToggle = document.querySelector('.sidebar-toggle');
+
+        if (!sidebar || !sidebarBackdrop || !sidebarToggle) return;
+
+        const fecharMenu = () => {
+            sidebar.classList.remove('is-open');
+            sidebarBackdrop.classList.remove('is-open');
+            sidebarToggle.setAttribute('aria-expanded', 'false');
+        };
+
+        const abrirMenu = () => {
+            sidebar.classList.add('is-open');
+            sidebarBackdrop.classList.add('is-open');
+            sidebarToggle.setAttribute('aria-expanded', 'true');
+        };
+
+        const alternarMenu = () => {
+            const aberto = sidebar.classList.contains('is-open');
+            if (aberto) {
+                fecharMenu();
+            } else {
+                abrirMenu();
+            }
+        };
+
+        this.closeSidebarMenu = fecharMenu;
+
+        sidebarToggle.addEventListener('click', alternarMenu);
+        sidebarBackdrop.addEventListener('click', fecharMenu);
+
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 992) {
+                fecharMenu();
+            }
+        });
+    }
+
     setupEventListeners() {
         // Links de navegação
         document.querySelectorAll('[data-page]').forEach(link => {
             link.addEventListener('click', (e) => {
                 e.preventDefault();
                 const page = e.currentTarget.getAttribute('data-page');
+                if (this.closeSidebarMenu) {
+                    this.closeSidebarMenu();
+                }
                 if (page === 'roteiro-repositor') {
                     this.contextoRoteiro = null;
                     this.estadoRoteiro = { diaSelecionado: null, cidadeSelecionada: null, buscaClientes: '' };
