@@ -2131,38 +2131,33 @@ export const pages = {
 
         return `
             <div class="card">
-                <div class="card-header">
-                    <div>
-                        <h3 class="card-title">🔍 Consulta de Visitas</h3>
-                        <p class="text-muted" style="margin: 4px 0 0;">
-                            Visualize o histórico de visitas registradas
-                        </p>
-                    </div>
-                </div>
-
-                <div class="card-body">
-                    <div class="filter-bar" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
-                        <div class="filter-group">
-                            <label for="consultaRepositor">Repositor</label>
-                            <select id="consultaRepositor">
-                                <option value="">Todos</option>
-                                ${repositorOptions}
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label for="consultaDataInicio">Data Início</label>
-                            <input type="date" id="consultaDataInicio" value="${dataInicio}">
-                        </div>
-                        <div class="filter-group">
-                            <label for="consultaDataFim">Data Fim</label>
-                            <input type="date" id="consultaDataFim" value="${hoje}">
-                        </div>
-                        <div class="filter-group" style="display: flex; align-items: flex-end;">
-                            <button class="btn btn-secondary" id="btnConsultarVisitas" style="width: 100%;">🔍 Consultar</button>
+                <div class="card-body" style="padding: 0;">
+                    <!-- Filtros fixos -->
+                    <div style="position: sticky; top: 0; z-index: 100; background: white; padding: 20px; border-bottom: 2px solid #e5e7eb; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                        <div class="filter-bar" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+                            <div class="filter-group">
+                                <label for="consultaRepositor">Repositor</label>
+                                <select id="consultaRepositor">
+                                    <option value="">Selecione...</option>
+                                    ${repositorOptions}
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="consultaDataInicio">Data Início</label>
+                                <input type="date" id="consultaDataInicio" value="${dataInicio}">
+                            </div>
+                            <div class="filter-group">
+                                <label for="consultaDataFim">Data Fim</label>
+                                <input type="date" id="consultaDataFim" value="${hoje}">
+                            </div>
+                            <div class="filter-group" style="display: flex; align-items: flex-end;">
+                                <button class="btn btn-secondary" id="btnConsultarVisitas" style="width: 100%;">🔍 Consultar</button>
+                            </div>
                         </div>
                     </div>
 
-                    <div id="visitasContainer" style="margin-top: 1.5rem;">
+                    <!-- Container de resultados -->
+                    <div id="visitasContainer" style="padding: 20px;">
                         <div class="empty-state">
                             <div class="empty-state-icon">📋</div>
                             <p>Clique em "Consultar" para visualizar as visitas</p>
