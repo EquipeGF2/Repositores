@@ -903,4 +903,113 @@ router.patch('/cliente/:cliente_id/roteiro', async (req, res) => {
   }
 });
 
+// Rota para buscar imagens de campanhas
+router.get('/imagens-campanha', async (req, res) => {
+  try {
+    const { data_inicio, data_fim, rep_id, agrupar_por } = req.query;
+
+    if (!data_inicio || !data_fim) {
+      return res.status(400).json({
+        ok: false,
+        message: 'data_inicio e data_fim são obrigatórios'
+      });
+    }
+
+    // Buscar todas as imagens de campanha no período
+    let sql = `
+      SELECT
+        rv.rv_id,
+        rv.rv_sessao_id,
+        rv.rv_tipo,
+        rv.cliente_id,
+        rv.rv_cliente_nome,
+        rv.rv_data_planejada,
+        rv.rv_data_hora_registro,
+        rv.rv_drive_file_url,
+        rv.rv_drive_file_id,
+        rv.rep_id
+      FROM cc_visitas rv
+      WHERE rv.rv_tipo = 'campanha'
+        AND rv.rv_data_planejada >= ?
+        AND rv.rv_data_planejada <= ?
+    `;
+
+    const params = [data_inicio, data_fim];
+
+    if (rep_id) {
+      sql += ' AND rv.rep_id = ?';
+      params.push(parseInt(rep_id));
+    }
+
+    sql += ' ORDER BY rv.rv_data_planejada DESC, rv.rv_data_hora_registro DESC';
+
+    const result = await tursoService.execute(sql, params);
+    const imagens = result.rows || [];
+
+    // Agrupar conforme solicitado
+    let agrupado;
+
+    if (agrupar_por === 'cliente') {
+      // Agrupar por cliente
+      const porCliente = {};
+      imagens.forEach(img => {
+        const clienteId = img.cliente_id;
+        if (!porCliente[clienteId]) {
+          porCliente[clienteId] = {
+            cliente_id: clienteId,
+            cliente_nome: img.rv_cliente_nome,
+            imagens: []
+          };
+        }
+        porCliente[clienteId].imagens.push({
+          rv_id: img.rv_id,
+          rv_sessao_id: img.rv_sessao_id,
+          data_planejada: img.rv_data_planejada,
+          data_hora_registro: img.rv_data_hora_registro,
+          drive_file_url: img.rv_drive_file_url,
+          drive_file_id: img.rv_drive_file_id
+        });
+      });
+      agrupado = Object.values(porCliente);
+    } else {
+      // Agrupar por sessão (padrão)
+      const porSessao = {};
+      imagens.forEach(img => {
+        const sessaoId = img.rv_sessao_id;
+        if (!porSessao[sessaoId]) {
+          porSessao[sessaoId] = {
+            sessao_id: sessaoId,
+            cliente_id: img.cliente_id,
+            cliente_nome: img.rv_cliente_nome,
+            data_planejada: img.rv_data_planejada,
+            imagens: []
+          };
+        }
+        porSessao[sessaoId].imagens.push({
+          rv_id: img.rv_id,
+          data_hora_registro: img.rv_data_hora_registro,
+          drive_file_url: img.rv_drive_file_url,
+          drive_file_id: img.rv_drive_file_id
+        });
+      });
+      agrupado = Object.values(porSessao);
+    }
+
+    res.json({
+      ok: true,
+      total_imagens: imagens.length,
+      agrupar_por: agrupar_por || 'sessao',
+      grupos: agrupado
+    });
+
+  } catch (error) {
+    console.error('Erro ao buscar imagens de campanha:', error);
+    res.status(500).json({
+      ok: false,
+      message: 'Erro ao buscar imagens',
+      error: error.message
+    });
+  }
+});
+
 export default router;

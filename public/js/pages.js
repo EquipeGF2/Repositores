@@ -2644,6 +2644,13 @@ export const pages = {
                                 <label for="campanhaDataFim">Data Fim</label>
                                 <input type="date" id="campanhaDataFim">
                             </div>
+                            <div class="filter-group">
+                                <label for="campanhaAgrupar">Agrupar por</label>
+                                <select id="campanhaAgrupar">
+                                    <option value="sessao">Visita</option>
+                                    <option value="cliente">Cliente</option>
+                                </select>
+                            </div>
                             <div class="filter-group" style="display: flex; align-items: flex-end;">
                                 <button class="btn btn-secondary" id="btnFiltrarCampanha">🔍 Buscar</button>
                             </div>

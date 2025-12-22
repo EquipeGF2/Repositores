@@ -6761,6 +6761,7 @@ class App {
             const repositor = document.getElementById('campanhaRepositor')?.value || '';
             const dataInicio = document.getElementById('campanhaDataInicio').value;
             const dataFim = document.getElementById('campanhaDataFim').value;
+            const agruparPor = document.getElementById('campanhaAgrupar')?.value || 'sessao';
 
             if (!dataInicio || !dataFim) {
                 this.showNotification('Selecione o período', 'warning');
@@ -6769,7 +6770,7 @@ class App {
 
             this.showNotification('Carregando dados...', 'info');
 
-            let url = `${this.registroRotaState.backendUrl}/api/registro-rota/sessoes?data_inicio=${dataInicio}&data_fim=${dataFim}`;
+            let url = `${this.registroRotaState.backendUrl}/api/registro-rota/imagens-campanha?data_inicio=${dataInicio}&data_fim=${dataFim}&agrupar_por=${agruparPor}`;
             if (repositor) {
                 url += `&rep_id=${repositor}`;
             }
@@ -6779,79 +6780,117 @@ class App {
             if (!response.ok) throw new Error('Erro ao buscar dados');
 
             const data = await response.json();
-            const sessoes = data.sessoes || [];
-
-            // Agrupar por cliente
-            const porCliente = {};
-            sessoes.forEach(s => {
-                const key = s.cliente_id;
-                if (!porCliente[key]) {
-                    porCliente[key] = {
-                        cliente_id: s.cliente_id,
-                        cliente_nome: s.cliente_nome,
-                        visitas: [],
-                        total_servicos: 0
-                    };
-                }
-                porCliente[key].visitas.push(s);
-
-                // Contar serviços realizados
-                let servicos = 0;
-                if (s.serv_abastecimento) servicos++;
-                if (s.serv_espaco_loja) servicos++;
-                if (s.serv_ruptura_loja) servicos++;
-                if (s.serv_pontos_extras) servicos++;
-                porCliente[key].total_servicos += servicos;
-            });
-
-            this.renderizarCampanha(Object.values(porCliente));
+            this.renderizarCampanha(data.grupos || [], agruparPor, data.total_imagens || 0);
         } catch (error) {
             console.error('Erro ao filtrar campanha:', error);
             this.showNotification('Erro ao carregar dados: ' + error.message, 'error');
         }
     }
 
-    renderizarCampanha(clientes) {
+    renderizarCampanha(grupos, agruparPor, totalImagens) {
         const container = document.getElementById('campanhaResultados');
         if (!container) return;
 
-        if (clientes.length === 0) {
+        if (grupos.length === 0) {
             container.innerHTML = `
                 <div class="empty-state">
                     <div class="empty-state-icon">📋</div>
-                    <p>Nenhum registro encontrado no período</p>
+                    <p>Nenhuma imagem de campanha encontrada no período</p>
                 </div>
             `;
             return;
         }
 
-        const html = clientes.map(c => `
-            <div class="performance-card">
-                <div class="performance-stat">
-                    <span class="performance-stat-label">Cliente</span>
-                    <span style="font-weight: 700;">${c.cliente_nome || c.cliente_id}</span>
+        const html = grupos.map((grupo, index) => {
+            const titulo = agruparPor === 'cliente'
+                ? `${grupo.cliente_nome || grupo.cliente_id}`
+                : `Visita - ${grupo.cliente_nome || grupo.cliente_id}`;
+
+            const subtitulo = agruparPor === 'cliente'
+                ? `${grupo.imagens.length} foto(s)`
+                : `${grupo.data_planejada} - ${grupo.imagens.length} foto(s)`;
+
+            return `
+                <div class="performance-card" style="cursor: pointer;" onclick="app.visualizarImagensCampanha(${index})">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-weight: 700; font-size: 16px; margin-bottom: 4px;">${titulo}</div>
+                            <div style="color: #6b7280; font-size: 14px;">${subtitulo}</div>
+                        </div>
+                        <button class="btn btn-secondary" style="padding: 8px 16px;">
+                            📷 Ver Fotos
+                        </button>
+                    </div>
                 </div>
-                <div class="performance-stat">
-                    <span class="performance-stat-label">Total de Visitas</span>
-                    <span class="performance-stat-value">${c.visitas.length}</span>
-                </div>
-                <div class="performance-stat">
-                    <span class="performance-stat-label">Total de Serviços</span>
-                    <span class="performance-stat-value">${c.total_servicos}</span>
-                </div>
-                <div class="performance-stat">
-                    <span class="performance-stat-label">Datas</span>
-                    <span style="font-size: 12px;">${c.visitas.map(v => v.data_planejada).join(', ')}</span>
-                </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
 
         container.innerHTML = `
             <div style="margin-bottom: 16px; padding: 12px; background: #f9fafb; border-radius: 8px;">
-                <strong>${clientes.length}</strong> clientes com registros
+                <strong>${totalImagens}</strong> imagem(ns) em <strong>${grupos.length}</strong> ${agruparPor === 'cliente' ? 'cliente(s)' : 'visita(s)'}
             </div>
             ${html}
         `;
+
+        // Armazenar grupos para visualização
+        this.campanhaGruposAtual = grupos;
+    }
+
+    visualizarImagensCampanha(index) {
+        const grupo = this.campanhaGruposAtual[index];
+        if (!grupo || !grupo.imagens || grupo.imagens.length === 0) {
+            this.showNotification('Nenhuma imagem disponível', 'warning');
+            return;
+        }
+
+        // Criar modal de visualização de imagens
+        const modalHtml = `
+            <div class="modal-overlay" id="modalImagensCampanha" style="display: flex; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10000; justify-content: center; align-items: center; padding: 20px; overflow: auto;">
+                <div style="background: white; border-radius: 12px; max-width: 90vw; max-height: 90vh; overflow: auto; padding: 24px; position: relative;">
+                    <button onclick="app.fecharModalImagensCampanha()" style="position: absolute; top: 16px; right: 16px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 18px; line-height: 1;">×</button>
+
+                    <h3 style="margin: 0 0 16px; font-size: 20px; font-weight: 700;">
+                        ${grupo.cliente_nome || grupo.cliente_id}
+                    </h3>
+                    <p style="margin: 0 0 24px; color: #6b7280;">
+                        ${grupo.data_planejada ? `Data: ${grupo.data_planejada} - ` : ''}${grupo.imagens.length} foto(s)
+                    </p>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px;">
+                        ${grupo.imagens.map((img, imgIndex) => `
+                            <div style="border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; background: #f9fafb;">
+                                <div style="aspect-ratio: 4/3; background: #f3f4f6; display: flex; align-items: center; justify-content: center; position: relative;">
+                                    <img src="https://drive.google.com/thumbnail?id=${img.drive_file_id}&sz=w400"
+                                         alt="Foto ${imgIndex + 1}"
+                                         style="width: 100%; height: 100%; object-fit: cover;"
+                                         onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22%3E%3Crect fill=%22%23ddd%22 width=%22100%22 height=%22100%22/%3E%3Ctext fill=%22%23999%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22%3ESem imagem%3C/text%3E%3C/svg%3E'">
+                                </div>
+                                <div style="padding: 12px;">
+                                    <div style="font-size: 12px; color: #6b7280; margin-bottom: 8px;">
+                                        ${new Date(img.data_hora_registro).toLocaleString('pt-BR')}
+                                    </div>
+                                    <a href="${img.drive_file_url}" target="_blank" class="btn btn-secondary" style="width: 100%; text-align: center; padding: 6px; font-size: 13px;">
+                                        🔗 Abrir no Drive
+                                    </a>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Adicionar modal ao body
+        const modalDiv = document.createElement('div');
+        modalDiv.innerHTML = modalHtml;
+        document.body.appendChild(modalDiv.firstElementChild);
+    }
+
+    fecharModalImagensCampanha() {
+        const modal = document.getElementById('modalImagensCampanha');
+        if (modal) {
+            modal.remove();
+        }
     }
 
     async filtrarRoteiro() {
