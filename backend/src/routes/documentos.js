@@ -27,28 +27,21 @@ function sanitizeBigInt(value) {
 
 function formatarDataHoraLocal(iso) {
   const data = new Date(iso);
-  const formatter = new Intl.DateTimeFormat('pt-BR', {
-    timeZone: 'America/Sao_Paulo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  });
-  const partes = Object.fromEntries(
-    formatter.formatToParts(data).map(p => [p.type, p.value])
-  );
 
-  // Usar ano completo de 4 dígitos para data_ref
-  const anoCompleto = partes.year;
-  const ano2Digitos = anoCompleto.slice(-2);
+  // Usar UTC para evitar problemas de timezone
+  const ano = data.getUTCFullYear();
+  const mes = String(data.getUTCMonth() + 1).padStart(2, '0');
+  const dia = String(data.getUTCDate()).padStart(2, '0');
+  const hora = String(data.getUTCHours()).padStart(2, '0');
+  const minuto = String(data.getUTCMinutes()).padStart(2, '0');
+
+  const ano2Digitos = String(ano).slice(-2);
 
   return {
-    ddmmaa: `${partes.day}${partes.month}${ano2Digitos}`,
-    hhmm: `${partes.hour}${partes.minute}`,
-    data_ref: `${anoCompleto}-${partes.month}-${partes.day}`,
-    hora_ref: `${partes.hour}:${partes.minute}`
+    ddmmaa: `${dia}${mes}${ano2Digitos}`,
+    hhmm: `${hora}${minuto}`,
+    data_ref: `${ano}-${mes}-${dia}`,
+    hora_ref: `${hora}:${minuto}`
   };
 }
 
