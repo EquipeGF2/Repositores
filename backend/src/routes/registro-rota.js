@@ -7,6 +7,7 @@ import { emailService } from '../services/email.js';
 
 const router = express.Router();
 const TIME_ZONE = 'America/Sao_Paulo';
+const DIAS_SEMANA_CODIGO = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
 const RV_TIPOS = ['checkin', 'checkout', 'campanha'];
 const MAX_CAMPANHA_FOTOS = 10;
 const upload = multer({
@@ -257,6 +258,10 @@ router.post('/visitas', upload.any(), async (req, res) => {
     const clienteIdNorm = normalizeClienteId(cliente_id);
     const dataPlanejadaValida = validarDataPlanejada(data_planejada);
     const dataReferencia = dataPlanejadaValida || dataLocalIso(dataHoraRegistro);
+    const roteiroId = req.body.roteiro_id || req.body.rv_roteiro_id || null;
+    const diaPrevistoCodigo = dataPlanejadaValida
+      ? DIAS_SEMANA_CODIGO[new Date(`${dataPlanejadaValida}T12:00:00-03:00`).getDay()] || null
+      : null;
     const { inicioIso, fimIso } = buildUtcRangeFromLocalDates(dataReferencia, dataReferencia);
 
     const sessaoAberta = await tursoService.buscarSessaoAbertaPorRep(repIdNumber, {
@@ -302,12 +307,14 @@ router.post('/visitas', upload.any(), async (req, res) => {
           enderecoCliente,
           dataPlanejada: dataReferencia,
           checkinAt: dataHoraRegistro,
-          enderecoCheckin: enderecoSnapshot
+          enderecoCheckin: enderecoSnapshot,
+          diaPrevisto: diaPrevistoCodigo,
+          roteiroId
         });
       } else {
         await tursoService.execute(
-          'UPDATE cc_visita_sessao SET checkin_at = ?, status = \"ABERTA\", endereco_cliente = ?, endereco_checkin = ? WHERE sessao_id = ?',
-          [dataHoraRegistro, enderecoCliente, enderecoSnapshot, sessaoId]
+          'UPDATE cc_visita_sessao SET checkin_at = ?, status = \"ABERTA\", endereco_cliente = ?, endereco_checkin = ?, dia_previsto = ?, roteiro_id = ? WHERE sessao_id = ?',
+          [dataHoraRegistro, enderecoCliente, enderecoSnapshot, diaPrevistoCodigo, roteiroId, sessaoId]
         );
       }
     }
@@ -354,6 +361,8 @@ router.post('/visitas', upload.any(), async (req, res) => {
       return res.status(400).json({ ok: false, code: 'LIMITE_FOTOS', message: `Limite de ${MAX_CAMPANHA_FOTOS} fotos excedido.` });
     }
 
+    const isCheckin = rvTipo === 'checkin';
+    const isCheckout = rvTipo === 'checkout';
     const registrosSalvos = [];
 
     for (let i = 0; i < arquivosParaProcessar.length; i += 1) {
@@ -414,10 +423,14 @@ router.post('/visitas', upload.any(), async (req, res) => {
         rvPastaDriveId: parentFolderId,
         rvDataHoraRegistro: dataHoraArquivo,
         rvEnderecoRegistro: enderecoSnapshot,
+        rvEnderecoCheckin: isCheckin ? enderecoSnapshot : null,
+        rvEnderecoCheckout: isCheckout ? enderecoSnapshot : null,
         rvDriveFileId: uploadResult.fileId,
         rvDriveFileUrl: uploadResult.webViewLink,
         rvLatitude: latitudeNumber,
         rvLongitude: longitudeNumber,
+        rvDiaPrevisto: diaPrevistoCodigo,
+        rvRoteiroId: roteiroId,
         sessao_id: sessaoId,
         tipo: rvTipo,
         data_hora_registro: dataHoraArquivo,
@@ -481,9 +494,11 @@ router.post('/visitas', upload.any(), async (req, res) => {
 // Consultar visitas
 router.get('/visitas', async (req, res) => {
   try {
-    const { rep_id, data_inicio, data_fim, modo = 'detalhado', tipo, servico } = req.query;
+    const { rep_id, data_inicio, data_fim, data_checkin_inicio, data_checkin_fim, modo = 'detalhado', tipo, servico } = req.query;
+    const dataInicioFiltro = data_checkin_inicio || data_inicio;
+    const dataFimFiltro = data_checkin_fim || data_fim;
 
-    if (!rep_id || !data_inicio || !data_fim) {
+    if (!rep_id || !dataInicioFiltro || !dataFimFiltro) {
       return res.status(400).json({ ok: false, code: 'INVALID_QUERY', message: 'rep_id, data_inicio e data_fim são obrigatórios' });
     }
 
@@ -493,11 +508,11 @@ router.get('/visitas', async (req, res) => {
     }
 
     const dataRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dataRegex.test(data_inicio) || !dataRegex.test(data_fim)) {
+    if (!dataRegex.test(dataInicioFiltro) || !dataRegex.test(dataFimFiltro)) {
       return res.status(400).json({ ok: false, code: 'INVALID_DATE', message: 'Datas devem estar no formato YYYY-MM-DD' });
     }
 
-    const { inicioIso, fimIso } = buildUtcRangeFromLocalDates(data_inicio, data_fim);
+    const { inicioIso, fimIso } = buildUtcRangeFromLocalDates(dataInicioFiltro, dataFimFiltro);
 
     const modoNormalizado = String(modo || '').toLowerCase();
 
@@ -505,8 +520,8 @@ router.get('/visitas', async (req, res) => {
       try {
         const resumo = await tursoService.listarResumoVisitas({
           repId: repIdNumber,
-          dataInicio: data_inicio,
-          dataFim: data_fim,
+          dataInicio: dataInicioFiltro,
+          dataFim: dataFimFiltro,
           inicioIso,
           fimIso
         });
@@ -535,33 +550,26 @@ router.get('/visitas', async (req, res) => {
       tipo,
       servico
     });
-    const mapaDiasPrevistos = await tursoService.mapearDiaPrevistoClientes(repIdNumber);
 
     const visitasComDia = visitas.map((visita) => {
-      const clienteId = normalizeClienteId(visita.cliente_id);
-      const dataReferencia = visita.rv_data_planejada || (visita.data_hora ? dataLocalIso(visita.data_hora) : null);
-      const dataParaDia = dataReferencia || data_inicio;
-      const diaPrevisto = mapaDiasPrevistos.get(clienteId) || null;
-
-      const dataDia = dataParaDia ? new Date(`${dataParaDia}T12:00:00-03:00`) : null;
-      const diaRealNumero = dataDia ? dataDia.getDay() : null;
-
+      const diaPrevistoCodigo = visita.dia_previsto_codigo || visita.rv_dia_previsto || null;
+      const checkinReferencia = visita.checkin_data_hora
+        || visita.checkin_at
+        || visita.rv_data_hora_registro
+        || visita.data_hora_registro
+        || visita.data_hora
+        || null;
+      const diaRealNumero = checkinReferencia ? new Date(checkinReferencia).getDay() : null;
+      const diaPrevistoLabel = diaPrevistoCodigo
+        ? obterDiaSemanaLabel(String(diaPrevistoCodigo).toLowerCase())
+        : 'N/D';
       const diaRealLabel = diaRealNumero != null ? obterDiaSemanaLabel(diaRealNumero) : '';
-      const diaPrevistoLabel = diaPrevisto ? obterDiaSemanaLabel(diaPrevisto) : '';
-
-      const foraDoDia = Boolean(diaPrevisto && diaRealNumero != null && obterDiaSemanaLabel(diaPrevisto) !== diaRealLabel);
-
-      // Debug log para investigar problema de dia previsto
-      if (clienteId === '3213' || foraDoDia) {
-        console.log(`🔍 [DEBUG DIA PREVISTO] Cliente ${clienteId}:`);
-        console.log(`   dataReferencia: ${dataReferencia}`);
-        console.log(`   dataParaDia: ${dataParaDia}`);
-        console.log(`   diaPrevisto (do roteiro): "${diaPrevisto}"`);
-        console.log(`   diaRealNumero: ${diaRealNumero}`);
-        console.log(`   diaPrevistoLabel: "${diaPrevistoLabel}"`);
-        console.log(`   diaRealLabel: "${diaRealLabel}"`);
-        console.log(`   foraDoDia: ${foraDoDia}`);
-      }
+      const foraDoDia = Boolean(
+        diaPrevistoCodigo
+          && diaPrevistoLabel !== 'N/D'
+          && diaRealNumero != null
+          && obterDiaSemanaLabel(String(diaPrevistoCodigo).toLowerCase()) !== diaRealLabel
+      );
 
       return {
         ...visita,
@@ -711,18 +719,44 @@ router.post('/disparar-resumo', async (req, res) => {
 // GET /api/registro-rota/sessoes - Lista sessões com filtros
 router.get('/sessoes', async (req, res) => {
   try {
-    const { data_inicio, data_fim, rep_id } = req.query;
+    const { data_inicio, data_fim, data_checkin_inicio, data_checkin_fim, rep_id } = req.query;
+    const dataInicioFiltro = data_checkin_inicio || data_inicio;
+    const dataFimFiltro = data_checkin_fim || data_fim;
 
-    if (!data_inicio || !data_fim) {
+    if (!dataInicioFiltro || !dataFimFiltro) {
       return res.status(400).json({
         ok: false,
         message: 'data_inicio e data_fim são obrigatórios'
       });
     }
 
+    const dataRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dataRegex.test(dataInicioFiltro) || !dataRegex.test(dataFimFiltro)) {
+      return res.status(400).json({
+        ok: false,
+        message: 'Datas devem estar no formato YYYY-MM-DD'
+      });
+    }
+
+    const checkinDataExpr = `(
+      SELECT COALESCE(rv_data_hora_registro, data_hora)
+      FROM cc_registro_visita rv
+      WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id AND rv.rv_tipo = 'checkin'
+      ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) ASC
+      LIMIT 1
+    )`;
+
     let sql = `
       SELECT
         s.*,
+        ${checkinDataExpr} AS checkin_data_hora,
+        COALESCE(s.dia_previsto, (
+          SELECT rv_dia_previsto
+          FROM cc_registro_visita rv
+          WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id AND rv.rv_tipo = 'checkin'
+          ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) ASC
+          LIMIT 1
+        )) AS dia_previsto_codigo,
         COALESCE(NULLIF(s.endereco_cliente, ''), (
           SELECT rv_endereco_cliente
           FROM cc_registro_visita rv
@@ -731,69 +765,60 @@ router.get('/sessoes', async (req, res) => {
           LIMIT 1
         )) AS endereco_cliente_roteiro,
         COALESCE(NULLIF(s.endereco_checkin, ''), (
-          SELECT COALESCE(rv_endereco_registro, endereco_registro, endereco_resolvido)
+          SELECT COALESCE(rv_endereco_checkin, rv_endereco_registro, endereco_registro, endereco_resolvido)
           FROM cc_registro_visita rv
           WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id AND rv.rv_tipo = 'checkin'
           ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) ASC
           LIMIT 1
         )) AS endereco_gps_checkin,
         COALESCE(NULLIF(s.endereco_checkout, ''), (
-          SELECT COALESCE(rv_endereco_registro, endereco_registro, endereco_resolvido)
+          SELECT COALESCE(rv_endereco_checkout, rv_endereco_registro, endereco_registro, endereco_resolvido)
           FROM cc_registro_visita rv
           WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id AND rv.rv_tipo = 'checkout'
           ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) DESC
           LIMIT 1
         )) AS endereco_gps_checkout
       FROM cc_visita_sessao s
-      WHERE data_planejada >= ? AND data_planejada <= ?
+      WHERE date(${checkinDataExpr}) >= date(?) AND date(${checkinDataExpr}) <= date(?)
     `;
-    const params = [data_inicio, data_fim];
+    const params = [dataInicioFiltro, dataFimFiltro];
 
     if (rep_id) {
-      sql += ' AND rep_id = ?';
+      sql += ' AND s.rep_id = ?';
       params.push(parseInt(rep_id));
     }
 
-    sql += ' ORDER BY data_planejada DESC, checkin_at DESC';
+    sql += ` ORDER BY ${checkinDataExpr} DESC, COALESCE(s.checkin_at, s.criado_em) DESC`;
 
     const result = await tursoService.execute(sql, params);
 
-    // Adicionar campos de dia previsto para cada sessão
-    if (rep_id) {
-      const repIdNumber = parseInt(rep_id);
-      const mapaDiasPrevistos = await tursoService.mapearDiaPrevistoClientes(repIdNumber);
+    const sessoesComDia = result.rows.map((sessao) => {
+      const diaPrevistoCodigo = sessao.dia_previsto_codigo || null;
+      const checkinRef = sessao.checkin_data_hora || sessao.checkin_at || null;
+      const diaRealNumero = checkinRef ? new Date(checkinRef).getDay() : null;
+      const diaPrevistoLabel = diaPrevistoCodigo
+        ? obterDiaSemanaLabel(String(diaPrevistoCodigo).toLowerCase())
+        : 'N/D';
+      const diaRealLabel = diaRealNumero != null ? obterDiaSemanaLabel(diaRealNumero) : '';
+      const foraDoDia = Boolean(
+        diaPrevistoCodigo
+          && diaPrevistoLabel !== 'N/D'
+          && diaRealNumero != null
+          && obterDiaSemanaLabel(String(diaPrevistoCodigo).toLowerCase()) !== diaRealLabel
+      );
 
-      const sessoesComDia = result.rows.map((sessao) => {
-        const clienteId = normalizeClienteId(sessao.cliente_id);
-        const dataReferencia = sessao.data_planejada;
-        const diaPrevisto = mapaDiasPrevistos.get(clienteId) || null;
+      return {
+        ...sessao,
+        fora_do_dia: foraDoDia ? 1 : 0,
+        dia_previsto_label: diaPrevistoLabel,
+        dia_real_label: diaRealLabel
+      };
+    });
 
-        const dataDia = dataReferencia ? new Date(`${dataReferencia}T12:00:00-03:00`) : null;
-        const diaRealNumero = dataDia ? dataDia.getDay() : null;
-
-        const diaRealLabel = diaRealNumero != null ? obterDiaSemanaLabel(diaRealNumero) : '';
-        const diaPrevistoLabel = diaPrevisto ? obterDiaSemanaLabel(diaPrevisto) : '';
-
-        const foraDoDia = Boolean(diaPrevisto && diaRealNumero != null && obterDiaSemanaLabel(diaPrevisto) !== diaRealLabel);
-
-        return {
-          ...sessao,
-          fora_do_dia: foraDoDia ? 1 : 0,
-          dia_previsto_label: diaPrevistoLabel,
-          dia_real_label: diaRealLabel
-        };
-      });
-
-      res.json({
-        ok: true,
-        sessoes: sessoesComDia
-      });
-    } else {
-      res.json({
-        ok: true,
-        sessoes: result.rows
-      });
-    }
+    res.json({
+      ok: true,
+      sessoes: sessoesComDia
+    });
   } catch (error) {
     console.error('Erro ao listar sessões:', error);
     res.status(500).json({
