@@ -189,6 +189,26 @@ function validarDataPlanejada(dataPlanejada) {
   return regex.test(dataPlanejada) ? dataPlanejada : null;
 }
 
+function normalizarDataConsulta(dataStr) {
+  if (!dataStr) return null;
+
+  const isoRegex = /^\d{4}-\d{2}-\d{2}$/;
+  const brRegex = /^\d{2}\/\d{2}\/\d{4}$/;
+
+  if (isoRegex.test(dataStr)) return dataStr;
+
+  if (brRegex.test(dataStr)) {
+    const [dia, mes, ano] = dataStr.split('/');
+    return `${ano}-${mes}-${dia}`;
+  }
+
+  return null;
+}
+
+function logVisitasQueryInvalid(motivo, parametros) {
+  console.info('VISITAS_QUERY_INVALID', { motivo, parametros });
+}
+
 function calcularAtrasoRoteiroDias(dataPlanejada) {
   const dataValida = validarDataPlanejada(dataPlanejada);
   if (!dataValida) return { dias: null, bloqueado: false };
@@ -593,20 +613,39 @@ router.get('/visitas', async (req, res) => {
     const dataFimFiltro = usarDataPlanejada ? data_fim : (data_checkin_fim || data_fim);
 
     if (!rep_id || !dataInicioFiltro || !dataFimFiltro) {
+      logVisitasQueryInvalid('PARAMETROS_OBRIGATORIOS', req.query);
       return res.status(400).json({ ok: false, code: 'INVALID_QUERY', message: 'rep_id, data_inicio e data_fim são obrigatórios' });
     }
 
     const repIdNumber = Number(rep_id);
     if (Number.isNaN(repIdNumber)) {
+      logVisitasQueryInvalid('REP_ID_INVALIDO', req.query);
       return res.status(400).json({ ok: false, code: 'INVALID_REP_ID', message: 'rep_id deve ser numérico' });
     }
 
-    const dataRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dataRegex.test(dataInicioFiltro) || !dataRegex.test(dataFimFiltro)) {
-      return res.status(400).json({ ok: false, code: 'INVALID_DATE', message: 'Datas devem estar no formato YYYY-MM-DD' });
+    const dataInicioNormalizada = normalizarDataConsulta(dataInicioFiltro);
+    const dataFimNormalizada = normalizarDataConsulta(dataFimFiltro);
+
+    if (!dataInicioNormalizada || !dataFimNormalizada) {
+      logVisitasQueryInvalid('DATA_INVALIDA', req.query);
+      return res.status(400).json({
+        ok: false,
+        code: 'INVALID_DATE',
+        message: 'Datas devem estar no formato YYYY-MM-DD ou DD/MM/YYYY'
+      });
     }
 
-    const { inicioIso, fimIso } = buildUtcRangeFromLocalDates(dataInicioFiltro, dataFimFiltro);
+    const tipoNormalizado = tipo ? String(tipo).toLowerCase() : null;
+    if (tipoNormalizado && !RV_TIPOS.includes(tipoNormalizado)) {
+      logVisitasQueryInvalid('TIPO_INVALIDO', req.query);
+      return res.status(400).json({
+        ok: false,
+        code: 'TIPO_INVALIDO',
+        message: 'tipo deve ser checkin, checkout ou campanha'
+      });
+    }
+
+    const { inicioIso, fimIso } = buildUtcRangeFromLocalDates(dataInicioNormalizada, dataFimNormalizada);
 
     const modoNormalizado = String(modo || '').toLowerCase();
 
@@ -614,8 +653,8 @@ router.get('/visitas', async (req, res) => {
       try {
         const resumo = await tursoService.listarResumoVisitas({
           repId: repIdNumber,
-          dataInicio: dataInicioFiltro,
-          dataFim: dataFimFiltro,
+          dataInicio: dataInicioNormalizada,
+          dataFim: dataFimNormalizada,
           inicioIso,
           fimIso,
           usarDataPlanejada
@@ -642,7 +681,7 @@ router.get('/visitas', async (req, res) => {
       repId: repIdNumber,
       inicioIso,
       fimIso,
-      tipo,
+      tipo: tipoNormalizado,
       servico
     });
 
@@ -782,6 +821,7 @@ router.get('/atendimentos-abertos', async (req, res) => {
       cliente_id: sessao.cliente_id,
       rv_id: sessao.sessao_id,
       checkin_em: sessao.checkin_at,
+      checkout_em: sessao.checkout_at || null,
       atividades_count: sessao.atividades_count || 0
     }));
 
