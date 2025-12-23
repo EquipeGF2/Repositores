@@ -55,6 +55,19 @@ function parseDataHoraOrNow(input) {
   return new Date().toISOString();
 }
 
+function validarDatasObrigatorias(inicio, fim) {
+  const dataRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!inicio || !fim) {
+    return { ok: false, message: 'data_inicio e data_fim são obrigatórios' };
+  }
+
+  if (!dataRegex.test(inicio) || !dataRegex.test(fim)) {
+    return { ok: false, message: 'Datas devem estar no formato YYYY-MM-DD' };
+  }
+
+  return { ok: true };
+}
+
 async function gerarNomeCampanha({ parentFolderId, clienteIdNorm, nomeClienteSanitizado, partesData }) {
   const base = `${clienteIdNorm}_${nomeClienteSanitizado}_${partesData.ddmmaa}`;
   const arquivos = await googleDriveService.listarArquivosPorPasta(parentFolderId);
@@ -1150,6 +1163,69 @@ router.get('/sessoes', async (req, res) => {
       message: 'Erro ao listar sessões',
       error: error.message
     });
+  }
+});
+
+// GET /api/registro-rota/pontualidade - Resumo de pontualidade (somente checkouts)
+router.get('/pontualidade', async (req, res) => {
+  try {
+    const { data_inicio, data_fim, rep_id } = req.query;
+    const validacao = validarDatasObrigatorias(data_inicio, data_fim);
+
+    if (!validacao.ok) {
+      return res.status(400).json({ ok: false, message: validacao.message });
+    }
+
+    const dataRealExpr = `date(COALESCE(rv.rv_data_hora_registro, rv.data_hora, s.checkout_at))`;
+    const dataPrevistaExpr = `date(COALESCE(rv.rv_data_roteiro, rv.rv_data_planejada, s.data_planejada))`;
+
+    let sql = `
+      SELECT
+        COUNT(1) AS total_checkouts,
+        SUM(CASE WHEN ${dataPrevistaExpr} IS NOT NULL AND ${dataRealExpr} < ${dataPrevistaExpr} THEN 1 ELSE 0 END) AS qtde_adiantadas,
+        SUM(CASE WHEN ${dataPrevistaExpr} IS NOT NULL AND ${dataRealExpr} > ${dataPrevistaExpr} THEN 1 ELSE 0 END) AS qtde_atrasadas
+      FROM cc_registro_visita rv
+      LEFT JOIN cc_visita_sessao s ON COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id
+      WHERE lower(rv.rv_tipo) = 'checkout'
+        AND ${dataRealExpr} IS NOT NULL
+        AND date(${dataRealExpr}) >= date(?)
+        AND date(${dataRealExpr}) <= date(?)
+    `;
+
+    const params = [data_inicio, data_fim];
+
+    if (rep_id) {
+      sql += ' AND COALESCE(rv.rep_id, s.rep_id) = ?';
+      params.push(parseInt(rep_id));
+    }
+
+    const result = await tursoService.execute(sql, params);
+    const row = result.rows?.[0] || {};
+
+    const totalCheckouts = Number(row.total_checkouts || 0);
+    const qtdeAdiantadas = Number(row.qtde_adiantadas || 0);
+    const qtdeAtrasadas = Number(row.qtde_atrasadas || 0);
+
+    const percentAdiantadas = totalCheckouts
+      ? Number(((qtdeAdiantadas / totalCheckouts) * 100).toFixed(1))
+      : 0;
+    const percentAtrasadas = totalCheckouts
+      ? Number(((qtdeAtrasadas / totalCheckouts) * 100).toFixed(1))
+      : 0;
+
+    res.json({
+      ok: true,
+      resumo: {
+        total_checkouts: totalCheckouts,
+        qtde_adiantadas: qtdeAdiantadas,
+        qtde_atrasadas: qtdeAtrasadas,
+        percent_adiantadas: percentAdiantadas,
+        percent_atrasadas: percentAtrasadas
+      }
+    });
+  } catch (error) {
+    console.error('Erro ao calcular pontualidade:', error);
+    res.status(500).json({ ok: false, message: 'Erro ao calcular pontualidade' });
   }
 });
 

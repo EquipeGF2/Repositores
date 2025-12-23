@@ -5118,7 +5118,7 @@ class App {
 
     campanhaViewState = { sizeMode: 'md', layoutMode: 'blocos' };
 
-    campanhaSelecaoState = { selecionados: new Set() };
+    campanhaSelecaoState = { selecionados: new Set(), baixando: false };
 
     registroRotaState = {
         backendUrl: API_BASE_URL,
@@ -8150,7 +8150,7 @@ class App {
     }
 
     resetarSelecaoCampanha() {
-        this.campanhaSelecaoState = { selecionados: new Set() };
+        this.campanhaSelecaoState = { selecionados: new Set(), baixando: false };
         this.atualizarSelecaoCampanhaUI();
     }
 
@@ -8158,9 +8158,13 @@ class App {
         const contador = document.getElementById('campanhaSelecionadasCount');
         const btnDownload = document.getElementById('btnCampanhaDownloadSelecionadas');
         const total = this.campanhaSelecaoState?.selecionados?.size || 0;
+        const baixando = Boolean(this.campanhaSelecaoState?.baixando);
 
         if (contador) contador.textContent = total;
-        if (btnDownload) btnDownload.disabled = total === 0;
+        if (btnDownload) {
+            btnDownload.disabled = total === 0 || baixando;
+            btnDownload.textContent = baixando ? '⏳ Preparando download...' : '⬇️ Baixar selecionadas';
+        }
     }
 
     obterImagensCampanhaSelecionadas() {
@@ -8175,8 +8179,8 @@ class App {
     }
 
     toggleSelecaoCampanha(fotoId, selecionar = null) {
-        if (!this.campanhaSelecaoState?.selecionados) {
-            this.campanhaSelecaoState = { selecionados: new Set() };
+        if (!this.campanhaSelecaoState || !this.campanhaSelecaoState.selecionados) {
+            this.campanhaSelecaoState = { selecionados: new Set(), baixando: false };
         }
 
         const selecionados = this.campanhaSelecaoState.selecionados;
@@ -8240,6 +8244,8 @@ class App {
             }
 
             this.showNotification('Gerando pacote para download...', 'info');
+            this.campanhaSelecaoState.baixando = true;
+            this.atualizarSelecaoCampanhaUI();
 
             const response = await fetch(`${this.registroRotaState.backendUrl}/api/campanhas/download-zip`, {
                 method: 'POST',
@@ -8263,6 +8269,11 @@ class App {
         } catch (error) {
             console.error('Erro ao baixar fotos da campanha:', error);
             this.showNotification('Erro ao baixar fotos da campanha: ' + error.message, 'error');
+        } finally {
+            if (this.campanhaSelecaoState) {
+                this.campanhaSelecaoState.baixando = false;
+            }
+            this.atualizarSelecaoCampanhaUI();
         }
     }
 
@@ -8376,6 +8387,7 @@ class App {
             const permitido = permitidos.includes(valor);
             btn.style.display = permitido ? '' : 'none';
             btn.disabled = !permitido;
+            btn.classList.toggle('disabled', !permitido);
             btn.classList.toggle('active', permitido && valor === layoutMode);
             btn.onclick = () => {
                 if (!permitido) return;
@@ -8718,8 +8730,31 @@ class App {
             const data = await response.json();
             const sessoes = data.sessoes || [];
 
+            let resumoPontualidade = null;
+            try {
+                let urlPontualidade = `${this.registroRotaState.backendUrl}/api/registro-rota/pontualidade?data_inicio=${dataInicio}&data_fim=${dataFim}`;
+                if (repositor) {
+                    urlPontualidade += `&rep_id=${repositor}`;
+                }
+
+                const pontualidadeResponse = await fetch(urlPontualidade);
+                if (pontualidadeResponse.ok) {
+                    const jsonPontualidade = await pontualidadeResponse.json();
+                    resumoPontualidade = jsonPontualidade?.resumo || null;
+                } else {
+                    console.warn('Resumo de pontualidade indisponível. Código:', pontualidadeResponse.status);
+                }
+            } catch (pontualidadeErro) {
+                console.warn('Falha ao carregar resumo de pontualidade. Usando cálculo local.', pontualidadeErro);
+            }
+
             // Filtrar apenas sessões com checkout (finalizadas)
             const sessoesFinalizadas = sessoes.filter(s => s.checkout_at || s.checkout_data_hora);
+
+            const formatPercentual = (valor) => {
+                const numero = Number(valor);
+                return Number.isFinite(numero) ? numero.toFixed(1) : '0.0';
+            };
 
             const normalizarData = (valor) => {
                 if (!valor) return null;
@@ -8730,7 +8765,8 @@ class App {
             };
 
             // Calcular estatísticas
-            const totalCheckouts = sessoesFinalizadas.length;
+            const totalCheckoutsLocal = sessoesFinalizadas.length;
+            const totalCheckouts = resumoPontualidade?.total_checkouts ?? totalCheckoutsLocal;
 
             const stats = {
                 total_visitas: totalCheckouts,
@@ -8793,12 +8829,18 @@ class App {
                 stats.perc_merchandising = ((stats.visitas_com_merchandising / stats.total_visitas) * 100).toFixed(1);
             }
 
-            stats.visitas_adiantadas = totaisPlanejamento.adiantadas;
-            stats.visitas_atrasadas = totaisPlanejamento.atrasadas;
-            if (totalCheckouts > 0) {
-                stats.percent_adiantadas = ((totaisPlanejamento.adiantadas / totalCheckouts) * 100).toFixed(1);
-                stats.percent_atrasadas = ((totaisPlanejamento.atrasadas / totalCheckouts) * 100).toFixed(1);
-            }
+            const visitasAdiantadas = resumoPontualidade?.qtde_adiantadas ?? totaisPlanejamento.adiantadas;
+            const visitasAtrasadas = resumoPontualidade?.qtde_atrasadas ?? totaisPlanejamento.atrasadas;
+
+            const percentAdiantadas = resumoPontualidade?.percent_adiantadas
+                ?? (totalCheckoutsLocal > 0 ? (totaisPlanejamento.adiantadas / totalCheckoutsLocal) * 100 : 0);
+            const percentAtrasadas = resumoPontualidade?.percent_atrasadas
+                ?? (totalCheckoutsLocal > 0 ? (totaisPlanejamento.atrasadas / totalCheckoutsLocal) * 100 : 0);
+
+            stats.visitas_adiantadas = visitasAdiantadas;
+            stats.visitas_atrasadas = visitasAtrasadas;
+            stats.percent_adiantadas = formatPercentual(percentAdiantadas);
+            stats.percent_atrasadas = formatPercentual(percentAtrasadas);
 
             this.renderizarServicos(stats);
         } catch (error) {
@@ -8837,12 +8879,12 @@ class App {
                         <span class="performance-stat-value">${stats.total_checkouts}</span>
                     </div>
                     <div class="performance-stat">
-                        <span class="performance-stat-label">Visitas Adiantadas</span>
-                        <span class="performance-stat-value">${stats.visitas_adiantadas} (${stats.percent_adiantadas}%)</span>
+                        <span class="performance-stat-label">Adiantadas</span>
+                        <span class="performance-stat-value">${stats.percent_adiantadas}% (${stats.visitas_adiantadas})</span>
                     </div>
                     <div class="performance-stat">
-                        <span class="performance-stat-label">Visitas Atrasadas</span>
-                        <span class="performance-stat-value">${stats.visitas_atrasadas} (${stats.percent_atrasadas}%)</span>
+                        <span class="performance-stat-label">Atrasadas</span>
+                        <span class="performance-stat-value">${stats.percent_atrasadas}% (${stats.visitas_atrasadas})</span>
                     </div>
                 </div>
 
