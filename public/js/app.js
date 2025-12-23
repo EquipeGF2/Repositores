@@ -5534,33 +5534,128 @@ class App {
             return;
         }
 
-        const confirmou = window.confirm(`Cancelar o atendimento em aberto para ${clienteIdNorm} - ${clienteNome || ''}?`);
-        if (!confirmou) return;
+        const conteudo = document.createElement('div');
+        conteudo.className = 'modal-body-text';
+        conteudo.innerHTML = `
+            <p style="margin-bottom: 12px;">Isso encerra o atendimento sem checkout. Deseja continuar?</p>
+            <label for="motivoCancelamento" style="font-weight: 600; font-size: 14px;">Motivo (opcional)</label>
+            <input id="motivoCancelamento" type="text" maxlength="200" placeholder="Ex.: cliente ausente" class="input" style="width:100%;" />
+        `;
 
-        try {
-            const response = await fetch(`${this.registroRotaState.backendUrl}/api/registro-rota/cancelar-atendimento`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ rv_id: rvId, motivo: 'Cancelado manualmente na interface' })
-            });
+        const rodape = document.createElement('div');
+        rodape.className = 'modal-footer modal-footer-inline';
 
-            if (!response.ok) {
-                const erro = await this.extrairMensagemErro(response);
-                throw new Error(erro || 'Erro ao cancelar atendimento');
-            }
+        const btnVoltar = document.createElement('button');
+        btnVoltar.className = 'btn btn-secondary';
+        btnVoltar.type = 'button';
+        btnVoltar.textContent = 'Voltar';
 
+        const btnConfirmar = document.createElement('button');
+        btnConfirmar.className = 'btn btn-danger';
+        btnConfirmar.type = 'button';
+        btnConfirmar.textContent = 'Confirmar cancelamento';
+
+        rodape.appendChild(btnVoltar);
+        rodape.appendChild(btnConfirmar);
+
+        const modal = this.criarModalOverlay({
+            titulo: 'Cancelar atendimento?',
+            conteudo,
+            rodape
+        });
+
+        const motivoInput = conteudo.querySelector('#motivoCancelamento');
+        let carregando = false;
+
+        const limparEstadoLocal = () => {
             this.atualizarStatusClienteLocal(clienteIdNorm, {
                 status: 'sem_checkin',
                 rv_id: null,
                 atividades_count: 0,
                 rep_id: repId
             });
+        };
 
-            this.showNotification('Atendimento cancelado. Novo check-in liberado.', 'success');
+        const setLoading = (status) => {
+            carregando = status;
+            btnConfirmar.disabled = status;
+            btnVoltar.disabled = status;
+            btnConfirmar.textContent = status ? 'Cancelando...' : 'Confirmar cancelamento';
+        };
+
+        btnVoltar.addEventListener('click', () => {
+            if (!carregando) modal.fechar();
+        });
+
+        btnConfirmar.addEventListener('click', async () => {
+            if (carregando) return;
+            setLoading(true);
+
+            try {
+                const resposta = await this.cancelarAtendimentoApi({
+                    rvId,
+                    repId,
+                    motivo: motivoInput?.value
+                });
+
+                limparEstadoLocal();
+
+                this.showNotification('Atendimento cancelado. Novo check-in liberado.', 'success');
+                modal.fechar();
+                await this.reidratarAtendimentosAposCancelamento(repId);
+                return resposta;
+            } catch (error) {
+                console.error('Erro ao cancelar atendimento:', error);
+                const motivoFalha = error?.message || 'Erro ao cancelar atendimento';
+                const precisaReidratar = [404, 409].includes(Number(error?.status));
+                this.showNotification(motivoFalha, precisaReidratar ? 'warning' : 'error');
+
+                if (precisaReidratar) {
+                    limparEstadoLocal();
+                    await this.reidratarAtendimentosAposCancelamento(repId);
+                }
+            } finally {
+                setLoading(false);
+            }
+        });
+    }
+
+    async cancelarAtendimentoApi({ rvId, repId, motivo }) {
+        const payload = {
+            rv_id: rvId,
+            repositor_id: repId,
+            motivo: (motivo || '').toString().trim() || undefined
+        };
+
+        const response = await fetch(`${this.registroRotaState.backendUrl}/api/registro-rota/cancelar-atendimento`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        let data = {};
+        try {
+            data = await response.json();
+        } catch (parseError) {
+            console.warn('Resposta inesperada ao cancelar atendimento', parseError);
+        }
+
+        if (!response.ok) {
+            const erro = data?.message || 'Erro ao cancelar atendimento';
+            const erroObj = new Error(erro);
+            erroObj.code = data?.code;
+            erroObj.status = response.status;
+            throw erroObj;
+        }
+
+        return data;
+    }
+
+    async reidratarAtendimentosAposCancelamento(repId) {
+        try {
             await this.carregarRoteiroRepositor();
         } catch (error) {
-            console.error('Erro ao cancelar atendimento:', error);
-            this.showNotification('Não foi possível cancelar o atendimento: ' + error.message, 'error');
+            console.warn('Falha ao reidratar atendimentos após cancelamento', error);
         }
     }
 

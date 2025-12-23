@@ -748,6 +748,7 @@ class TursoService {
         AND checkin_at IS NOT NULL
         AND checkout_at IS NULL
         AND (cancelado_em IS NULL)
+        AND (COALESCE(UPPER(status), '') != 'CANCELADO')
       ORDER BY COALESCE(cliente_nome, cliente_id) ASC, cliente_id ASC, checkin_at DESC
     `;
 
@@ -781,6 +782,15 @@ class TursoService {
       [agora, motivo || null, sessaoId]
     );
 
+    await this.execute(
+      `
+        UPDATE cc_registro_visita
+        SET rv_status = 'CANCELADO', rv_cancelado_em = ?, rv_cancelado_motivo = ?
+        WHERE COALESCE(rv_sessao_id, sessao_id) = ?
+      `,
+      [agora, motivo || null, sessaoId]
+    );
+
     return this.obterSessaoPorId(sessaoId);
   }
 
@@ -804,6 +814,9 @@ class TursoService {
       "ALTER TABLE cc_registro_visita ADD COLUMN rv_pasta_drive_id TEXT",
       "ALTER TABLE cc_registro_visita ADD COLUMN rv_dia_previsto TEXT",
       "ALTER TABLE cc_registro_visita ADD COLUMN rv_roteiro_id TEXT",
+      "ALTER TABLE cc_registro_visita ADD COLUMN rv_status TEXT",
+      "ALTER TABLE cc_registro_visita ADD COLUMN rv_cancelado_em TEXT",
+      "ALTER TABLE cc_registro_visita ADD COLUMN rv_cancelado_motivo TEXT",
       "ALTER TABLE cc_registro_visita ADD COLUMN sessao_id TEXT",
       "ALTER TABLE cc_registro_visita ADD COLUMN tipo TEXT",
       "ALTER TABLE cc_registro_visita ADD COLUMN data_hora_registro TEXT",

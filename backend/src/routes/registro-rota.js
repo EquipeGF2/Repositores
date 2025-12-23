@@ -918,37 +918,44 @@ router.get('/atendimentos-abertos', async (req, res) => {
 // ==================== POST /api/registro-rota/cancelar-atendimento ====================
 router.post('/cancelar-atendimento', async (req, res) => {
   try {
-    const { rv_id, motivo } = req.body || {};
+    const { rv_id, repositor_id, motivo } = req.body || {};
 
     if (!rv_id) {
       return res.status(400).json({ ok: false, code: 'RV_ID_REQUIRED', message: 'rv_id é obrigatório' });
     }
 
+    console.info('CANCEL_START', { rv_id, rep_id: repositor_id });
+
     const sessao = await tursoService.obterSessaoPorId(rv_id);
 
     if (!sessao) {
+      console.info('CANCEL_FAIL', { rv_id, reason: 'NOT_FOUND' });
       return res.status(404).json({ ok: false, code: 'ATENDIMENTO_NAO_ENCONTRADO', message: 'Atendimento não encontrado' });
     }
 
     if (sessao.checkout_at) {
-      return res.status(409).json({ ok: false, code: 'ATENDIMENTO_FINALIZADO', message: 'Atendimento já finalizado com checkout' });
+      console.info('CANCEL_FAIL', { rv_id, reason: 'CHECKOUT_ALREADY_DONE' });
+      return res.status(409).json({ ok: false, code: 'ATENDIMENTO_FINALIZADO', message: 'Atendimento já finalizado' });
     }
 
-    if (sessao.cancelado_em) {
-      return res.status(409).json({ ok: false, code: 'ATENDIMENTO_JA_CANCELADO', message: 'Atendimento já foi cancelado' });
+    if (sessao.cancelado_em || String(sessao.status).toUpperCase() === 'CANCELADO') {
+      console.info('CANCEL_FAIL', { rv_id, reason: 'ALREADY_CANCELED' });
+      return res.status(409).json({ ok: false, code: 'ATENDIMENTO_JA_CANCELADO', message: 'Atendimento já cancelado' });
     }
 
-    await tursoService.cancelarAtendimento(rv_id, motivo?.toString().slice(0, 500));
+    const motivoLimpo = motivo?.toString().slice(0, 500) || null;
+    await tursoService.cancelarAtendimento(rv_id, motivoLimpo);
 
-    console.info('ATENDIMENTO_CANCELADO', { rv_id, motivo, rep_id: sessao.rep_id, cliente_id: sessao.cliente_id });
+    console.info('CANCEL_OK', { rv_id, rep_id: repositor_id || sessao.rep_id, cliente_id: sessao.cliente_id });
 
-    return res.json({ ok: true, message: 'Atendimento cancelado com sucesso' });
+    return res.json({ ok: true, rv_id, status: 'CANCELADO' });
   } catch (error) {
     if (error instanceof DatabaseNotConfiguredError) {
       return res.status(503).json({ ok: false, code: error.code, message: error.message });
     }
 
     console.error('Erro ao cancelar atendimento:', error?.stack || error);
+    console.info('CANCEL_FAIL', { rv_id: req.body?.rv_id, reason: error?.code || error?.message || 'UNKNOWN' });
     return res.status(500).json({ ok: false, code: 'CANCELAR_ATENDIMENTO_ERROR', message: 'Erro ao cancelar atendimento' });
   }
 });
