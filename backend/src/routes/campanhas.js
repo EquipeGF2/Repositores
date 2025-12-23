@@ -25,7 +25,7 @@ function sanitizarNomeArquivo(nome, fallback = 'foto_campanha.jpg') {
     .replace(/\s+/g, '_')
     .replace(/\.\.+/g, '.');
 
-  const semTraversal = semCaracteresInvalidos.replace(/\.\.\/g, '').replace(/\.\.\\/g, '');
+  const semTraversal = semCaracteresInvalidos.replace(/\.\.[/\\]/g, '');
   const seguro = semTraversal.trim() || fallback;
 
   if (!seguro.toLowerCase().endsWith('.jpg') && !seguro.toLowerCase().endsWith('.jpeg') && !seguro.includes('.')) {
