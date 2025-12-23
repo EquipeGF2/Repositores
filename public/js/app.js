@@ -8730,8 +8730,11 @@ class App {
             };
 
             // Calcular estatísticas
+            const totalCheckouts = sessoesFinalizadas.length;
+
             const stats = {
-                total_visitas: sessoesFinalizadas.length,
+                total_visitas: totalCheckouts,
+                total_checkouts: totalCheckouts,
                 total_clientes: new Set(sessoesFinalizadas.map(s => s.cliente_id)).size,
 
                 // Frentes
@@ -8758,13 +8761,20 @@ class App {
 
                 visitas_adiantadas: 0,
                 visitas_atrasadas: 0,
+                percent_adiantadas: '0.0',
+                percent_atrasadas: '0.0',
                 media_visitas_por_cliente: '0.0'
             };
 
             const totaisPlanejamento = { adiantadas: 0, atrasadas: 0 };
 
             sessoesFinalizadas.forEach((sessao) => {
-                const prevista = normalizarData(sessao.data_prevista || sessao.data_planejada || sessao.rv_data_planejada);
+                const prevista = normalizarData(
+                    sessao.data_prevista
+                    || sessao.data_planejada
+                    || sessao.rv_data_planejada
+                    || sessao.rv_data_roteiro
+                );
                 const checkoutData = normalizarData(sessao.data_checkout || sessao.checkout_at || sessao.checkout_data_hora);
                 if (prevista && checkoutData) {
                     if (checkoutData > prevista) totaisPlanejamento.atrasadas += 1;
@@ -8785,6 +8795,10 @@ class App {
 
             stats.visitas_adiantadas = totaisPlanejamento.adiantadas;
             stats.visitas_atrasadas = totaisPlanejamento.atrasadas;
+            if (totalCheckouts > 0) {
+                stats.percent_adiantadas = ((totaisPlanejamento.adiantadas / totalCheckouts) * 100).toFixed(1);
+                stats.percent_atrasadas = ((totaisPlanejamento.atrasadas / totalCheckouts) * 100).toFixed(1);
+            }
 
             this.renderizarServicos(stats);
         } catch (error) {
@@ -8819,12 +8833,16 @@ class App {
                 <div class="performance-card">
                     <h5 style="margin-bottom: 12px; color: #ef4444; font-size: 14px; font-weight: 700; text-transform: uppercase;">⏱️ Pontualidade</h5>
                     <div class="performance-stat">
+                        <span class="performance-stat-label">Total de Checkouts</span>
+                        <span class="performance-stat-value">${stats.total_checkouts}</span>
+                    </div>
+                    <div class="performance-stat">
                         <span class="performance-stat-label">Visitas Adiantadas</span>
-                        <span class="performance-stat-value">${stats.visitas_adiantadas}</span>
+                        <span class="performance-stat-value">${stats.visitas_adiantadas} (${stats.percent_adiantadas}%)</span>
                     </div>
                     <div class="performance-stat">
                         <span class="performance-stat-label">Visitas Atrasadas</span>
-                        <span class="performance-stat-value">${stats.visitas_atrasadas}</span>
+                        <span class="performance-stat-value">${stats.visitas_atrasadas} (${stats.percent_atrasadas}%)</span>
                     </div>
                 </div>
 
