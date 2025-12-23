@@ -148,10 +148,25 @@ class App {
         // Event Listeners
         this.setupEventListeners();
 
-        // Inicializa banco de dados
-        await this.initializeDatabase();
+        // Dispara captura de localização imediatamente (em paralelo com demais inicializações)
+        const geoPromise = this.exigirLocalizacaoInicial();
 
-        const geoLiberado = await this.exigirLocalizacaoInicial();
+        const [resultadoDb, resultadoDadosNaoCriticos] = await Promise.allSettled([
+            this.initializeDatabase(),
+            this.carregarDadosNaoCriticos()
+        ]);
+
+        if (resultadoDb.status === 'rejected') {
+            console.error('Erro ao inicializar banco:', resultadoDb.reason);
+            return;
+        }
+
+        if (resultadoDadosNaoCriticos.status === 'rejected') {
+            console.warn('Falha ao carregar dados não críticos:', resultadoDadosNaoCriticos.reason);
+            this.showNotification('Alguns dados opcionais não foram carregados. Tente novamente mais tarde.', 'warning');
+        }
+
+        const geoLiberado = await geoPromise;
         if (!geoLiberado) return;
 
         const temSessao = await this.ensureUsuarioLogado();
@@ -364,6 +379,20 @@ class App {
                     <small>${error.message}</small>
                 </div>
             `;
+        }
+    }
+
+    async carregarDadosNaoCriticos() {
+        const tarefas = [
+            this.fetchTiposDocumentos({ silencioso: true })
+        ];
+
+        const resultados = await Promise.allSettled(tarefas);
+
+        const falhas = resultados.filter((item) => item.status === 'rejected');
+        if (falhas.length > 0) {
+            console.warn('Dados opcionais não carregados:', falhas.map((f) => f.reason));
+            this.showNotification('Alguns dados opcionais não foram carregados. Você pode tentar novamente nas telas correspondentes.', 'warning');
         }
     }
 
@@ -5101,6 +5130,10 @@ class App {
         return `ATENDIMENTO_ABERTO_${repId}_${clienteId}`;
     }
 
+    getRegistroRotaContextKey() {
+        return 'REGISTRO_ROTA_CONTEXTO';
+    }
+
     recuperarAtendimentoPersistido(repId, clienteId) {
         try {
             const chave = this.getAtendimentoStorageKey(repId, clienteId);
@@ -5126,6 +5159,25 @@ class App {
             localStorage.removeItem(this.getAtendimentoStorageKey(repId, clienteId));
         } catch (error) {
             console.warn('Não foi possível limpar atendimento local', error);
+        }
+    }
+
+    salvarContextoRegistroRota(repId, dataVisita) {
+        try {
+            const payload = { repId, dataVisita };
+            localStorage.setItem(this.getRegistroRotaContextKey(), JSON.stringify(payload));
+        } catch (error) {
+            console.warn('Não foi possível salvar contexto de registro de rota', error);
+        }
+    }
+
+    recuperarContextoRegistroRota() {
+        try {
+            const bruto = localStorage.getItem(this.getRegistroRotaContextKey());
+            return bruto ? JSON.parse(bruto) : null;
+        } catch (error) {
+            console.warn('Não foi possível recuperar contexto de registro de rota', error);
+            return null;
         }
     }
 
@@ -5157,6 +5209,28 @@ class App {
         }
 
         // Carregar lista de repositores (já está no HTML gerado)
+
+        this.restaurarContextoRegistroRota();
+    }
+
+    restaurarContextoRegistroRota() {
+        const selectRepositor = document.getElementById('registroRepositor');
+        const inputData = document.getElementById('registroData');
+        const contexto = this.recuperarContextoRegistroRota();
+
+        if (!selectRepositor || !inputData || !contexto) return;
+
+        if (contexto.repId) {
+            selectRepositor.value = String(contexto.repId);
+        }
+
+        if (contexto.dataVisita) {
+            inputData.value = contexto.dataVisita;
+        }
+
+        if (selectRepositor.value && inputData.value) {
+            this.carregarRoteiroRepositor();
+        }
     }
 
     calcularAtrasoRoteiro(dataRoteiro) {
@@ -5187,7 +5261,7 @@ class App {
     }
 
     async carregarRoteiroRepositor() {
-    const container = document.getElementById('roteiroContainer');
+        const container = document.getElementById('roteiroContainer');
 
     try {
         if (!container) {
@@ -5205,6 +5279,8 @@ class App {
             this.showNotification('Selecione o repositor e a data', 'warning');
             return;
         }
+
+        this.salvarContextoRegistroRota(repId, dataVisita);
 
         // Mostrar loading
         container.innerHTML = `
@@ -6866,6 +6942,30 @@ class App {
         cameraCapturas: []
     };
 
+    async fetchTiposDocumentos({ silencioso = false } = {}) {
+        if (this.documentosState.tipos.length > 0) {
+            return this.documentosState.tipos;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/documentos/tipos`);
+
+            if (!response.ok) {
+                throw new Error(`Erro ao carregar tipos: ${response.status}`);
+            }
+
+            const data = await response.json();
+            this.documentosState.tipos = data.tipos || [];
+            return this.documentosState.tipos;
+        } catch (error) {
+            console.warn('Erro ao carregar tipos de documentos:', error);
+            if (!silencioso) {
+                this.showNotification('Não foi possível carregar tipos de documentos agora.', 'warning');
+            }
+            throw error;
+        }
+    }
+
     async inicializarDocumentos() {
         try {
             // Carregar tipos de documentos
@@ -6899,51 +6999,27 @@ class App {
             }
         } catch (error) {
             console.error('Erro ao inicializar documentos:', error);
-            this.showNotification('Erro ao inicializar módulo de documentos', 'error');
+            this.showNotification('Não foi possível carregar o módulo de documentos agora. Tente novamente mais tarde.', 'warning');
         }
     }
 
     async carregarTiposDocumentos() {
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/documentos/tipos`);
+        const tipos = await this.fetchTiposDocumentos();
 
-            if (!response.ok) {
-                console.error('Erro HTTP ao carregar tipos:', response.status);
-                throw new Error(`Erro ao carregar tipos: ${response.status}`);
-            }
+        console.log('Tipos de documentos carregados:', tipos.length);
 
-            const data = await response.json();
-            this.documentosState.tipos = data.tipos || [];
+        // Preencher selects
+        const selectUpload = document.getElementById('uploadTipo');
+        const selectFiltro = document.getElementById('filtroTipo');
 
-            console.log('Tipos de documentos carregados:', this.documentosState.tipos.length);
+        if (selectUpload) {
+            selectUpload.innerHTML = '<option value="">Selecione...</option>' +
+                tipos.map(t => `<option value="${t.dct_id}">${t.dct_nome}</option>`).join('');
+        }
 
-            // Preencher selects
-            const selectUpload = document.getElementById('uploadTipo');
-            const selectFiltro = document.getElementById('filtroTipo');
-
-            if (selectUpload) {
-                selectUpload.innerHTML = '<option value="">Selecione...</option>' +
-                    this.documentosState.tipos.map(t => `<option value="${t.dct_id}">${t.dct_nome}</option>`).join('');
-            }
-
-            if (selectFiltro) {
-                selectFiltro.innerHTML = '<option value="">Todos</option>' +
-                    this.documentosState.tipos.map(t => `<option value="${t.dct_id}">${t.dct_nome}</option>`).join('');
-            }
-        } catch (error) {
-            console.error('Erro ao carregar tipos de documentos:', error);
-            this.showNotification('Erro ao carregar tipos de documentos. Verifique sua conexão.', 'error');
-
-            // Fallback: deixar selects vazios mas funcionais
-            const selectUpload = document.getElementById('uploadTipo');
-            const selectFiltro = document.getElementById('filtroTipo');
-
-            if (selectUpload) {
-                selectUpload.innerHTML = '<option value="">Erro ao carregar tipos</option>';
-            }
-            if (selectFiltro) {
-                selectFiltro.innerHTML = '<option value="">Todos</option>';
-            }
+        if (selectFiltro) {
+            selectFiltro.innerHTML = '<option value="">Todos</option>' +
+                tipos.map(t => `<option value="${t.dct_id}">${t.dct_nome}</option>`).join('');
         }
     }
 
@@ -8091,17 +8167,29 @@ class App {
                 return;
             }
 
+            if (!repositor) {
+                this.showNotification('Selecione o repositor para aplicar o filtro.', 'warning');
+                return;
+            }
+
             if (notificar) this.showNotification('Carregando dados...', 'info');
 
             // Buscar todas as visitas do período
-            let url = `${this.registroRotaState.backendUrl}/api/registro-rota/visitas?data_inicio=${dataInicio}&data_fim=${dataFim}&tipo=checkout`;
-            if (repositor) {
-                url += `&rep_id=${repositor}`;
-            }
+            const url = `${this.registroRotaState.backendUrl}/api/registro-rota/visitas?data_inicio=${dataInicio}&data_fim=${dataFim}&tipo=checkout&rep_id=${repositor}`;
 
             const response = await fetch(url);
 
-            if (!response.ok) throw new Error('Erro ao buscar dados');
+            if (!response.ok) {
+                const detalhes = await response.json().catch(() => null);
+                const mensagemErro = detalhes?.message || 'Erro ao buscar dados';
+
+                if (response.status === 400) {
+                    this.showNotification(`Não foi possível carregar os dados: ${mensagemErro}`, 'warning');
+                    return;
+                }
+
+                throw new Error(mensagemErro);
+            }
 
             const data = await response.json();
             const todasVisitas = data.visitas || [];
