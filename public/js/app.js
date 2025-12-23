@@ -6618,6 +6618,18 @@ class App {
         };
     }
 
+    resolverUrlImagemCampanha(imagem) {
+        const fileId = imagem?.drive_file_id || imagem?.rv_drive_file_id;
+        const url = imagem?.rv_drive_file_url || imagem?.drive_file_url || imagem?.url || '';
+        const { previewUrl, downloadUrl, originalUrl } = this.resolverUrlFotoVisita(url, fileId);
+
+        return {
+            previewUrl,
+            downloadUrl,
+            originalUrl: originalUrl || previewUrl || url || null
+        };
+    }
+
     abrirModalFotoVisita(sessao, tipo) {
         const isCheckin = tipo === 'checkin';
         const url = isCheckin ? sessao.foto_checkin_url : sessao.foto_checkout_url;
@@ -7865,11 +7877,11 @@ class App {
             return;
         }
 
-        this.campanhaViewState = this.campanhaViewState || { tamanho: 'media', layout: 'blocos' };
+        this.campanhaViewState = this.campanhaViewState || { sizeMode: 'md', layoutMode: 'blocos' };
         this.campanhaGrupoSelecionado = grupo;
 
         const modalHtml = `
-            <div class="modal-overlay" id="modalImagensCampanha" style="display:flex;">
+            <div class="modal-overlay campanha-overlay" id="modalImagensCampanha" style="display:flex;">
                 <div class="campanha-modal">
                     <div class="campanha-modal-header">
                         <div>
@@ -7884,9 +7896,9 @@ class App {
                         <div class="campanha-control-bar">
                             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                                 <span style="font-weight:700; color:#374151;">Tamanho:</span>
-                                <button class="toggle-chip" data-campanha-tamanho="pequeno">Pequenas</button>
-                                <button class="toggle-chip" data-campanha-tamanho="media">Médias</button>
-                                <button class="toggle-chip" data-campanha-tamanho="grande">Grandes</button>
+                                <button class="toggle-chip" data-campanha-size="sm">Pequenas</button>
+                                <button class="toggle-chip" data-campanha-size="md">Médias</button>
+                                <button class="toggle-chip" data-campanha-size="lg">Grandes</button>
                             </div>
                             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                                 <span style="font-weight:700; color:#374151;">Layout:</span>
@@ -7935,21 +7947,21 @@ class App {
         const modal = document.getElementById('modalImagensCampanha');
         if (!modal) return;
 
-        const { tamanho = 'media', layout = 'blocos' } = this.campanhaViewState || {};
+        const { sizeMode = 'md', layoutMode = 'blocos' } = this.campanhaViewState || {};
 
-        modal.querySelectorAll('[data-campanha-tamanho]').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.campanhaTamanho === tamanho);
+        modal.querySelectorAll('[data-campanha-size]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.campanhaSize === sizeMode);
             btn.onclick = () => {
-                this.campanhaViewState = { ...(this.campanhaViewState || {}), tamanho: btn.dataset.campanhaTamanho };
+                this.campanhaViewState = { ...(this.campanhaViewState || {}), sizeMode: btn.dataset.campanhaSize };
                 this.aplicarEstadoCampanha();
                 this.renderizarGaleriaCampanha();
             };
         });
 
         modal.querySelectorAll('[data-campanha-layout]').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.campanhaLayout === layout);
+            btn.classList.toggle('active', btn.dataset.campanhaLayout === layoutMode);
             btn.onclick = () => {
-                this.campanhaViewState = { ...(this.campanhaViewState || {}), layout: btn.dataset.campanhaLayout };
+                this.campanhaViewState = { ...(this.campanhaViewState || {}), layoutMode: btn.dataset.campanhaLayout };
                 this.aplicarEstadoCampanha();
                 this.renderizarGaleriaCampanha();
             };
@@ -7966,18 +7978,23 @@ class App {
         loading.style.display = 'block';
         grid.innerHTML = '';
 
-        const { tamanho = 'media', layout = 'blocos' } = this.campanhaViewState || {};
-        grid.className = `campanha-grid tamanho-${tamanho} layout-${layout}`;
+        const { sizeMode = 'md', layoutMode = 'blocos' } = this.campanhaViewState || {};
+        grid.className = `campanha-grid tamanho-${sizeMode} layout-${layoutMode}`;
 
         setTimeout(() => {
             const itens = grupo.imagens.map((img, imgIndex) => {
-                const urlImagem = img.rv_drive_file_url || img.drive_file_url || img.url || '';
+                const { previewUrl, originalUrl, downloadUrl } = this.resolverUrlImagemCampanha(img);
+                const urlImagem = previewUrl || originalUrl || '';
                 const dataRegistro = img.data_hora_registro ? new Date(img.data_hora_registro).toLocaleString('pt-BR') : '-';
+                const linkOrigem = originalUrl || downloadUrl || urlImagem || '#';
+                const thumbFallbackClass = urlImagem ? '' : 'thumb-fallback-visible';
+                const imagemVisivel = urlImagem ? '' : 'style="display:none;"';
 
                 return `
-                    <div class="campanha-card" data-campanha-index="${imgIndex}">
-                        <div class="thumb">
-                            <img src="${urlImagem}" alt="Foto ${imgIndex + 1}" loading="lazy">
+                    <div class="campanha-card layout-${layoutMode}" data-campanha-index="${imgIndex}">
+                        <div class="thumb ${thumbFallbackClass}">
+                            <img class="thumb-img" src="${urlImagem}" alt="Foto ${imgIndex + 1}" loading="lazy" ${imagemVisivel} onerror="this.dataset.error='1'; this.style.display='none'; this.parentElement.classList.add('thumb-fallback-visible');">
+                            <div class="thumb-fallback" aria-hidden="true">🖼️</div>
                         </div>
                         <div class="card-info">
                             <div style="font-weight:700; color:#111827;">Foto ${imgIndex + 1}</div>
@@ -7985,7 +8002,7 @@ class App {
                                 <span>📅 ${grupo.data_planejada || '-'}</span>
                                 <span>⏱️ ${dataRegistro}</span>
                             </div>
-                            <a href="${urlImagem}" target="_blank" class="btn btn-secondary" style="text-align:center; padding:8px 10px;">🔗 Abrir no Drive</a>
+                            <a href="${linkOrigem}" target="_blank" class="btn btn-secondary" style="text-align:center; padding:8px 10px;">🔗 Ver origem</a>
                         </div>
                     </div>
                 `;
@@ -8009,7 +8026,9 @@ class App {
     abrirViewerCampanha(imagem, posicao = 1, grupo = {}) {
         this.fecharViewerCampanha();
 
-        const urlImagem = imagem?.rv_drive_file_url || imagem?.drive_file_url || imagem?.url || '';
+        const { previewUrl, originalUrl } = this.resolverUrlImagemCampanha(imagem);
+        const urlImagem = previewUrl || originalUrl || '';
+        const possuiImagem = Boolean(urlImagem);
         const dataRegistro = imagem?.data_hora_registro ? new Date(imagem.data_hora_registro).toLocaleString('pt-BR') : '-';
 
         const lightbox = document.createElement('div');
@@ -8019,7 +8038,8 @@ class App {
             <div class="campanha-lightbox-content">
                 <button class="close-btn" aria-label="Fechar" onclick="app.fecharViewerCampanha()">×</button>
                 <div class="campanha-image-wrapper">
-                    <img src="${urlImagem}" alt="Imagem da campanha">
+                    <img src="${urlImagem}" alt="Imagem da campanha" ${possuiImagem ? '' : 'class="thumb-hidden"'} onerror="this.dataset.error='1'; this.classList.add('thumb-hidden'); const fb=document.getElementById('campanhaViewerFallback'); if(fb){ fb.classList.add('visible'); }">
+                    <div class="campanha-viewer-fallback ${possuiImagem ? '' : 'visible'}" id="campanhaViewerFallback">🖼️ Prévia indisponível</div>
                     <div class="foto-overlay compacto" id="campanhaOverlayInfo">
                         <div class="overlay-text" id="campanhaOverlayTexto">
                             <div>📍 ${grupo.cliente_nome || grupo.cliente_id || 'Cliente'}</div>

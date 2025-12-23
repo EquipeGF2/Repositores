@@ -1370,8 +1370,8 @@ tbody td {
 .campanha-modal {
     background: #fff;
     border-radius: 14px;
-    width: 90vw;
-    height: 90vh;
+    width: min(1100px, 96vw);
+    height: min(92vh, 900px);
     display: flex;
     flex-direction: column;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
@@ -1428,18 +1428,22 @@ tbody td {
 }
 
 .campanha-grid {
+    --thumb-size: 140px;
     flex: 1;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(var(--thumb-size), 1fr));
     gap: 14px;
     overflow: auto;
+    align-content: start;
 }
 
-.campanha-grid.tamanho-pequeno { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
-.campanha-grid.tamanho-grande { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.campanha-grid.tamanho-sm { --thumb-size: 96px; }
+.campanha-grid.tamanho-md { --thumb-size: 140px; }
+.campanha-grid.tamanho-lg { --thumb-size: 200px; }
 
-.campanha-grid.layout-lista { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
-.campanha-grid.layout-detalhes { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.campanha-grid.layout-blocos { grid-template-columns: repeat(auto-fill, minmax(var(--thumb-size), 1fr)); }
+.campanha-grid.layout-detalhes { grid-template-columns: repeat(auto-fill, minmax(calc(var(--thumb-size) + 80px), 1fr)); }
+.campanha-grid.layout-lista { grid-template-columns: 1fr; }
 
 .campanha-card {
     border: 1px solid #e5e7eb;
@@ -1449,6 +1453,22 @@ tbody td {
     display: flex;
     flex-direction: column;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
+    min-height: calc(var(--thumb-size) + 70px);
+}
+
+.campanha-card.layout-blocos { flex-direction: column; }
+
+.campanha-card.layout-detalhes {
+    flex-direction: row;
+    gap: 12px;
+    align-items: stretch;
+}
+
+.campanha-card.layout-lista {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    padding-right: 10px;
 }
 
 .campanha-card:hover {
@@ -1459,15 +1479,42 @@ tbody td {
 .campanha-card .thumb {
     position: relative;
     width: 100%;
-    aspect-ratio: 4 / 3;
+    height: var(--thumb-size);
+    min-height: var(--thumb-size);
     background: #f3f4f6;
+    overflow: hidden;
+    border-bottom: 1px solid #e5e7eb;
 }
 
-.campanha-card img {
+.campanha-card.layout-detalhes .thumb,
+.campanha-card.layout-lista .thumb {
+    width: clamp(var(--thumb-size), calc(var(--thumb-size) + 40px), 240px);
+    flex: 0 0 clamp(var(--thumb-size), calc(var(--thumb-size) + 40px), 240px);
+    border-bottom: none;
+    border-right: 1px solid #e5e7eb;
+    height: calc(var(--thumb-size) + 10px);
+}
+
+.campanha-card img.thumb-img {
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
+}
+
+.campanha-card .thumb .thumb-fallback {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    color: #6b7280;
+    background: #f3f4f6;
+    width: 100%;
+    height: 100%;
+    font-size: 24px;
+}
+
+.thumb-fallback-visible .thumb-fallback {
+    display: flex;
 }
 
 .campanha-card .card-info {
@@ -1475,7 +1522,10 @@ tbody td {
     display: flex;
     flex-direction: column;
     gap: 6px;
+    flex: 1;
 }
+
+.campanha-card.layout-lista .card-info { gap: 4px; }
 
 .campanha-card .card-meta {
     font-size: 12px;
@@ -1483,6 +1533,7 @@ tbody td {
     display: flex;
     align-items: center;
     gap: 10px;
+    flex-wrap: wrap;
 }
 
 .campanha-lightbox {
@@ -1521,6 +1572,28 @@ tbody td {
     width: 100%;
     object-fit: contain;
     border-radius: 10px;
+}
+
+.campanha-image-wrapper img.thumb-hidden {
+    display: none;
+}
+
+.campanha-viewer-fallback {
+    display: none;
+    color: #e5e7eb;
+    background: #111827;
+    border: 1px dashed #374151;
+    padding: 16px;
+    border-radius: 10px;
+    width: 100%;
+    min-height: 240px;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+.campanha-viewer-fallback.visible {
+    display: flex;
 }
 
 .campanha-lightbox .close-btn {
@@ -2979,7 +3052,7 @@ tbody td {
     display: none;
     align-items: center;
     justify-content: center;
-    z-index: 9998;
+    z-index: 10900;
     padding: 16px;
 }
 
@@ -2987,6 +3060,16 @@ tbody td {
 .modal-overlay.geo-overlay,
 .modal-overlay#modalImagensCampanha {
     display: flex;
+}
+
+#modalImagensCampanha,
+.campanha-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.62);
+    z-index: 11500;
+    align-items: center;
+    justify-content: center;
 }
 
 .modal-backdrop {
