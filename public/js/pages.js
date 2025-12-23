@@ -2034,6 +2034,8 @@ export const pages = {
                     border-radius: 12px;
                     margin-bottom: 12px;
                     transition: all 0.2s ease;
+                    gap: 12px;
+                    min-width: 0;
                 }
 
                 .route-item:hover {
@@ -2042,7 +2044,8 @@ export const pages = {
                 }
 
                 .route-item-info {
-                    flex: 1;
+                    flex: 1 1 auto;
+                    min-width: 0;
                 }
 
                 .chip-option {
@@ -2066,17 +2069,37 @@ export const pages = {
                     font-size: 15px;
                     color: #111827;
                     margin-bottom: 4px;
+                    display: -webkit-box;
+                    -webkit-box-orient: vertical;
+                    -webkit-line-clamp: 1;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    word-break: break-word;
                 }
 
                 .route-item-address {
                     font-size: 13px;
                     color: #6b7280;
+                    display: -webkit-box;
+                    -webkit-box-orient: vertical;
+                    -webkit-line-clamp: 1;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    word-break: break-word;
                 }
 
                 .route-item-actions {
                     display: flex;
                     align-items: center;
-                    gap: 12px;
+                    gap: 8px;
+                    flex-wrap: wrap;
+                    justify-content: flex-end;
+                    max-width: 100%;
+                    flex: 0 1 auto;
+                }
+
+                .route-item-actions .btn-small {
+                    white-space: nowrap;
                 }
 
                 .route-status {
@@ -2115,6 +2138,23 @@ export const pages = {
                 .btn-small:hover {
                     transform: translateY(-2px);
                     box-shadow: 0 4px 6px rgba(239, 68, 68, 0.3);
+                }
+
+                @media (max-width: 640px) {
+                    .route-item {
+                        align-items: flex-start;
+                    }
+
+                    .route-item-actions {
+                        width: 100%;
+                        justify-content: flex-end;
+                        gap: 8px;
+                    }
+
+                    .route-item-actions .btn-small {
+                        flex: 1 1 48%;
+                        min-width: 140px;
+                    }
                 }
             </style>
         `;
