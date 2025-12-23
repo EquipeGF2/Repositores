@@ -5127,7 +5127,8 @@ class App {
         tipoRegistro: null,
         cameraErro: null,
         resizeHandler: null,
-        atendimentosAbertos: new Map()
+        atendimentosAbertos: new Map(),
+        resumoColapsado: false
     };
 
     getAtendimentoStorageKey(repId, clienteId) {
@@ -5642,6 +5643,58 @@ class App {
         }
     }
 
+    configurarToggleGps() {
+        const toggle = document.getElementById('gpsDetalhesToggle');
+        const detalhes = document.getElementById('gpsDetalhes');
+
+        if (toggle && detalhes) {
+            detalhes.hidden = true;
+            toggle.setAttribute('aria-expanded', 'false');
+            toggle.textContent = 'Detalhes';
+            toggle.onclick = () => {
+                const oculto = detalhes.hidden;
+                detalhes.hidden = !oculto;
+                toggle.setAttribute('aria-expanded', String(oculto));
+                toggle.textContent = oculto ? 'Ocultar' : 'Detalhes';
+            };
+        }
+    }
+
+    atualizarGpsUI(resumo, detalhe, statusClasse = 'neutro') {
+        const resumoEl = document.getElementById('gpsStatusResumo');
+        const detalheEl = document.getElementById('gpsStatus');
+        const chip = document.getElementById('gpsChip');
+
+        if (resumoEl) resumoEl.textContent = resumo;
+        if (detalheEl) detalheEl.innerHTML = detalhe;
+        if (chip) chip.dataset.status = statusClasse;
+    }
+
+    configurarResumoAtividadesToggle() {
+        const toggle = document.getElementById('toggleResumoAtividades');
+        if (toggle) {
+            toggle.onclick = () => {
+                const conteudo = document.getElementById('resumoAtividadesConteudo');
+                const novoEstado = !(conteudo?.hidden ?? false);
+                this.registroRotaState.resumoColapsado = novoEstado;
+                this.aplicarEstadoResumoAtividades(novoEstado);
+            };
+        }
+    }
+
+    aplicarEstadoResumoAtividades(colapsado) {
+        const resumo = document.getElementById('resumoAtividades');
+        const conteudo = document.getElementById('resumoAtividadesConteudo');
+        const toggle = document.getElementById('toggleResumoAtividades');
+
+        if (conteudo) conteudo.hidden = colapsado;
+        if (resumo) resumo.classList.toggle('resumo-colapsado', colapsado);
+        if (toggle) {
+            toggle.textContent = colapsado ? 'Mostrar' : 'Ocultar';
+            toggle.setAttribute('aria-expanded', String(!colapsado));
+        }
+    }
+
     async abrirModalCaptura(repId, clienteId, clienteNome, enderecoLinha = null, dataVisitaParam = null, tipoRegistro = 'campanha', enderecoCadastro = '') {
         const normalizeClienteId = (v) => String(v ?? '').trim().replace(/\.0$/, '');
 
@@ -5696,6 +5749,7 @@ class App {
         this.registroRotaState.fotosCapturadas = [];
         this.registroRotaState.enderecoResolvido = null;
         this.registroRotaState.cameraErro = null;
+        this.registroRotaState.resumoColapsado = window.matchMedia('(max-width: 768px)').matches;
 
         const posicao = await this.capturarLocalizacaoObrigatoria(
             'Localização necessária para iniciar o registro',
@@ -5733,10 +5787,9 @@ class App {
                 : 'Capture uma única foto para este registro. Você pode refazer antes de salvar.';
         }
 
-        const gpsStatus = document.getElementById('gpsStatus');
-        if (gpsStatus) {
-            gpsStatus.innerHTML = '<p style="margin: 0; color: #6b7280;">Aguardando geolocalização...</p>';
-        }
+        this.configurarToggleGps();
+        this.configurarResumoAtividadesToggle();
+        this.atualizarGpsUI('Aguardando GPS', '<p style="margin: 0; color: #6b7280;">Aguardando geolocalização...</p>');
 
         const canvas = document.getElementById('canvasCaptura');
         if (canvas) {
@@ -5837,13 +5890,18 @@ class App {
                 atividades.push(`<div style="color: #dc2626;"><strong>⭐ Pontos Extras:</strong> ${sessaoCliente.qtd_pontos_extras}</div>`);
             }
 
+            const contadorResumo = document.getElementById('resumoAtividadesCount');
+
             if (atividades.length === 0) {
                 conteudoDiv.innerHTML = '<div style="color: #9ca3af;">Nenhuma atividade registrada ainda</div>';
+                if (contadorResumo) contadorResumo.textContent = '(0)';
             } else {
                 conteudoDiv.innerHTML = atividades.join('');
+                if (contadorResumo) contadorResumo.textContent = `(${atividades.length})`;
             }
 
             resumoDiv.style.display = 'block';
+            this.aplicarEstadoResumoAtividades(this.registroRotaState.resumoColapsado);
 
         } catch (error) {
             console.error('Erro ao carregar resumo de atividades:', error);
@@ -5854,10 +5912,7 @@ class App {
 
 
     async iniciarCapturaGPS() {
-        const gpsStatus = document.getElementById('gpsStatus');
-        if (gpsStatus) {
-            gpsStatus.innerHTML = '<p style="margin: 0; color: #6b7280;">⏳ Obtendo localização...</p>';
-        }
+        this.atualizarGpsUI('Obtendo GPS...', '<p style="margin: 0; color: #6b7280;">⏳ Obtendo localização...</p>', 'neutro');
 
         const posicao = await this.capturarLocalizacaoObrigatoria(
             'Localização obrigatória para registrar',
@@ -5865,9 +5920,7 @@ class App {
         );
 
         if (!posicao) {
-            if (gpsStatus) {
-                gpsStatus.innerHTML = '<p style="margin: 0; color: #dc2626;">❌ Não foi possível capturar o GPS.</p>';
-            }
+            this.atualizarGpsUI('Sem GPS', '<p style="margin: 0; color: #dc2626;">❌ Não foi possível capturar o GPS.</p>', 'erro');
             return;
         }
 
@@ -5882,25 +5935,23 @@ class App {
         const lat = posicao.lat.toFixed(6);
         const lon = posicao.lng.toFixed(6);
 
-        if (gpsStatus) {
-            gpsStatus.innerHTML = `
-                <p style="margin: 0; color: #16a34a;">
-                    ✅ Coordenadas: ${lat}, ${lon}<br>
-                    <span style="font-size: 0.85em; color: #666;">📍 Carregando endereço...</span>
-                </p>
-            `;
-        }
+        this.atualizarGpsUI('Local OK', `
+            <p style="margin: 0; color: #16a34a;">
+                ✅ Coordenadas: ${lat}, ${lon}<br>
+                <span style="font-size: 0.85em; color: #666;">📍 Carregando endereço...</span>
+            </p>
+        `, 'ok');
 
         try {
             const endereco = await this.obterEnderecoPorCoordenadas(posicao.lat, posicao.lng);
             this.registroRotaState.enderecoResolvido = endereco;
-            if (gpsStatus && endereco) {
-                gpsStatus.innerHTML = `
+            if (endereco) {
+                this.atualizarGpsUI('Local OK', `
                     <p style="margin: 0; color: #16a34a;">
                         ✅ Coordenadas: ${lat}, ${lon}<br>
                         <span style="font-size: 0.9em; color: #374151;">📍 ${endereco}</span>
                     </p>
-                `;
+                `, 'ok');
             }
         } catch (error) {
             console.warn('Erro ao buscar endereço:', error);

@@ -1716,14 +1716,29 @@ export const pages = {
                             <h3 id="modalCapturaTitulo">Registrar Visita</h3>
                             <p id="capturaClienteInfo" class="captura-cliente-info"></p>
                         </div>
-                        <div id="gpsStatus" class="gps-chip">Aguardando geolocalização...</div>
+                        <div class="gps-chip" id="gpsChip">
+                            <div class="gps-chip-main">
+                                <span class="gps-chip-icon">📍</span>
+                                <span id="gpsStatusResumo" class="gps-chip-text">Aguardando GPS</span>
+                                <button type="button" id="gpsDetalhesToggle" class="gps-details-btn" aria-expanded="false">Detalhes</button>
+                            </div>
+                            <div id="gpsDetalhes" class="gps-details" hidden>
+                                <div id="gpsStatus" class="gps-status-detalhe">Aguardando geolocalização...</div>
+                            </div>
+                        </div>
                         <button class="modal-close" onclick="window.app.fecharModalCaptura()">&times;</button>
                     </div>
 
                     <!-- Resumo de Atividades (aparece apenas no checkout) -->
-                    <div id="resumoAtividades" style="display: none; background: #f9fafb; border-bottom: 2px solid #e5e7eb; padding: 16px 24px;">
-                        <h4 style="margin: 0 0 12px; color: #374151; font-size: 14px; font-weight: 600;">📋 Resumo das Atividades</h4>
-                        <div id="resumoAtividadesConteudo" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; font-size: 13px;"></div>
+                    <div id="resumoAtividades" class="resumo-atividades" style="display: none;">
+                        <div class="resumo-atividades-header">
+                            <div class="resumo-atividades-titulo">
+                                <span>📋 Resumo</span>
+                                <span id="resumoAtividadesCount" class="resumo-atividades-count">(0)</span>
+                            </div>
+                            <button type="button" class="resumo-toggle" id="toggleResumoAtividades" aria-expanded="false">Mostrar</button>
+                        </div>
+                        <div id="resumoAtividadesConteudo" class="resumo-atividades-conteudo"></div>
                     </div>
 
                     <div class="modal-body captura-body">
