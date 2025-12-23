@@ -7,6 +7,7 @@ import registroRotaRoutes from './routes/registro-rota.js';
 import googleOAuthRoutes from './routes/google-oauth.js';
 import documentosRoutes from './routes/documentos.js';
 import arquivosRoutes from './routes/arquivos.js';
+import campanhasRoutes from './routes/campanhas.js';
 
 const app = express();
 
@@ -63,6 +64,7 @@ app.use('/api/registro-rota', registroRotaRoutes);
 app.use('/api/google/oauth', googleOAuthRoutes);
 app.use('/api/documentos', documentosRoutes);
 app.use('/api/arquivos', arquivosRoutes);
+app.use('/api/campanhas', campanhasRoutes);
 
 // Rota 404
 app.use((req, res) => {

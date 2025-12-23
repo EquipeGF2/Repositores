@@ -5116,6 +5116,10 @@ class App {
 
     // ==================== REGISTRO DE ROTA ====================
 
+    campanhaViewState = { sizeMode: 'md', layoutMode: 'blocos' };
+
+    campanhaSelecaoState = { selecionados: new Set() };
+
     registroRotaState = {
         backendUrl: API_BASE_URL,
         videoStream: null,
@@ -8098,6 +8102,170 @@ class App {
         this.campanhaGruposAtual = grupos;
     }
 
+    obterLayoutsCampanhaPermitidos(sizeMode = 'md') {
+        const mapa = {
+            sm: ['lista'],
+            md: ['lista', 'detalhes', 'blocos'],
+            lg: ['lista', 'blocos']
+        };
+
+        return mapa[sizeMode] || mapa.md;
+    }
+
+    normalizarCampanhaViewState() {
+        const base = this.campanhaViewState || {};
+        const sizeMode = base.sizeMode || 'md';
+        const permitidos = this.obterLayoutsCampanhaPermitidos(sizeMode);
+        const layoutMode = permitidos.includes(base.layoutMode) ? base.layoutMode : permitidos[0];
+
+        if (!this.campanhaViewState || this.campanhaViewState.sizeMode !== sizeMode || this.campanhaViewState.layoutMode !== layoutMode) {
+            this.campanhaViewState = { ...base, sizeMode, layoutMode };
+        }
+
+        return { sizeMode, layoutMode };
+    }
+
+    obterIdImagemCampanha(imagem, index = 0) {
+        return imagem?.rv_id
+            || imagem?.drive_file_id
+            || imagem?.rv_drive_file_id
+            || `${imagem?.rv_sessao_id || 'sessao'}-${index}`;
+    }
+
+    gerarNomeArquivoCampanha(imagem, index = 0) {
+        const cliente = (this.campanhaGrupoSelecionado?.cliente_nome
+            || this.campanhaGrupoSelecionado?.cliente_id
+            || 'campanha')
+            .toString()
+            .trim()
+            .replace(/\s+/g, '_');
+
+        const data = (imagem?.rv_data_planejada || this.campanhaGrupoSelecionado?.data_planejada || '')
+            .toString()
+            .replace(/-/g, '') || 'data';
+
+        const numero = String(index + 1).padStart(2, '0');
+
+        return `${cliente}_${data}_foto_${numero}.jpg`;
+    }
+
+    resetarSelecaoCampanha() {
+        this.campanhaSelecaoState = { selecionados: new Set() };
+        this.atualizarSelecaoCampanhaUI();
+    }
+
+    atualizarSelecaoCampanhaUI() {
+        const contador = document.getElementById('campanhaSelecionadasCount');
+        const btnDownload = document.getElementById('btnCampanhaDownloadSelecionadas');
+        const total = this.campanhaSelecaoState?.selecionados?.size || 0;
+
+        if (contador) contador.textContent = total;
+        if (btnDownload) btnDownload.disabled = total === 0;
+    }
+
+    obterImagensCampanhaSelecionadas() {
+        const grupo = this.campanhaGrupoSelecionado;
+        const selecionados = this.campanhaSelecaoState?.selecionados || new Set();
+
+        if (!grupo?.imagens?.length) return [];
+
+        return grupo.imagens
+            .map((imagem, index) => ({ imagem, index, id: this.obterIdImagemCampanha(imagem, index) }))
+            .filter(({ id }) => selecionados.has(id));
+    }
+
+    toggleSelecaoCampanha(fotoId, selecionar = null) {
+        if (!this.campanhaSelecaoState?.selecionados) {
+            this.campanhaSelecaoState = { selecionados: new Set() };
+        }
+
+        const selecionados = this.campanhaSelecaoState.selecionados;
+        const estaSelecionado = selecionados.has(fotoId);
+        const deveSelecionar = selecionar !== null ? selecionar : !estaSelecionado;
+
+        if (deveSelecionar) {
+            selecionados.add(fotoId);
+        } else {
+            selecionados.delete(fotoId);
+        }
+
+        this.atualizarSelecaoCampanhaUI();
+    }
+
+    async downloadImagensCampanha() {
+        try {
+            const selecionadas = this.obterImagensCampanhaSelecionadas();
+
+            if (selecionadas.length === 0) {
+                this.showNotification('Selecione ao menos uma foto', 'warning');
+                return;
+            }
+
+            if (selecionadas.length === 1) {
+                const { imagem, index } = selecionadas[0];
+                const { downloadUrl, originalUrl } = this.resolverUrlImagemCampanha(imagem);
+                const link = downloadUrl || originalUrl;
+
+                if (!link) {
+                    this.showNotification('Arquivo não disponível para download', 'warning');
+                    return;
+                }
+
+                const a = document.createElement('a');
+                a.href = link;
+                a.download = this.gerarNomeArquivoCampanha(imagem, index);
+                a.target = '_blank';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+
+                this.showNotification('Download iniciado!', 'success');
+                return;
+            }
+
+            const fileIds = [];
+            const nomes = [];
+
+            selecionadas.forEach(({ imagem, index }) => {
+                const fileId = imagem?.drive_file_id || imagem?.rv_drive_file_id;
+                if (fileId) {
+                    fileIds.push(fileId);
+                    nomes.push(this.gerarNomeArquivoCampanha(imagem, index));
+                }
+            });
+
+            if (fileIds.length === 0) {
+                this.showNotification('As fotos selecionadas não possuem arquivo disponível.', 'warning');
+                return;
+            }
+
+            this.showNotification('Gerando pacote para download...', 'info');
+
+            const response = await fetch(`${this.registroRotaState.backendUrl}/api/campanhas/download-zip`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fileIds, nomes })
+            });
+
+            if (!response.ok) throw new Error('Erro ao gerar ZIP');
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `campanhas_${Date.now()}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            a.remove();
+
+            this.showNotification('Download iniciado!', 'success');
+        } catch (error) {
+            console.error('Erro ao baixar fotos da campanha:', error);
+            this.showNotification('Erro ao baixar fotos da campanha: ' + error.message, 'error');
+        }
+    }
+
     visualizarImagensCampanha(index) {
         const grupo = this.campanhaGruposAtual[index];
         if (!grupo || !grupo.imagens || grupo.imagens.length === 0) {
@@ -8107,6 +8275,8 @@ class App {
 
         this.campanhaViewState = this.campanhaViewState || { sizeMode: 'md', layoutMode: 'blocos' };
         this.campanhaGrupoSelecionado = grupo;
+        this.normalizarCampanhaViewState();
+        this.resetarSelecaoCampanha();
 
         const modalHtml = `
             <div class="modal-overlay campanha-overlay" id="modalImagensCampanha" style="display:flex;">
@@ -8134,6 +8304,10 @@ class App {
                                 <button class="toggle-chip" data-campanha-layout="detalhes">Detalhes</button>
                                 <button class="toggle-chip" data-campanha-layout="blocos">Blocos</button>
                             </div>
+                            <div class="campanha-selecao-bar">
+                                <span class="campanha-contador">Selecionadas: <strong id="campanhaSelecionadasCount">0</strong></span>
+                                <button id="btnCampanhaDownloadSelecionadas" class="btn btn-primary" disabled>⬇️ Baixar selecionadas</button>
+                            </div>
                         </div>
                         <div id="campanhaGaleriaWrapper" style="display:flex; flex-direction:column; gap:10px; flex:1; min-height:200px;">
                             <div class="campanha-loading" id="campanhaGaleriaLoading">Carregando imagens...</div>
@@ -8151,6 +8325,11 @@ class App {
 
         this.aplicarEstadoCampanha();
         this.renderizarGaleriaCampanha();
+
+        const btnDownload = document.getElementById('btnCampanhaDownloadSelecionadas');
+        if (btnDownload) {
+            btnDownload.onclick = () => this.downloadImagensCampanha();
+        }
 
         this.campanhaModalEscHandler = (event) => {
             if (event.key === 'Escape') {
@@ -8175,21 +8354,32 @@ class App {
         const modal = document.getElementById('modalImagensCampanha');
         if (!modal) return;
 
-        const { sizeMode = 'md', layoutMode = 'blocos' } = this.campanhaViewState || {};
+        const { sizeMode, layoutMode } = this.normalizarCampanhaViewState();
+        const permitidos = this.obterLayoutsCampanhaPermitidos(sizeMode);
 
         modal.querySelectorAll('[data-campanha-size]').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.campanhaSize === sizeMode);
+            const valor = btn.dataset.campanhaSize;
+            btn.classList.toggle('active', valor === sizeMode);
             btn.onclick = () => {
-                this.campanhaViewState = { ...(this.campanhaViewState || {}), sizeMode: btn.dataset.campanhaSize };
+                const novosPermitidos = this.obterLayoutsCampanhaPermitidos(valor);
+                const layoutAtual = this.campanhaViewState?.layoutMode;
+                const layoutAjustado = novosPermitidos.includes(layoutAtual) ? layoutAtual : novosPermitidos[0];
+
+                this.campanhaViewState = { ...(this.campanhaViewState || {}), sizeMode: valor, layoutMode: layoutAjustado };
                 this.aplicarEstadoCampanha();
                 this.renderizarGaleriaCampanha();
             };
         });
 
         modal.querySelectorAll('[data-campanha-layout]').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.campanhaLayout === layoutMode);
+            const valor = btn.dataset.campanhaLayout;
+            const permitido = permitidos.includes(valor);
+            btn.style.display = permitido ? '' : 'none';
+            btn.disabled = !permitido;
+            btn.classList.toggle('active', permitido && valor === layoutMode);
             btn.onclick = () => {
-                this.campanhaViewState = { ...(this.campanhaViewState || {}), layoutMode: btn.dataset.campanhaLayout };
+                if (!permitido) return;
+                this.campanhaViewState = { ...(this.campanhaViewState || {}), layoutMode: valor };
                 this.aplicarEstadoCampanha();
                 this.renderizarGaleriaCampanha();
             };
@@ -8206,7 +8396,8 @@ class App {
         loading.style.display = 'block';
         grid.innerHTML = '';
 
-        const { sizeMode = 'md', layoutMode = 'blocos' } = this.campanhaViewState || {};
+        const { sizeMode, layoutMode } = this.normalizarCampanhaViewState();
+        const selecionados = this.campanhaSelecaoState?.selecionados || new Set();
         grid.className = `campanha-grid tamanho-${sizeMode} layout-${layoutMode}`;
 
         setTimeout(() => {
@@ -8220,6 +8411,8 @@ class App {
                 const tipoFoto = (img.rv_tipo || img.tipo || 'campanha').toUpperCase();
                 const dataPrevista = img.rv_data_planejada || grupo.data_planejada || '-';
                 const observacao = img.rv_observacao || img.observacao || '—';
+                const fotoId = this.obterIdImagemCampanha(img, imgIndex);
+                const estaSelecionado = selecionados.has(fotoId);
 
                 const detalhes = layoutMode === 'detalhes'
                     ? `
@@ -8238,7 +8431,10 @@ class App {
                     `;
 
                 return `
-                    <div class="campanha-card layout-${layoutMode}" data-campanha-index="${imgIndex}">
+                    <div class="campanha-card layout-${layoutMode} ${estaSelecionado ? 'selecionada' : ''}" data-campanha-index="${imgIndex}" data-campanha-id="${fotoId}">
+                        <label class="campanha-checkbox" onclick="event.stopPropagation();">
+                            <input type="checkbox" data-campanha-checkbox="${fotoId}" ${estaSelecionado ? 'checked' : ''} aria-label="Selecionar foto ${imgIndex + 1}">
+                        </label>
                         <div class="thumb ${thumbFallbackClass}">
                             <img class="thumb-img" src="${urlImagem}" alt="Foto ${imgIndex + 1}" loading="lazy" ${imagemVisivel} onerror="this.dataset.error='1'; this.style.display='none'; this.parentElement.classList.add('thumb-fallback-visible');">
                             <div class="thumb-fallback" aria-hidden="true">🖼️</div>
@@ -8264,6 +8460,20 @@ class App {
                     }
                 };
             });
+
+            grid.querySelectorAll('[data-campanha-checkbox]').forEach(cb => {
+                cb.onclick = (event) => event.stopPropagation();
+                cb.onchange = (event) => {
+                    const fotoId = cb.dataset.campanhaCheckbox;
+                    this.toggleSelecaoCampanha(fotoId, event.target.checked);
+                    const card = cb.closest('.campanha-card');
+                    if (card) {
+                        card.classList.toggle('selecionada', event.target.checked);
+                    }
+                };
+            });
+
+            this.atualizarSelecaoCampanhaUI();
         }, 100);
     }
 

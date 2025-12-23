@@ -1564,6 +1564,7 @@ tbody td {
     flex-direction: column;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
     min-height: calc(var(--thumb-size) + 70px);
+    position: relative;
 }
 
 .campanha-card.layout-blocos { flex-direction: column; }
@@ -1644,6 +1645,51 @@ tbody td {
     align-items: center;
     gap: 10px;
     flex-wrap: wrap;
+}
+
+.campanha-selecao-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+    flex-wrap: wrap;
+}
+
+.campanha-selecao-bar .campanha-contador strong {
+    color: #b91c1c;
+}
+
+.campanha-card .campanha-checkbox {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 6px;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+}
+
+.campanha-card .campanha-checkbox input {
+    width: 16px;
+    height: 16px;
+    accent-color: #ef4444;
+    cursor: pointer;
+}
+
+.campanha-card.selecionada {
+    border-color: #ef4444;
+    box-shadow: 0 10px 30px rgba(239, 68, 68, 0.15);
+}
+
+.toggle-chip:disabled,
+.toggle-chip.disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
 }
 
 .campanha-lightbox {
