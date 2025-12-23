@@ -561,9 +561,16 @@ router.post('/visitas', upload.any(), async (req, res) => {
     }
 
     if (rvTipo === 'checkout') {
-      const atividades = await tursoService.contarAtividadesSessao(sessaoId);
-      if (!atividades.total) {
-        console.info('CHECKOUT_BLOCK_NO_ACTIVITY', { rv_id: sessaoId, rep_id: repIdNumber, cliente_id: clienteIdNorm });
+      const atividades = await tursoService.contarAtividadesSessao(Number(sessaoId) || sessaoId);
+      const activitiesCount = Number(atividades?.total ?? 0);
+
+      if (activitiesCount <= 0) {
+        console.info('CHECKOUT_BLOCK_NO_ACTIVITY', {
+          rv_id: sessaoId,
+          rep_id: repIdNumber,
+          cliente_id: clienteIdNorm,
+          activities_count: activitiesCount
+        });
         return res.status(409).json({
           ok: false,
           code: 'ATIVIDADE_OBRIGATORIA',

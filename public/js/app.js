@@ -5417,7 +5417,8 @@ class App {
             const podeCheckout = statusBase === 'em_atendimento';
             const checkinDisponivel = statusBase !== 'em_atendimento' && !podeNovaVisita;
             const atividadesCount = Number(statusCliente.atividades_count || 0);
-            const textoCheckout = (!podeCheckout || atividadesCount <= 0) && podeCheckout
+            const checkoutLiberado = podeCheckout && atividadesCount > 0;
+            const textoCheckout = (!checkoutLiberado && podeCheckout)
                 ? 'disabled title="Registre atividades antes do checkout" style="opacity:0.6;cursor:not-allowed;"'
                 : (!podeCheckout
                     ? 'disabled title="Faça o check-in primeiro" style="opacity:0.6;cursor:not-allowed;"'
@@ -5429,7 +5430,7 @@ class App {
             const btnAtividades = podeCheckout
                 ? `<button onclick="app.abrirModalAtividades(${repId}, '${cliId}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-atividades">📋 Atividades</button>`
                 : '';
-            const btnCheckout = podeCheckout
+            const btnCheckout = checkoutLiberado
                 ? `<button onclick="app.abrirModalCaptura(${repId}, '${cliId}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkout', '${cadastroEsc}')" class="btn-small" ${textoCheckout}>🚪 Checkout</button>`
                 : '';
             const btnCampanha = podeCheckout
@@ -5642,7 +5643,8 @@ class App {
         const podeCheckout = statusBase === 'em_atendimento';
         const checkinDisponivel = statusBase !== 'em_atendimento' && !podeNovaVisita;
         const atividadesCount = Number(statusCliente.atividades_count || 0);
-        const estadoCheckout = (!podeCheckout || atividadesCount <= 0) && podeCheckout
+        const checkoutLiberado = podeCheckout && atividadesCount > 0;
+        const estadoCheckout = (!checkoutLiberado && podeCheckout)
             ? 'disabled title="Registre atividades antes do checkout" style="opacity:0.6;cursor:not-allowed;"'
             : (!podeCheckout
                 ? 'disabled title="Faça o check-in primeiro" style="opacity:0.6;cursor:not-allowed;"'
@@ -5654,7 +5656,7 @@ class App {
         const btnAtividades = podeCheckout
             ? `<button onclick="app.abrirModalAtividades(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-atividades">📋 Atividades</button>`
             : '';
-        const btnCheckout = podeCheckout
+        const btnCheckout = checkoutLiberado
             ? `<button onclick="app.abrirModalCaptura(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkout', '${cadastroEsc}')" class="btn-small" ${estadoCheckout}>🚪 Checkout</button>`
             : '';
         const btnCampanha = podeCheckout
