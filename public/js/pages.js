@@ -2246,6 +2246,22 @@ export const pages = {
                     box-shadow: 0 4px 6px rgba(0,0,0,0.05);
                 }
 
+                .visit-item .cliente-header {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    min-width: 0;
+                }
+
+                .visit-item .cliente-titulo {
+                    font-size: 1.1em;
+                    font-weight: 700;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    max-width: 100%;
+                }
+
                 .visit-item.fora-dia {
                     border-color: #fca5a5;
                     background: #fef2f2;
@@ -2267,6 +2283,12 @@ export const pages = {
                     gap: 8px;
                     flex-wrap: wrap;
                     margin-top: 12px;
+                }
+
+                @media (max-width: 640px) {
+                    .visit-item .cliente-titulo {
+                        max-width: 180px;
+                    }
                 }
 
                 .visit-action-btn {

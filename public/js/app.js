@@ -7145,6 +7145,10 @@ class App {
 
                 const tempoTexto = tempoAtendimento != null ? `⏱️ ${tempoAtendimento} min` : '';
 
+                const clienteCodigo = sessao.cliente_codigo || sessao.cliente_id || 'N/D';
+                const clienteNome = sessao.cliente_nome || sessao.cliente_nome_resolvido || 'N/D';
+                const clienteTitulo = `${clienteCodigo} - ${clienteNome}`;
+
                 // Formatar datas
                 const checkinFormatado = checkinRef ? new Date(checkinRef).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '-';
                 const checkoutFormatado = checkoutRef ? new Date(checkoutRef).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'Não finalizado';
@@ -7188,8 +7192,8 @@ class App {
 
                 item.innerHTML = `
                     <div style="flex: 1;">
-                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                            <strong style="font-size: 1.1em;">${sessao.cliente_id}</strong>
+                        <div class="cliente-header" style="margin-bottom: 8px;">
+                            <strong class="cliente-titulo" title="${clienteTitulo}">${clienteTitulo}</strong>
                             ${statusBadge}
                             <span style="color: #6b7280; font-size: 0.9em;">${tempoTexto}</span>
                         </div>

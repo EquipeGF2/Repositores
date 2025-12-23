@@ -1121,6 +1121,17 @@ router.get('/sessoes', async (req, res) => {
         ${checkinDataExpr} AS checkin_data_hora,
         ${checkoutDataExpr} AS checkout_data_hora,
         ${statusExpr} AS status_calculado,
+        COALESCE(
+          NULLIF(s.cliente_nome, ''),
+          (
+            SELECT rv_cliente_nome
+            FROM cc_registro_visita rv
+            WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id
+            ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) ASC
+            LIMIT 1
+          ),
+          'N/D'
+        ) AS cliente_nome_resolvido,
         ${checkinLatExpr} AS checkin_latitude,
         ${checkinLongExpr} AS checkin_longitude,
         ${checkoutLatExpr} AS checkout_latitude,
@@ -1198,9 +1209,13 @@ router.get('/sessoes', async (req, res) => {
       const checkinLong = sessao.checkin_longitude ?? null;
       const checkoutLat = sessao.checkout_latitude ?? null;
       const checkoutLong = sessao.checkout_longitude ?? null;
+      const clienteCodigo = sessao.cliente_id || null;
+      const clienteNome = sessao.cliente_nome_resolvido || sessao.cliente_nome || 'N/D';
 
       return {
         ...sessao,
+        cliente_codigo: clienteCodigo,
+        cliente_nome: clienteNome,
         status: statusCalculado,
         fora_do_dia: foraDoDia ? 1 : 0,
         dia_previsto_label: diaPrevistoLabel,
