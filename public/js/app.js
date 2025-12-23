@@ -8202,6 +8202,7 @@ class App {
             };
 
             this.sincronizarCamposPerformance();
+            this.exibirMensagemCampanhaRepObrigatorio();
 
             const btnAplicar = document.getElementById('btnAplicarPerformance');
             const btnLimpar = document.getElementById('btnLimparPerformance');
@@ -8215,8 +8216,6 @@ class App {
                     el.onchange = () => this.atualizarPerformanceStateFromInputs();
                 }
             });
-
-            this.aplicarFiltrosPerformance('campanha', false);
         } catch (error) {
             console.error('Erro ao inicializar consulta de campanha:', error);
             this.showNotification('Não foi possível carregar a consulta de campanha.', 'warning');
@@ -8242,6 +8241,9 @@ class App {
         document.getElementById(`tab-${tabName}`)?.classList.add('active');
 
         this.performanceState.tabAtiva = tabName;
+        if (tabName === 'campanha') {
+            return;
+        }
         this.aplicarFiltrosPerformance(tabName, false);
     }
 
@@ -8291,6 +8293,10 @@ class App {
         };
 
         this.sincronizarCamposPerformance();
+        if (this.performanceState.tabAtiva === 'campanha') {
+            this.exibirMensagemCampanhaRepObrigatorio();
+            return;
+        }
         this.aplicarFiltrosPerformance();
     }
 
@@ -8425,6 +8431,18 @@ class App {
         `;
     }
 
+    exibirMensagemCampanhaRepObrigatorio() {
+        const container = document.getElementById('campanhaResultados');
+        if (!container) return;
+
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">📋</div>
+                <p>Selecione um repositor e aplique os filtros.</p>
+            </div>
+        `;
+    }
+
     async filtrarCampanha(notificar = true) {
         try {
             const { repositor, dataInicio, dataFim, campanhaAgrupar } = this.performanceState.filtros;
@@ -8432,6 +8450,12 @@ class App {
 
             if (!dataInicio || !dataFim) {
                 this.showNotification('Selecione o período', 'warning');
+                return;
+            }
+
+            if (!repositor) {
+                this.exibirMensagemCampanhaRepObrigatorio();
+                if (notificar) this.showNotification('Selecione um repositor para consultar a campanha', 'warning');
                 return;
             }
 
@@ -9042,7 +9066,7 @@ class App {
 
     obterStatusPontualidadeVisita(visita) {
         const statusApi = (visita.status_pontualidade || '').toString().trim();
-        if (statusApi) return statusApi;
+        if (statusApi) return statusApi.toUpperCase();
 
         const parseData = (valor) => {
             if (!valor) return null;
@@ -9058,12 +9082,13 @@ class App {
         );
         const dataPrevista = parseData(
             visita.data_prevista
+            || visita.data_prevista_base
             || visita.rv_data_roteiro
             || visita.rv_data_planejada
             || visita.data_planejada
         );
 
-        if (!dataReal || !dataPrevista) return null;
+        if (!dataReal || !dataPrevista) return 'ND';
 
         if (dataReal > dataPrevista) return 'ATRASADA';
         if (dataReal < dataPrevista) return 'ADIANTADA';
@@ -9074,6 +9099,15 @@ class App {
         if (!status) return '';
 
         const statusNormalizado = status.toUpperCase();
+        if (statusNormalizado === 'ND' || statusNormalizado === 'N/D') {
+            return `
+                <span style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; font-weight:700; font-size:12px; color:#4b5563; background:#f3f4f6; white-space:nowrap;">
+                    <span style="width:8px; height:8px; border-radius:50%; background:#9ca3af; display:inline-block;"></span>
+                    N/D
+                </span>
+            `;
+        }
+
         const estilos = {
             ATRASADA: {
                 cor: '#991b1b',

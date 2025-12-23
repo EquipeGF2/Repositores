@@ -321,10 +321,21 @@ class TursoService {
       }
     }
 
+    let colunaDataPrevista = null;
+    try {
+      const colunasTabela = await this._getTableColumns('cc_registro_visita');
+      const candidatas = ['rv_data_roteiro', 'rv_data_prevista', 'rv_data_ref'];
+      colunaDataPrevista = candidatas.find((coluna) => colunasTabela.includes(coluna)) || null;
+    } catch (error) {
+      console.warn('⚠️  Não foi possível verificar coluna de data prevista em cc_registro_visita:', error?.message || error);
+    }
+
+    const dataPrevistaSelect = colunaDataPrevista ? `v.${colunaDataPrevista}` : 'NULL';
+
     const sql = `
       SELECT v.id, v.rep_id, v.cliente_id, v.data_hora, v.latitude, v.longitude, v.endereco_resolvido,
              v.drive_file_id, v.drive_file_url, v.created_at,
-             v.rv_tipo, v.rv_sessao_id, v.rv_data_planejada, v.rv_data_roteiro, v.rv_cliente_nome, v.rv_endereco_cliente, v.rv_pasta_drive_id,
+             v.rv_tipo, v.rv_sessao_id, v.rv_data_planejada, ${dataPrevistaSelect} AS data_prevista_base, v.rv_cliente_nome, v.rv_endereco_cliente, v.rv_pasta_drive_id,
              v.rv_data_hora_registro, v.rv_endereco_registro, v.rv_endereco_checkin, v.rv_endereco_checkout, v.rv_drive_file_id,
              v.rv_drive_file_url, v.rv_latitude, v.rv_longitude, v.rv_dia_previsto, v.rv_roteiro_id,
              v.sessao_id, v.tipo, v.data_hora_registro, v.endereco_registro, v.latitude AS lat_base, v.longitude AS long_base,
