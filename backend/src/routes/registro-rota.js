@@ -10,6 +10,7 @@ const TIME_ZONE = 'America/Sao_Paulo';
 const DIAS_SEMANA_CODIGO = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
 const RV_TIPOS = ['checkin', 'checkout', 'campanha'];
 const MAX_CAMPANHA_FOTOS = 10;
+const LIMITE_ATRASO_CHECKIN_DIAS = 7;
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { files: MAX_CAMPANHA_FOTOS, fileSize: 10 * 1024 * 1024 }
@@ -188,6 +189,24 @@ function validarDataPlanejada(dataPlanejada) {
   return regex.test(dataPlanejada) ? dataPlanejada : null;
 }
 
+function calcularAtrasoRoteiroDias(dataPlanejada) {
+  const dataValida = validarDataPlanejada(dataPlanejada);
+  if (!dataValida) return { dias: null, bloqueado: false };
+
+  const toUtcMidnight = (dateStr) => {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return Date.UTC(y, (m || 1) - 1, d || 1);
+  };
+
+  const hojeLocal = dataLocalIso(new Date().toISOString());
+  const diffDias = Math.floor((toUtcMidnight(hojeLocal) - toUtcMidnight(dataValida)) / (1000 * 60 * 60 * 24));
+
+  return {
+    dias: Number.isFinite(diffDias) ? diffDias : null,
+    bloqueado: Number.isFinite(diffDias) ? diffDias > LIMITE_ATRASO_CHECKIN_DIAS : false
+  };
+}
+
 async function garantirNomeCampanhaUnico(folderId, nomeBase) {
   let contador = 1;
   let nomeFinal = nomeBase;
@@ -258,6 +277,23 @@ router.post('/visitas', upload.any(), async (req, res) => {
     const rvTipo = tipoNormalizado;
     const clienteIdNorm = normalizeClienteId(cliente_id);
     const dataPlanejadaValida = validarDataPlanejada(data_planejada);
+    const atrasoCheckin = rvTipo === 'checkin' ? calcularAtrasoRoteiroDias(dataPlanejadaValida) : { dias: null, bloqueado: false };
+
+    if (rvTipo === 'checkin' && !dataPlanejadaValida) {
+      return res.status(400).json({
+        ok: false,
+        code: 'DATA_ROTEIRO_OBRIGATORIA',
+        message: 'Informe a data do roteiro (YYYY-MM-DD) para o check-in.'
+      });
+    }
+
+    if (rvTipo === 'checkin' && atrasoCheckin.bloqueado) {
+      return res.status(409).json({
+        ok: false,
+        code: 'CHECKIN_ATRASO_SUPERIOR_7_DIAS',
+        message: 'Atraso superior a 7 dias. Check-in bloqueado.'
+      });
+    }
     const dataReferencia = dataPlanejadaValida || dataLocalIso(dataHoraRegistro);
     const dataOperacional = dataLocalIso(dataHoraRegistro);
     const roteiroId = req.body.roteiro_id || req.body.rv_roteiro_id || null;

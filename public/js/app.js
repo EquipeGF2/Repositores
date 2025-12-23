@@ -85,6 +85,7 @@ class App {
             ordemEditadaManualmente: false,
             cidadeId: null
         };
+        this.limiteAtrasoCheckinDias = 7;
         this.resultadosConsultaRoteiro = [];
         this.roteiroBuscaTimeout = null;
         this.rateioClienteSelecionado = null;
@@ -5158,6 +5159,33 @@ class App {
         // Carregar lista de repositores (já está no HTML gerado)
     }
 
+    calcularAtrasoRoteiro(dataRoteiro) {
+        if (!dataRoteiro || !/^\d{4}-\d{2}-\d{2}$/.test(dataRoteiro)) {
+            return { dias: null, bloqueado: false };
+        }
+
+        const [ano, mes, dia] = dataRoteiro.split('-').map(Number);
+        const dataAlvo = Date.UTC(ano, (mes || 1) - 1, dia || 1);
+
+        const formatador = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'America/Sao_Paulo',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        });
+
+        const hojeStr = formatador.format(new Date());
+        const [anoHoje, mesHoje, diaHoje] = hojeStr.split('-').map(Number);
+        const hoje = Date.UTC(anoHoje, (mesHoje || 1) - 1, diaHoje || 1);
+
+        const diffDias = Math.floor((hoje - dataAlvo) / (1000 * 60 * 60 * 24));
+
+        return {
+            dias: Number.isFinite(diffDias) ? diffDias : null,
+            bloqueado: Number.isFinite(diffDias) ? diffDias > this.limiteAtrasoCheckinDias : false
+        };
+    }
+
     async carregarRoteiroRepositor() {
     const container = document.getElementById('roteiroContainer');
 
@@ -5292,6 +5320,12 @@ class App {
             const endEsc = linhaEndereco.replace(/'/g, "\\'");
             const cadastroEsc = enderecoCadastro.replace(/'/g, "\\'");
 
+            const atrasoInfo = this.calcularAtrasoRoteiro(dataVisita);
+            const checkinBloqueadoPorAtraso = atrasoInfo.bloqueado;
+            const textoBloqueioCheckin = checkinBloqueadoPorAtraso
+                ? 'disabled title="Atraso superior a 7 dias. Check-in bloqueado." style="opacity:0.6;cursor:not-allowed;"'
+                : '';
+
             const podeCheckout = statusBase === 'em_atendimento';
             const checkinDisponivel = statusBase !== 'em_atendimento';
             const atividadesCount = Number(statusCliente.atividades_count || 0);
@@ -5302,7 +5336,7 @@ class App {
                     : '');
 
             const btnCheckin = checkinDisponivel
-                ? `<button onclick="app.abrirModalCaptura(${repId}, '${cliId}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkin', '${cadastroEsc}')" class="btn-small">✅ Check-in</button>`
+                ? `<button onclick="app.abrirModalCaptura(${repId}, '${cliId}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkin', '${cadastroEsc}')" class="btn-small" ${textoBloqueioCheckin}>✅ Check-in</button>`
                 : '';
             const btnAtividades = podeCheckout
                 ? `<button onclick="app.abrirModalAtividades(${repId}, '${cliId}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-atividades">📋 Atividades</button>`
@@ -5315,6 +5349,9 @@ class App {
                 : '';
 
             const botoes = `${btnCheckin}${btnAtividades}${btnCheckout}${btnCampanha}`;
+            const avisoAtraso = checkinBloqueadoPorAtraso
+                ? '<span style="display:block;color:#b91c1c;font-size:12px;margin-top:6px;">Atraso superior a 7 dias. Check-in bloqueado.</span>'
+                : '';
 
             const item = document.createElement('div');
             item.className = 'route-item';
@@ -5333,6 +5370,7 @@ class App {
                 <div class="route-item-actions">
                     <span class="route-status ${statusClasse}">${statusTexto}</span>
                     ${botoes}
+                    ${avisoAtraso}
                 </div>
             `;
             container.appendChild(item);
@@ -5437,6 +5475,12 @@ class App {
         const endEsc = (card.dataset.enderecoLinha || '').replace(/'/g, "\\'");
         const cadastroEsc = (card.dataset.enderecoCadastro || '').replace(/'/g, "\\'");
 
+        const atrasoInfo = this.calcularAtrasoRoteiro(dataVisita);
+        const checkinBloqueadoPorAtraso = atrasoInfo.bloqueado;
+        const textoBloqueioCheckin = checkinBloqueadoPorAtraso
+            ? 'disabled title="Atraso superior a 7 dias. Check-in bloqueado." style="opacity:0.6;cursor:not-allowed;"'
+            : '';
+
         const podeCheckout = statusBase === 'em_atendimento';
         const checkinDisponivel = statusBase !== 'em_atendimento';
         const atividadesCount = Number(statusCliente.atividades_count || 0);
@@ -5447,7 +5491,7 @@ class App {
                 : '');
 
         const btnCheckin = checkinDisponivel
-            ? `<button onclick="app.abrirModalCaptura(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkin', '${cadastroEsc}')" class="btn-small">✅ Check-in</button>`
+            ? `<button onclick="app.abrirModalCaptura(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkin', '${cadastroEsc}')" class="btn-small" ${textoBloqueioCheckin}>✅ Check-in</button>`
             : '';
         const btnAtividades = podeCheckout
             ? `<button onclick="app.abrirModalAtividades(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-atividades">📋 Atividades</button>`
@@ -5460,10 +5504,13 @@ class App {
             : '';
 
         const botoes = `${btnCheckin}${btnAtividades}${btnCheckout}${btnCampanha}`;
+        const avisoAtraso = checkinBloqueadoPorAtraso
+            ? '<span style="display:block;color:#b91c1c;font-size:12px;margin-top:6px;">Atraso superior a 7 dias. Check-in bloqueado.</span>'
+            : '';
 
         const actions = card.querySelector('.route-item-actions');
         if (actions) {
-            actions.innerHTML = `<span class="route-status ${statusClasse}">${statusTexto}</span>${botoes}`;
+            actions.innerHTML = `<span class="route-status ${statusClasse}">${statusTexto}</span>${botoes}${avisoAtraso}`;
         }
 
         const tempoDivAtual = card.querySelector('.route-item-time');
@@ -5525,6 +5572,12 @@ class App {
 
         const tipoPadrao = tipoRegistro || (statusCliente?.status === 'em_atendimento' ? 'checkout' : 'checkin');
         this.registroRotaState.tipoRegistro = tipoPadrao;
+
+        const atrasoInfo = this.calcularAtrasoRoteiro(dataVisita);
+        if (tipoPadrao === 'checkin' && atrasoInfo.bloqueado) {
+            this.showNotification('Atraso superior a 7 dias. Check-in bloqueado.', 'warning');
+            return;
+        }
 
         const sessaoAberta = await this.buscarSessaoAberta(repId, dataVisita);
         if (sessaoAberta && tipoPadrao === 'checkin' && normalizeClienteId(sessaoAberta.cliente_id) !== clienteIdNorm) {
