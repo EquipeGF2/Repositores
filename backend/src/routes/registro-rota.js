@@ -751,7 +751,9 @@ router.get('/visitas', async (req, res) => {
         || visita.rv_data_hora_registro
         || visita.data_hora_registro
         || null;
-      const dataPrevistaContexto = visita.rv_data_roteiro
+      const dataPrevistaContexto = visita.data_prevista_base
+        || visita.data_prevista
+        || visita.rv_data_roteiro
         || visita.rv_data_planejada
         || visita.data_planejada
         || null;
@@ -769,7 +771,9 @@ router.get('/visitas', async (req, res) => {
 
       const ehCheckout = String(visita.rv_tipo || visita.tipo || '').toLowerCase() === 'checkout';
       const statusPontualidade = ehCheckout
-        ? calcularStatusPontualidade(checkoutEm || referenciaAtendimento, dataPrevistaContexto)
+        ? (dataPrevistaContexto
+          ? calcularStatusPontualidade(checkoutEm || referenciaAtendimento, dataPrevistaContexto)
+          : 'ND')
         : null;
 
       return {

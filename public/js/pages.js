@@ -2427,7 +2427,7 @@ export const pages = {
             <div class="card">
                 <div class="card-header">
                     <div>
-                        <h3 class="card-title" style="white-space: nowrap;">Registro de Documentos</h3>
+                        <h4 class="card-title" style="white-space: nowrap; margin-bottom: 2px;">Envio e registro</h4>
                         <p class="text-muted" style="margin: 4px 0 0;">Envie anexos ou fotos diretamente para o Drive/OneDrive.</p>
                     </div>
                 </div>
@@ -2715,7 +2715,7 @@ export const pages = {
             <div class="card">
                 <div class="card-header">
                     <div>
-                        <h3 class="card-title" style="white-space: nowrap;">Consulta de Documentos</h3>
+                        <h4 class="card-title" style="white-space: nowrap; margin-bottom: 2px;">Filtros de consulta</h4>
                         <p class="text-muted" style="margin: 4px 0 0;">Pesquise e baixe anexos enviados. Informe o tipo para tornar o repositor opcional.</p>
                     </div>
                 </div>
@@ -3116,7 +3116,7 @@ export const pages = {
             <div class="card">
                 <div class="card-header">
                     <div>
-                        <h3 class="card-title" style="white-space: nowrap;">Consulta Campanha</h3>
+                        <h4 class="card-title" style="white-space: nowrap; margin-bottom: 2px;">Filtros da campanha</h4>
                         <p class="text-muted" style="margin: 4px 0 0;">Visualize fotos e resultados de campanhas por visita ou cliente.</p>
                     </div>
                 </div>
@@ -3153,7 +3153,7 @@ export const pages = {
                     <div id="campanhaResultados">
                         <div class="empty-state">
                             <div class="empty-state-icon">📋</div>
-                            <p>Selecione o período e clique em Aplicar filtros</p>
+                            <p>Selecione um repositor e aplique os filtros.</p>
                         </div>
                     </div>
                 </div>
