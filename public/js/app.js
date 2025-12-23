@@ -721,7 +721,9 @@ class App {
             } else if (pageName === 'consulta-visitas') {
                 await this.inicializarConsultaVisitas();
             } else if (pageName === 'documentos') {
-                await this.inicializarDocumentos();
+                await this.inicializarRegistroDocumentos();
+            } else if (pageName === 'consulta-documentos') {
+                await this.inicializarConsultaDocumentos();
             } else if (pageName === 'analise-performance') {
                 await this.inicializarAnalisePerformance();
             }
@@ -7268,7 +7270,7 @@ class App {
         }
     }
 
-    async inicializarDocumentos() {
+    async inicializarRegistroDocumentos() {
         try {
             // Carregar tipos de documentos
             await this.carregarTiposDocumentos();
@@ -7279,14 +7281,10 @@ class App {
 
             // Configurar event listeners
             const btnUpload = document.getElementById('btnUploadDocumento');
-            const btnFiltrar = document.getElementById('btnFiltrarDocumentos');
-            const btnDownloadZip = document.getElementById('btnDownloadZip');
             const inputArquivo = document.getElementById('uploadArquivo');
             const btnAnexarFoto = document.getElementById('btnAnexarFoto');
 
             if (btnUpload) btnUpload.onclick = () => this.uploadDocumento();
-            if (btnFiltrar) btnFiltrar.onclick = () => this.filtrarDocumentos();
-            if (btnDownloadZip) btnDownloadZip.onclick = () => this.downloadZip();
             if (btnAnexarFoto) btnAnexarFoto.onclick = () => this.abrirCameraDocumentos();
 
             // Mostrar arquivos selecionados
@@ -7305,6 +7303,23 @@ class App {
         }
     }
 
+    async inicializarConsultaDocumentos() {
+        try {
+            await this.carregarTiposDocumentos();
+            this.documentosState.documentosSelecionados.clear();
+            this.atualizarContadorSelecionados();
+
+            const btnFiltrar = document.getElementById('btnFiltrarConsultaDocumentos');
+            const btnDownloadZip = document.getElementById('btnDownloadZip');
+
+            if (btnFiltrar) btnFiltrar.onclick = () => this.filtrarDocumentosConsulta();
+            if (btnDownloadZip) btnDownloadZip.onclick = () => this.downloadZip();
+        } catch (error) {
+            console.error('Erro ao inicializar consulta de documentos:', error);
+            this.showNotification('Não foi possível carregar a consulta de documentos agora. Tente novamente mais tarde.', 'warning');
+        }
+    }
+
     async carregarTiposDocumentos() {
         const tipos = await this.fetchTiposDocumentos();
 
@@ -7312,15 +7327,15 @@ class App {
 
         // Preencher selects
         const selectUpload = document.getElementById('uploadTipo');
-        const selectFiltro = document.getElementById('filtroTipo');
+        const selectConsulta = document.getElementById('consultaTipo');
 
         if (selectUpload) {
             selectUpload.innerHTML = '<option value="">Selecione...</option>' +
                 tipos.map(t => `<option value="${t.dct_id}">${t.dct_nome}</option>`).join('');
         }
 
-        if (selectFiltro) {
-            selectFiltro.innerHTML = '<option value="">Todos</option>' +
+        if (selectConsulta) {
+            selectConsulta.innerHTML = '<option value="">Todos os tipos</option>' +
                 tipos.map(t => `<option value="${t.dct_id}">${t.dct_nome}</option>`).join('');
         }
     }
@@ -7638,7 +7653,6 @@ class App {
 
     async uploadDocumento() {
         let btnUpload;
-        let btnFiltrar;
         let textoOriginal = '';
         try {
             if (this.documentosState.enviando) {
@@ -7650,7 +7664,6 @@ class App {
             const tipoId = document.getElementById('uploadTipo').value;
             const observacao = document.getElementById('uploadObservacao').value;
             btnUpload = document.getElementById('btnUploadDocumento');
-            btnFiltrar = document.getElementById('btnFiltrarDocumentos');
 
             const arquivosParaEnvio = this.documentosState.filaUploads.filter(i => i.status !== 'sucesso');
 
@@ -7672,9 +7685,6 @@ class App {
             if (btnUpload) {
                 btnUpload.disabled = true;
                 btnUpload.innerHTML = `<span class="spinner" style="width:16px;height:16px;border-width:2px;margin-right:8px;"></span> Enviando anexos...`;
-            }
-            if (btnFiltrar) {
-                btnFiltrar.disabled = true;
             }
 
             this.atualizarStatusFila('enviando');
@@ -7734,11 +7744,6 @@ class App {
             document.getElementById('uploadArquivo').value = '';
             document.getElementById('uploadObservacao').value = '';
             this.renderizarFilaUploads();
-
-            // Recarregar lista se filtro estiver ativo
-            if (document.getElementById('filtroRepositor').value) {
-                await this.filtrarDocumentos();
-            }
         } catch (error) {
             console.error('Erro ao fazer upload:', error);
             this.showNotification('Erro ao enviar documento(s): ' + error.message, 'error');
@@ -7747,31 +7752,27 @@ class App {
                 btnUpload.disabled = false;
                 btnUpload.innerHTML = textoOriginal || '📤 Enviar Documento';
             }
-            if (btnFiltrar) {
-                btnFiltrar.disabled = false;
-            }
             this.documentosState.enviando = false;
         }
     }
 
-    async filtrarDocumentos() {
+    async filtrarDocumentosConsulta() {
         try {
-            const repositorId = document.getElementById('filtroRepositor').value;
-            const tipoId = document.getElementById('filtroTipo').value;
-            const dataInicio = document.getElementById('filtroDataInicio').value;
-            const dataFim = document.getElementById('filtroDataFim').value;
+            const repositorId = document.getElementById('consultaRepositor').value;
+            const tipoId = document.getElementById('consultaTipo').value;
+            const dataInicio = document.getElementById('consultaDataInicio').value;
+            const dataFim = document.getElementById('consultaDataFim').value;
 
-            if (!repositorId) {
-                this.showNotification('Selecione um repositor', 'warning');
+            if (!repositorId && !tipoId) {
+                this.showNotification('Selecione ao menos o tipo de documento ou o repositor', 'warning');
                 return;
             }
 
-            const params = new URLSearchParams({
-                repositor_id: repositorId
-            });
+            const params = new URLSearchParams();
+            if (repositorId) params.append('repositor_id', repositorId);
             if (tipoId) params.append('dct_id', tipoId);
-            if (dataInicio) params.append('date_from', dataInicio);
-            if (dataFim) params.append('date_to', dataFim);
+            if (dataInicio) params.append('data_inicio', dataInicio);
+            if (dataFim) params.append('data_fim', dataFim);
 
             const response = await fetch(`${API_BASE_URL}/api/documentos?${params.toString()}`);
             if (!response.ok) throw new Error('Erro ao consultar documentos');

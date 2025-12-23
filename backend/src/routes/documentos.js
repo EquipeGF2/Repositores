@@ -46,6 +46,16 @@ function sanitizeBigInt(value) {
   return value;
 }
 
+function normalizarSlug(valor, padrao = 'DOC') {
+  const base = (valor ?? padrao ?? '').toString();
+  const semAcento = base.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return semAcento
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .replace(/_{2,}/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toUpperCase();
+}
+
 function formatarDataHoraLocal(iso) {
   const data = new Date(iso);
 
@@ -94,21 +104,29 @@ function registrarFalhaBanco(contexto, detalhe, payload = {}) {
   }));
 }
 
-function gerarNomeDocumento({ repositorId, tipoCodigo, referencia, ext, nomesUsados = new Set() }) {
-  const codigoSanitizado = (String(tipoCodigo || '').trim() || 'doc').replace(/[^a-zA-Z0-9_-]/g, '_');
-  const repoParte = (String(repositorId || '').trim() || 'repo').replace(/[^a-zA-Z0-9_-]/g, '_');
-  const base = `${repoParte}_${codigoSanitizado}_${referencia.yyyymmdd}_${referencia.hhmm}`;
+function gerarNomeDocumento({ repositorCodigo, tipoCodigo, referencia, ext, nomesUsados = new Set() }) {
+  const repoParte = normalizarSlug(repositorCodigo, 'REPO');
+  const tipoParte = normalizarSlug(tipoCodigo, 'DOC');
+  const dataParte = referencia?.ddmmaa || formatarDataHoraLocal(new Date().toISOString()).ddmmaa;
+  const extLimpo = (ext || '').toLowerCase();
+  const nomesNormalizados = new Set(Array.from(nomesUsados).map((n) => n.toLowerCase()));
 
   let sequencia = 1;
   let nomeFinal = '';
+  const base = `${repoParte}_${tipoParte}_${dataParte}`;
 
-  do {
+  while (true) {
     const sufixo = `_${String(sequencia).padStart(2, '0')}`;
-    nomeFinal = `${base}${sufixo}${ext}`;
+    const candidato = `${base}${sufixo}${extLimpo}`;
+    if (!nomesNormalizados.has(candidato.toLowerCase())) {
+      nomeFinal = candidato;
+      nomesNormalizados.add(candidato.toLowerCase());
+      break;
+    }
     sequencia++;
-  } while (nomesUsados.has(nomeFinal));
+  }
 
-  nomesUsados.add(nomeFinal);
+  nomesUsados.add(nomeFinal.toLowerCase());
   return nomeFinal;
 }
 
@@ -229,28 +247,36 @@ router.post('/tipos', async (req, res) => {
 // GET /api/documentos - Consulta documentos com filtros
 router.get('/', async (req, res) => {
   try {
-    const { repositor_id, dct_id, date_from, date_to } = req.query;
+    const { repositor_id, dct_id, date_from, date_to, data_inicio, data_fim } = req.query;
 
-    if (!repositor_id) {
-      return res.status(400).json({ ok: false, message: 'repositor_id é obrigatório' });
+    if (!repositor_id && !dct_id) {
+      return res.status(400).json({ ok: false, message: 'Informe o repositor ou o tipo de documento para consultar' });
     }
 
-    const filtros = ['d.doc_repositor_id = ?'];
-    const args = [parseInt(repositor_id)];
+    const filtros = [];
+    const args = [];
+
+    if (repositor_id) {
+      filtros.push('d.doc_repositor_id = ?');
+      args.push(parseInt(repositor_id));
+    }
 
     if (dct_id) {
       filtros.push('d.doc_dct_id = ?');
       args.push(parseInt(dct_id));
     }
 
-    if (date_from) {
+    const inicio = data_inicio || date_from;
+    const fim = data_fim || date_to;
+
+    if (inicio) {
       filtros.push('d.doc_data_ref >= ?');
-      args.push(date_from);
+      args.push(inicio);
     }
 
-    if (date_to) {
+    if (fim) {
       filtros.push('d.doc_data_ref <= ?');
-      args.push(date_to);
+      args.push(fim);
     }
 
     const sql = `
@@ -357,11 +383,11 @@ router.post('/upload', upload.single('arquivo'), async (req, res) => {
     const { data_ref, hora_ref } = referencia;
     console.log('🔍 Verificando arquivos existentes...');
     const arquivosExistentes = await googleDriveService.listarArquivosPorPasta(tipoFolderId);
-    const nomesUsados = new Set(arquivosExistentes.map(a => a.name));
+    const nomesUsados = new Set(arquivosExistentes.map(a => (a.name || '').toLowerCase()));
 
     const nomeFinal = gerarNomeDocumento({
-      repositorId: repositor_id,
-      tipoCodigo: tipo.dct_codigo,
+      repositorCodigo: repositor.repo_cod || repositor_id,
+      tipoCodigo: tipo.dct_codigo || tipo.dct_nome,
       referencia,
       ext,
       nomesUsados
@@ -503,7 +529,7 @@ router.post('/upload-multiplo', upload.array('arquivos', 10), async (req, res) =
 
     // Listar arquivos existentes uma única vez
     const arquivosExistentes = await googleDriveService.listarArquivosPorPasta(tipoFolderId);
-    const nomesUsados = new Set(arquivosExistentes.map(a => a.name));
+    const nomesUsados = new Set(arquivosExistentes.map(a => (a.name || '').toLowerCase()));
 
     const resultados = [];
     const erros = [];
@@ -523,8 +549,8 @@ router.post('/upload-multiplo', upload.array('arquivos', 10), async (req, res) =
         const { data_ref, hora_ref } = referencia;
 
         const nomeFinal = gerarNomeDocumento({
-          repositorId: repositor_id,
-          tipoCodigo: tipo.dct_codigo,
+          repositorCodigo: repositor.repo_cod || repositor_id,
+          tipoCodigo: tipo.dct_codigo || tipo.dct_nome,
           referencia,
           ext,
           nomesUsados

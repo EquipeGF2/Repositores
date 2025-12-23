@@ -2423,15 +2423,15 @@ export const pages = {
             .map(repo => `<option value="${repo.repo_cod}">${repo.repo_cod} - ${repo.repo_nome}</option>`)
             .join('');
 
-        const hoje = new Date().toISOString().split('T')[0];
-        const umMesAtras = new Date();
-        umMesAtras.setMonth(umMesAtras.getMonth() - 1);
-        const dataInicio = umMesAtras.toISOString().split('T')[0];
-
         return `
             <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title" style="white-space: nowrap;">Registro de Documentos</h3>
+                        <p class="text-muted" style="margin: 4px 0 0;">Envie anexos ou fotos diretamente para o Drive/OneDrive.</p>
+                    </div>
+                </div>
                 <div class="card-body" style="padding-top: 20px;">
-                    <!-- Upload de Documento -->
                     <div class="doc-upload-section">
                         <h4 style="margin-bottom: 20px; color: #374151; font-size: 16px; font-weight: 600;">📤 Novo Documento</h4>
                         <div class="doc-form-grid">
@@ -2462,7 +2462,8 @@ export const pages = {
                                 <input type="text" id="uploadObservacao" placeholder="Opcional">
                             </div>
                         </div>
-                        <div style="margin-top: 20px; display: flex; justify-content: flex-end;">
+                        <div style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 12px; align-items: center;">
+                            <div style="color: #6b7280; font-size: 13px;">Envie vários anexos de uma vez ou capture fotos em sequência.</div>
                             <button class="btn btn-primary" id="btnUploadDocumento" style="min-width: 160px;">📤 Enviar Documento</button>
                         </div>
 
@@ -2471,72 +2472,311 @@ export const pages = {
                             <div style="font-size: 13px; color: #6b7280;">Nenhum arquivo ou foto selecionado</div>
                         </div>
                     </div>
+                </div>
+            </div>
 
-                    <hr style="margin: 24px 0; border: none; border-top: 1px solid #e5e7eb;">
+            <style>
+                .doc-form-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                    gap: 16px;
+                    margin-bottom: 12px;
+                }
 
-                    <!-- Filtros de Consulta -->
+                .doc-input-row {
+                    display: flex;
+                    gap: 8px;
+                    align-items: center;
+                }
+
+                .doc-upload-section {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 16px;
+                }
+
+                .filter-group label {
+                    display: block;
+                    margin-bottom: 6px;
+                    font-weight: 600;
+                    color: #374151;
+                }
+
+                .filter-group select,
+                .filter-group input,
+                .filter-group textarea {
+                    width: 100%;
+                    padding: 10px;
+                    border: 1px solid #d1d5db;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    transition: all 0.2s ease;
+                }
+
+                .filter-group select:focus,
+                .filter-group input:focus,
+                .filter-group textarea:focus {
+                    outline: none;
+                    border-color: #ef4444;
+                    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+                }
+
+                .btn-camera {
+                    padding: 10px 14px;
+                    background: #f9fafb;
+                    border: 1px solid #e5e7eb;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    font-weight: 600;
+                    transition: all 0.2s ease;
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                }
+
+                .btn-camera:hover {
+                    background: #fff1f2;
+                    border-color: #fca5a5;
+                    color: #b91c1c;
+                    transform: translateY(-1px);
+                }
+
+                .upload-queue {
+                    margin-top: 16px;
+                    border: 1px dashed #d1d5db;
+                    border-radius: 12px;
+                    padding: 16px;
+                    background: #f9fafb;
+                }
+
+                .upload-queue.empty {
+                    text-align: center;
+                    color: #6b7280;
+                }
+
+                .upload-queue-title {
+                    font-weight: 700;
+                    margin-bottom: 12px;
+                    color: #111827;
+                }
+
+                .upload-item {
+                    display: grid;
+                    grid-template-columns: auto 1fr auto;
+                    align-items: center;
+                    gap: 12px;
+                    padding: 12px;
+                    background: white;
+                    border-radius: 10px;
+                    margin-bottom: 10px;
+                    border: 1px solid #e5e7eb;
+                }
+
+                .upload-item:last-child {
+                    margin-bottom: 0;
+                }
+
+                .upload-thumb {
+                    width: 48px;
+                    height: 48px;
+                    background: #f3f4f6;
+                    border-radius: 10px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 20px;
+                    color: #6b7280;
+                    overflow: hidden;
+                }
+
+                .upload-thumb img {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                }
+
+                .upload-info {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                }
+
+                .upload-nome {
+                    font-weight: 600;
+                    color: #111827;
+                }
+
+                .upload-meta {
+                    font-size: 13px;
+                    color: #6b7280;
+                    display: flex;
+                    gap: 10px;
+                    align-items: center;
+                }
+
+                .upload-status {
+                    padding: 4px 8px;
+                    border-radius: 999px;
+                    font-weight: 700;
+                    font-size: 12px;
+                }
+
+                .upload-status.pendente { background: #fef3c7; color: #92400e; }
+                .upload-status.enviando { background: #dbeafe; color: #1e40af; }
+                .upload-status.sucesso { background: #dcfce7; color: #166534; }
+                .upload-status.erro { background: #fee2e2; color: #991b1b; }
+
+                .upload-actions {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 6px;
+                    align-items: flex-end;
+                }
+
+                .btn-remover-upload {
+                    background: #fef2f2;
+                    color: #b91c1c;
+                    border: 1px solid #fecdd3;
+                    padding: 8px 12px;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    font-weight: 600;
+                }
+
+                .btn-remover-upload:hover {
+                    background: #fee2e2;
+                }
+
+                .doc-file-input {
+                    grid-column: 1 / -1;
+                }
+
+                input[type="file"] {
+                    padding: 8px 12px;
+                    border: 1px solid #d1d5db;
+                    border-radius: 8px;
+                    background: white;
+                    cursor: pointer;
+                }
+
+                input[type="file"]:hover {
+                    border-color: #ef4444;
+                }
+
+                @media (max-width: 768px) {
+                    .filter-bar {
+                        flex-direction: column;
+                    }
+
+                    .doc-form-grid {
+                        grid-template-columns: 1fr;
+                    }
+                }
+            </style>
+        `;
+    },
+
+    'consulta-documentos': async () => {
+        const repositores = await db.getAllRepositors();
+        const repositorOptions = repositores
+            .map(repo => `<option value="${repo.repo_cod}">${repo.repo_cod} - ${repo.repo_nome}</option>`)
+            .join('');
+
+        const hoje = new Date().toISOString().split('T')[0];
+        const umMesAtras = new Date();
+        umMesAtras.setMonth(umMesAtras.getMonth() - 1);
+        const dataInicio = umMesAtras.toISOString().split('T')[0];
+
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title" style="white-space: nowrap;">Consulta de Documentos</h3>
+                        <p class="text-muted" style="margin: 4px 0 0;">Pesquise e baixe anexos enviados. Informe o tipo para tornar o repositor opcional.</p>
+                    </div>
+                </div>
+                <div class="card-body" style="padding-top: 20px;">
                     <div class="doc-filter-section">
-                        <h4 style="margin-bottom: 20px; color: #374151; font-size: 16px; font-weight: 600;">🔍 Consultar Documentos</h4>
                         <div class="doc-form-grid">
                             <div class="filter-group">
-                                <label for="filtroRepositor">Repositor *</label>
-                                <select id="filtroRepositor" required>
-                                    <option value="">Selecione...</option>
-                                    ${repositorOptions}
-                                </select>
-                            </div>
-                            <div class="filter-group">
-                                <label for="filtroTipo">Tipo de Documento</label>
-                                <select id="filtroTipo">
+                                <label for="consultaTipo">Tipo de Documento</label>
+                                <select id="consultaTipo">
                                     <option value="">Todos os tipos</option>
                                 </select>
                             </div>
                             <div class="filter-group">
-                                <label for="filtroDataInicio">Data Inicial</label>
-                                <input type="date" id="filtroDataInicio" value="${dataInicio}">
+                                <label for="consultaRepositor">Repositor <span style="color: #6b7280; font-weight: 400;">(opcional se tipo informado)</span></label>
+                                <select id="consultaRepositor">
+                                    <option value="">Todos</option>
+                                    ${repositorOptions}
+                                </select>
                             </div>
                             <div class="filter-group">
-                                <label for="filtroDataFim">Data Final</label>
-                                <input type="date" id="filtroDataFim" value="${hoje}">
+                                <label for="consultaDataInicio">Data Inicial</label>
+                                <input type="date" id="consultaDataInicio" value="${dataInicio}">
+                            </div>
+                            <div class="filter-group">
+                                <label for="consultaDataFim">Data Final</label>
+                                <input type="date" id="consultaDataFim" value="${hoje}">
                             </div>
                         </div>
                         <div style="margin-top: 20px; display: flex; justify-content: flex-end;">
-                            <button class="btn btn-secondary" id="btnFiltrarDocumentos" style="min-width: 160px;">🔍 Buscar Documentos</button>
+                            <button class="btn btn-secondary" id="btnFiltrarConsultaDocumentos" style="min-width: 160px;">🔍 Buscar Documentos</button>
                         </div>
                     </div>
 
-                    <!-- Ações em Lote -->
                     <div id="acoesLote" style="display: none; margin-top: 16px; padding: 12px; background: #f9fafb; border-radius: 8px; display: flex; align-items: center; justify-content: space-between;">
                         <span id="contadorSelecionados" style="font-weight: 600; color: #374151;">0 documentos selecionados</span>
                         <button class="btn btn-primary" id="btnDownloadZip">📦 Download ZIP</button>
                     </div>
 
-                    <!-- Lista de Documentos -->
                     <div id="documentosContainer" style="margin-top: 1.5rem;">
                         <div class="empty-state">
-                            <div class="empty-state-icon">📄</div>
-                            <p>Selecione um repositor e clique em Filtrar para visualizar documentos</p>
+                            <div class="empty-state-icon">📁</div>
+                            <p>Informe o tipo de documento ou selecione um repositor e clique em Buscar</p>
                         </div>
                     </div>
                 </div>
             </div>
 
             <style>
-                .doc-upload-section, .doc-filter-section {
-                    background: #f9fafb;
-                    padding: 24px;
-                    border-radius: 12px;
-                    border: 1px solid #e5e7eb;
-                }
-
                 .doc-form-grid {
                     display: grid;
-                    grid-template-columns: repeat(2, 1fr);
+                    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                    gap: 16px;
+                    margin-bottom: 12px;
+                }
+
+                .doc-filter-section {
+                    display: flex;
+                    flex-direction: column;
                     gap: 16px;
                 }
 
-                .doc-file-input {
-                    grid-column: 1 / -1;
+                .filter-group label {
+                    display: block;
+                    margin-bottom: 6px;
+                    font-weight: 600;
+                    color: #374151;
+                }
+
+                .filter-group select,
+                .filter-group input,
+                .filter-group textarea {
+                    width: 100%;
+                    padding: 10px;
+                    border: 1px solid #d1d5db;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    transition: all 0.2s ease;
+                }
+
+                .filter-group select:focus,
+                .filter-group input:focus,
+                .filter-group textarea:focus {
+                    outline: none;
+                    border-color: #ef4444;
+                    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
                 }
 
                 .doc-item {
@@ -2619,18 +2859,6 @@ export const pages = {
                     box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3);
                 }
 
-                input[type="file"] {
-                    padding: 8px 12px;
-                    border: 1px solid #d1d5db;
-                    border-radius: 8px;
-                    background: white;
-                    cursor: pointer;
-                }
-
-                input[type="file"]:hover {
-                    border-color: #ef4444;
-                }
-
                 #acoesLote {
                     animation: slideDown 0.3s ease;
                 }
@@ -2647,10 +2875,6 @@ export const pages = {
                 }
 
                 @media (max-width: 768px) {
-                    .filter-bar {
-                        flex-direction: column;
-                    }
-
                     .doc-form-grid {
                         grid-template-columns: 1fr;
                     }
@@ -2659,20 +2883,10 @@ export const pages = {
                         flex-direction: column;
                         align-items: flex-start;
                     }
-
-                    .doc-actions {
-                        width: 100%;
-                        flex-direction: column;
-                    }
-
-                    .btn-doc-download {
-                        width: 100%;
-                    }
                 }
             </style>
         `;
     },
-
     'analise-performance': async () => {
         const repositores = await db.getAllRepositors();
         const repositorOptions = repositores
@@ -2906,5 +3120,6 @@ export const pageTitles = {
   'registro-rota': 'Registro de Rota',
   'consulta-visitas': 'Consulta de Visitas',
   'documentos': 'Registro de Documentos',
+  'consulta-documentos': 'Consulta de Documentos',
   'analise-performance': 'Análise de Performance'
 };
