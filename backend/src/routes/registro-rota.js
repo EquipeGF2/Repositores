@@ -1293,14 +1293,44 @@ router.get('/pontualidade', async (req, res) => {
       return res.status(400).json({ ok: false, message: validacao.message });
     }
 
+    const tabelaRv = 'cc_registro_visita';
+    let colunasRv = [];
+    let campoPrevisto = null;
+    let pontualidadeMode = 'ND';
+    const camposPrioritarios = ['rv_data_roteiro', 'rv_data_prevista', 'rv_data_ref', 'rv_dia_previsto'];
+
+    try {
+      colunasRv = await tursoService._getTableColumns(tabelaRv);
+    } catch (error) {
+      console.warn('⚠️  Não foi possível obter colunas de cc_registro_visita:', error?.message || error);
+    }
+
+    campoPrevisto = camposPrioritarios.find((campo) => colunasRv.includes(campo)) || null;
+
+    if (campoPrevisto && ['rv_data_roteiro', 'rv_data_prevista', 'rv_data_ref'].includes(campoPrevisto)) {
+      pontualidadeMode = 'DATA';
+    } else if (campoPrevisto === 'rv_dia_previsto') {
+      pontualidadeMode = 'DIA';
+    }
+
+    console.info('PONTUALIDADE_SCHEMA', {
+      tabela: tabelaRv,
+      campo_escolhido: campoPrevisto || 'N/D',
+      mode: pontualidadeMode
+    });
+
     const dataRealExpr = `date(COALESCE(rv.rv_data_hora_registro, rv.data_hora, s.checkout_at))`;
-    const dataPrevistaExpr = `date(COALESCE(rv.rv_data_roteiro, rv.rv_data_planejada, s.data_planejada))`;
+    const dataPrevistaExpr = pontualidadeMode === 'DATA' ? `date(rv.${campoPrevisto})` : null;
 
     let sql = `
       SELECT
         COUNT(1) AS total_checkouts,
-        SUM(CASE WHEN ${dataPrevistaExpr} IS NOT NULL AND ${dataRealExpr} < ${dataPrevistaExpr} THEN 1 ELSE 0 END) AS qtde_adiantadas,
-        SUM(CASE WHEN ${dataPrevistaExpr} IS NOT NULL AND ${dataRealExpr} > ${dataPrevistaExpr} THEN 1 ELSE 0 END) AS qtde_atrasadas
+        ${pontualidadeMode === 'DATA'
+          ? `SUM(CASE WHEN ${dataPrevistaExpr} IS NOT NULL AND ${dataRealExpr} < ${dataPrevistaExpr} THEN 1 ELSE 0 END)`
+          : '0'} AS qtde_adiantadas,
+        ${pontualidadeMode === 'DATA'
+          ? `SUM(CASE WHEN ${dataPrevistaExpr} IS NOT NULL AND ${dataRealExpr} > ${dataPrevistaExpr} THEN 1 ELSE 0 END)`
+          : '0'} AS qtde_atrasadas
       FROM cc_registro_visita rv
       LEFT JOIN cc_visita_sessao s ON COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id
       WHERE lower(rv.rv_tipo) = 'checkout'
@@ -1320,15 +1350,19 @@ router.get('/pontualidade', async (req, res) => {
     const row = result.rows?.[0] || {};
 
     const totalCheckouts = Number(row.total_checkouts || 0);
-    const qtdeAdiantadas = Number(row.qtde_adiantadas || 0);
-    const qtdeAtrasadas = Number(row.qtde_atrasadas || 0);
+    const calculavelComData = pontualidadeMode === 'DATA';
 
-    const percentAdiantadas = totalCheckouts
+    const qtdeAdiantadas = calculavelComData ? Number(row.qtde_adiantadas || 0) : 0;
+    const qtdeAtrasadas = calculavelComData ? Number(row.qtde_atrasadas || 0) : 0;
+
+    const percentAdiantadas = calculavelComData && totalCheckouts
       ? Number(((qtdeAdiantadas / totalCheckouts) * 100).toFixed(1))
       : 0;
-    const percentAtrasadas = totalCheckouts
+    const percentAtrasadas = calculavelComData && totalCheckouts
       ? Number(((qtdeAtrasadas / totalCheckouts) * 100).toFixed(1))
       : 0;
+
+    const avisoPontualidade = pontualidadeMode === 'ND' ? 'N/D' : null;
 
     res.json({
       ok: true,
@@ -1337,7 +1371,9 @@ router.get('/pontualidade', async (req, res) => {
         qtde_adiantadas: qtdeAdiantadas,
         qtde_atrasadas: qtdeAtrasadas,
         percent_adiantadas: percentAdiantadas,
-        percent_atrasadas: percentAtrasadas
+        percent_atrasadas: percentAtrasadas,
+        pontualidade_mode: pontualidadeMode,
+        pontualidade_observacao: avisoPontualidade
       }
     });
   } catch (error) {
