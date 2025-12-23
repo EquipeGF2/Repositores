@@ -6493,6 +6493,149 @@ class App {
         }
     }
 
+    criarModalOverlay({ titulo, conteudo, rodape }) {
+        const backdrop = document.createElement('div');
+        backdrop.className = 'modal-backdrop';
+
+        const container = document.createElement('div');
+        container.className = 'modal-container';
+
+        const header = document.createElement('div');
+        header.className = 'modal-header';
+        header.innerHTML = `
+            <h3>${titulo || 'Detalhes'}</h3>
+            <button class="modal-close-button" aria-label="Fechar">&times;</button>
+        `;
+
+        const body = document.createElement('div');
+        body.className = 'modal-body';
+        if (typeof conteudo === 'string') {
+            body.innerHTML = conteudo;
+        } else if (conteudo instanceof HTMLElement) {
+            body.appendChild(conteudo);
+        }
+
+        const footer = document.createElement('div');
+        footer.className = 'modal-footer';
+        if (rodape instanceof HTMLElement) {
+            footer.appendChild(rodape);
+        } else if (typeof rodape === 'string') {
+            footer.innerHTML = rodape;
+        } else {
+            footer.style.display = 'none';
+        }
+
+        container.appendChild(header);
+        container.appendChild(body);
+        container.appendChild(footer);
+        backdrop.appendChild(container);
+        document.body.appendChild(backdrop);
+
+        document.body.classList.add('modal-open');
+        requestAnimationFrame(() => backdrop.classList.add('active'));
+
+        const fechar = () => {
+            backdrop.classList.remove('active');
+            setTimeout(() => backdrop.remove(), 150);
+            document.body.classList.remove('modal-open');
+            document.removeEventListener('keydown', escHandler);
+        };
+
+        const escHandler = (event) => {
+            if (event.key === 'Escape') fechar();
+        };
+
+        document.addEventListener('keydown', escHandler);
+        backdrop.addEventListener('click', (event) => {
+            if (event.target === backdrop) fechar();
+        });
+        header.querySelector('.modal-close-button')?.addEventListener('click', fechar);
+
+        return { fechar, backdrop };
+    }
+
+    resolverUrlFotoVisita(url, fileId) {
+        const baseUrl = url || (fileId ? `${this.registroRotaState.backendUrl}/api/registro-rota/fotos/${fileId}` : null);
+        const downloadUrl = fileId ? `${this.registroRotaState.backendUrl}/api/registro-rota/fotos/${fileId}?download=1` : baseUrl;
+
+        return {
+            previewUrl: baseUrl,
+            downloadUrl,
+            originalUrl: url || downloadUrl || null
+        };
+    }
+
+    abrirModalFotoVisita(sessao, tipo) {
+        const isCheckin = tipo === 'checkin';
+        const url = isCheckin ? sessao.foto_checkin_url : sessao.foto_checkout_url;
+        const fileId = isCheckin ? sessao.foto_checkin_id : sessao.foto_checkout_id;
+        const { previewUrl, downloadUrl, originalUrl } = this.resolverUrlFotoVisita(url, fileId);
+
+        if (!previewUrl) {
+            this.showNotification('Foto não disponível para este registro.', 'warning');
+            return;
+        }
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'photo-modal-wrapper';
+        wrapper.innerHTML = `
+            <img src="${previewUrl}" alt="Foto de ${isCheckin ? 'check-in' : 'check-out'}" loading="lazy">
+            <div class="modal-action-links">
+                <a class="btn btn-secondary" target="_blank" rel="noopener noreferrer" ${originalUrl ? `href="${originalUrl}"` : 'disabled'}>Abrir original</a>
+                <a class="btn btn-light" ${downloadUrl ? `href="${downloadUrl}" download` : 'disabled'}>Baixar</a>
+            </div>
+        `;
+
+        this.criarModalOverlay({
+            titulo: `📷 Foto ${isCheckin ? 'Check-in' : 'Check-out'}`,
+            conteudo: wrapper
+        });
+    }
+
+    montarLinkMapsReferencia({ lat, lng, endereco }) {
+        if (lat != null && lng != null) {
+            return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+        }
+        if (endereco) {
+            return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(endereco)}`;
+        }
+        return null;
+    }
+
+    abrirModalMapsVisita(sessao) {
+        const clienteLink = this.montarLinkMapsReferencia({ endereco: sessao.cliente_endereco_roteiro });
+        const checkinLink = this.montarLinkMapsReferencia({ lat: sessao.checkin_lat, lng: sessao.checkin_lng, endereco: sessao.checkin_endereco });
+        const checkoutLink = this.montarLinkMapsReferencia({ lat: sessao.checkout_lat, lng: sessao.checkout_lng, endereco: sessao.checkout_endereco });
+
+        if (!clienteLink && !checkinLink && !checkoutLink) {
+            this.showNotification('Sem coordenadas ou endereços para abrir no Maps.', 'warning');
+            return;
+        }
+
+        const container = document.createElement('div');
+        container.innerHTML = `
+            <p style="margin-top:0; color:#4b5563;">Escolha qual ponto deseja visualizar no Google Maps.</p>
+            <div class="modal-action-links">
+                <button class="btn btn-secondary" data-maps-link="${clienteLink || ''}" ${clienteLink ? '' : 'disabled'}>🗺️ Cliente (Roteiro)</button>
+                <button class="btn btn-secondary" data-maps-link="${checkinLink || ''}" ${checkinLink ? '' : 'disabled'}>🗺️ Check-in (GPS)</button>
+                <button class="btn btn-secondary" data-maps-link="${checkoutLink || ''}" ${checkoutLink ? '' : 'disabled'}>🗺️ Check-out (GPS)</button>
+            </div>
+        `;
+
+        const modal = this.criarModalOverlay({
+            titulo: 'Abrir no Google Maps',
+            conteudo: container
+        });
+
+        container.querySelectorAll('button[data-maps-link]').forEach((btn) => {
+            btn.onclick = () => {
+                const link = btn.getAttribute('data-maps-link');
+                if (link) window.open(link, '_blank', 'noopener');
+                modal.fechar();
+            };
+        });
+    }
+
     async consultarVisitas() {
         try {
             const repId = document.getElementById('consultaRepositor')?.value;
@@ -6543,6 +6686,9 @@ class App {
 
             container.innerHTML = '';
 
+            // Remover grids antigos de fotos, se ainda existirem
+            document.querySelectorAll('#photosGrid, .photosGrid, .consulta-fotos-grid').forEach((el) => el.remove());
+
             sessoesComCheckin.forEach(sessao => {
                 const item = document.createElement('div');
 
@@ -6575,9 +6721,9 @@ class App {
                     : '';
 
                 // Endereços com fallbacks claros
-                const enderecoRoteiro = sessao.endereco_cliente_roteiro || sessao.endereco_cliente || 'Não informado';
-                const enderecoGpsCheckin = sessao.endereco_gps_checkin || sessao.endereco_checkin || 'Não capturado';
-                const enderecoGpsCheckout = sessao.endereco_gps_checkout || sessao.endereco_checkout || null;
+                const enderecoRoteiro = sessao.cliente_endereco_roteiro || sessao.endereco_cliente_roteiro || sessao.endereco_cliente || 'Não informado';
+                const enderecoGpsCheckin = sessao.checkin_endereco || sessao.endereco_gps_checkin || sessao.endereco_checkin || 'Não capturado';
+                const enderecoGpsCheckout = sessao.checkout_endereco || sessao.endereco_gps_checkout || sessao.endereco_checkout || null;
 
                 // Montar lista de serviços realizados
                 const servicos = [];
@@ -6585,6 +6731,14 @@ class App {
                 if (sessao.serv_espaco_loja) servicos.push('Espaço Loja');
                 if (sessao.serv_ruptura_loja) servicos.push('Ruptura Loja');
                 if (sessao.serv_pontos_extras) servicos.push(`Pontos Extras (${sessao.qtd_pontos_extras || 0})`);
+
+                const fotoCheckinDisponivel = Boolean(sessao.foto_checkin_url || sessao.foto_checkin_id);
+                const fotoCheckoutDisponivel = Boolean(sessao.foto_checkout_url || sessao.foto_checkout_id);
+                const mapsDisponivel = Boolean(
+                    this.montarLinkMapsReferencia({ lat: sessao.checkin_lat, lng: sessao.checkin_lng, endereco: enderecoGpsCheckin })
+                    || this.montarLinkMapsReferencia({ lat: sessao.checkout_lat, lng: sessao.checkout_lng, endereco: enderecoGpsCheckout })
+                    || this.montarLinkMapsReferencia({ endereco: enderecoRoteiro })
+                );
 
                 const servicosTexto = servicos.length > 0
                     ? `<div style="font-size: 0.9em; color: #2563eb; margin-top: 6px; padding: 8px; background: #eff6ff; border-radius: 6px;">
@@ -6611,8 +6765,17 @@ class App {
                             ${enderecoGpsCheckout ? `<div style="margin-top: 6px;"><strong>📍 Endereço GPS (Checkout):</strong><br>${enderecoGpsCheckout}</div>` : '<div style="margin-top: 6px;"><strong>📍 Endereço GPS (Checkout):</strong><br>Não capturado</div>'}
                         </div>
                         ${servicosTexto}
+                        <div class="visit-actions">
+                            <button class="visit-action-btn" data-action="foto-checkin" ${fotoCheckinDisponivel ? '' : 'disabled'}>📷 Foto Check-in</button>
+                            <button class="visit-action-btn" data-action="foto-checkout" ${fotoCheckoutDisponivel ? '' : 'disabled'}>📷 Foto Check-out</button>
+                            <button class="visit-action-btn" data-action="maps" ${mapsDisponivel ? '' : 'disabled'}>🗺️ Maps</button>
+                        </div>
                     </div>
                 `;
+
+                item.querySelector('[data-action="foto-checkin"]')?.addEventListener('click', () => this.abrirModalFotoVisita(sessao, 'checkin'));
+                item.querySelector('[data-action="foto-checkout"]')?.addEventListener('click', () => this.abrirModalFotoVisita(sessao, 'checkout'));
+                item.querySelector('[data-action="maps"]')?.addEventListener('click', () => this.abrirModalMapsVisita(sessao));
 
                 container.appendChild(item);
             });

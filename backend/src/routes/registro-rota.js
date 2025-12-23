@@ -662,6 +662,40 @@ router.get('/visitas', async (req, res) => {
   }
 });
 
+// ==================== GET /api/registro-rota/fotos/:fileId ====================
+// Proxy para exibir/baixar fotos armazenadas no Drive
+router.get('/fotos/:fileId', async (req, res) => {
+  const { fileId } = req.params;
+  const download = String(req.query.download || '').toLowerCase() === '1';
+
+  if (!fileId) {
+    return res.status(400).json({ ok: false, code: 'FILE_ID_REQUIRED', message: 'fileId é obrigatório' });
+  }
+
+  try {
+    const stream = await googleDriveService.downloadArquivo(fileId);
+
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Content-Disposition', `${download ? 'attachment' : 'inline'}; filename="${fileId}.jpg"`);
+
+    stream.on('error', (error) => {
+      console.error('Erro ao transmitir arquivo do Drive:', error?.message || error);
+      if (!res.headersSent) {
+        res.status(500).end();
+      }
+    });
+
+    stream.pipe(res);
+  } catch (error) {
+    if (error instanceof OAuthNotConfiguredError) {
+      return res.status(503).json({ ok: false, code: error.code, message: error.message });
+    }
+
+    console.error('Erro ao proxy de foto do Drive:', error?.message || error);
+    res.status(500).json({ ok: false, code: 'FOTO_PROXY_ERROR', message: 'Erro ao carregar foto' });
+  }
+});
+
 // ==================== GET /api/registro-rota/sessao-aberta ====================
 router.get('/sessao-aberta', async (req, res) => {
   try {
@@ -858,6 +892,62 @@ router.get('/sessoes', async (req, res) => {
       ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) DESC
       LIMIT 1
     )`;
+    const checkinLatExpr = `(
+      SELECT COALESCE(rv_latitude, latitude)
+      FROM cc_registro_visita rv
+      WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id AND rv.rv_tipo = 'checkin'
+      ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) ASC
+      LIMIT 1
+    )`;
+    const checkinLongExpr = `(
+      SELECT COALESCE(rv_longitude, longitude)
+      FROM cc_registro_visita rv
+      WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id AND rv.rv_tipo = 'checkin'
+      ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) ASC
+      LIMIT 1
+    )`;
+    const checkoutLatExpr = `(
+      SELECT COALESCE(rv_latitude, latitude)
+      FROM cc_registro_visita rv
+      WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id AND rv.rv_tipo = 'checkout'
+      ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) DESC
+      LIMIT 1
+    )`;
+    const checkoutLongExpr = `(
+      SELECT COALESCE(rv_longitude, longitude)
+      FROM cc_registro_visita rv
+      WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id AND rv.rv_tipo = 'checkout'
+      ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) DESC
+      LIMIT 1
+    )`;
+    const checkinFotoUrlExpr = `(
+      SELECT COALESCE(rv_drive_file_url, drive_file_url)
+      FROM cc_registro_visita rv
+      WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id AND rv.rv_tipo = 'checkin'
+      ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) ASC
+      LIMIT 1
+    )`;
+    const checkinFotoIdExpr = `(
+      SELECT COALESCE(rv_drive_file_id, drive_file_id)
+      FROM cc_registro_visita rv
+      WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id AND rv.rv_tipo = 'checkin'
+      ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) ASC
+      LIMIT 1
+    )`;
+    const checkoutFotoUrlExpr = `(
+      SELECT COALESCE(rv_drive_file_url, drive_file_url)
+      FROM cc_registro_visita rv
+      WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id AND rv.rv_tipo = 'checkout'
+      ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) DESC
+      LIMIT 1
+    )`;
+    const checkoutFotoIdExpr = `(
+      SELECT COALESCE(rv_drive_file_id, drive_file_id)
+      FROM cc_registro_visita rv
+      WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id AND rv.rv_tipo = 'checkout'
+      ORDER BY COALESCE(rv.rv_data_hora_registro, rv.data_hora) DESC
+      LIMIT 1
+    )`;
     const statusExpr = `CASE
       WHEN ${checkoutDataExpr} IS NOT NULL OR s.checkout_at IS NOT NULL THEN 'finalizado'
       WHEN ${checkinDataExpr} IS NOT NULL OR s.checkin_at IS NOT NULL THEN 'em_atendimento'
@@ -873,6 +963,14 @@ router.get('/sessoes', async (req, res) => {
         ${checkinDataExpr} AS checkin_data_hora,
         ${checkoutDataExpr} AS checkout_data_hora,
         ${statusExpr} AS status_calculado,
+        ${checkinLatExpr} AS checkin_latitude,
+        ${checkinLongExpr} AS checkin_longitude,
+        ${checkoutLatExpr} AS checkout_latitude,
+        ${checkoutLongExpr} AS checkout_longitude,
+        ${checkinFotoUrlExpr} AS checkin_drive_url,
+        ${checkinFotoIdExpr} AS checkin_drive_id,
+        ${checkoutFotoUrlExpr} AS checkout_drive_url,
+        ${checkoutFotoIdExpr} AS checkout_drive_id,
         COALESCE(s.dia_previsto, (
           SELECT rv_dia_previsto
           FROM cc_registro_visita rv
@@ -938,12 +1036,28 @@ router.get('/sessoes', async (req, res) => {
 
       const statusCalculado = sessao.status_calculado || (sessao.checkout_at ? 'finalizado' : sessao.checkin_at ? 'em_atendimento' : 'sem_checkin');
 
+      const checkinLat = sessao.checkin_latitude ?? null;
+      const checkinLong = sessao.checkin_longitude ?? null;
+      const checkoutLat = sessao.checkout_latitude ?? null;
+      const checkoutLong = sessao.checkout_longitude ?? null;
+
       return {
         ...sessao,
         status: statusCalculado,
         fora_do_dia: foraDoDia ? 1 : 0,
         dia_previsto_label: diaPrevistoLabel,
-        dia_real_label: diaRealLabel
+        dia_real_label: diaRealLabel,
+        cliente_endereco_roteiro: sessao.endereco_cliente_roteiro || sessao.endereco_cliente || null,
+        checkin_endereco: sessao.endereco_gps_checkin || null,
+        checkout_endereco: sessao.endereco_gps_checkout || null,
+        checkin_lat: checkinLat,
+        checkin_lng: checkinLong,
+        checkout_lat: checkoutLat,
+        checkout_lng: checkoutLong,
+        foto_checkin_url: sessao.checkin_drive_url || null,
+        foto_checkin_id: sessao.checkin_drive_id || null,
+        foto_checkout_url: sessao.checkout_drive_url || null,
+        foto_checkout_id: sessao.checkout_drive_id || null
       };
     });
 

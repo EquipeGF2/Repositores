@@ -2195,6 +2195,39 @@ export const pages = {
                     border: 1px solid #fca5a5;
                     display: inline-block;
                 }
+
+                .visit-actions {
+                    display: flex;
+                    gap: 8px;
+                    flex-wrap: wrap;
+                    margin-top: 12px;
+                }
+
+                .visit-action-btn {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    padding: 8px 12px;
+                    border-radius: 8px;
+                    border: 1px solid #e5e7eb;
+                    background: #f9fafb;
+                    color: #374151;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                }
+
+                .visit-action-btn:hover:not(:disabled) {
+                    background: #fff1f2;
+                    border-color: #fca5a5;
+                    color: #b91c1c;
+                    transform: translateY(-1px);
+                }
+
+                .visit-action-btn:disabled {
+                    opacity: 0.6;
+                    cursor: not-allowed;
+                }
             </style>
         `;
     },
