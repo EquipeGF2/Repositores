@@ -18,6 +18,9 @@ class TursoService {
       this.ensureVisitaSessaoSchema().catch((err) => {
         console.warn('⚠️  Falha ao garantir schema de sessão de visita:', err?.message || err);
       });
+      this.ensureRateioSchema().catch((err) => {
+        console.warn('⚠️  Falha ao garantir schema de rateio:', err?.message || err);
+      });
     } catch (error) {
       if (error instanceof DatabaseNotConfiguredError) {
         this.client = null;
@@ -143,6 +146,157 @@ class TursoService {
       }));
       return false;
     }
+  }
+
+  async ensureRateioSchema() {
+    try {
+      await this.execute(
+        `CREATE TABLE IF NOT EXISTS rat_cliente_repositor (
+          rat_id INTEGER PRIMARY KEY AUTOINCREMENT,
+          rat_cliente_codigo TEXT NOT NULL,
+          rat_repositor_id INTEGER NOT NULL,
+          rat_percentual NUMERIC(5,2) NOT NULL,
+          rat_vigencia_inicio DATE,
+          rat_vigencia_fim DATE,
+          rat_criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+          rat_atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`
+      );
+
+      await this.execute(
+        'CREATE INDEX IF NOT EXISTS idx_rat_cliente ON rat_cliente_repositor (rat_cliente_codigo)'
+      );
+
+      await this.execute(
+        'CREATE INDEX IF NOT EXISTS idx_rat_repositor ON rat_cliente_repositor (rat_repositor_id)'
+      );
+
+      await this.execute(
+        `CREATE UNIQUE INDEX IF NOT EXISTS uniq_rat_cliente_repositor
+         ON rat_cliente_repositor (rat_cliente_codigo, rat_repositor_id, IFNULL(rat_vigencia_inicio, ''), IFNULL(rat_vigencia_fim, ''))`
+      );
+    } catch (error) {
+      console.error('❌ Erro ao garantir schema de rateio:', error?.message || error);
+      throw error;
+    }
+  }
+
+  async listarRateiosManutencao({ cidadeId, clienteId, repositorId, rateioId } = {}) {
+    await this.ensureRateioSchema();
+
+    const filtros = [];
+    const args = [];
+
+    if (rateioId) {
+      filtros.push('rat.rat_id = ?');
+      args.push(rateioId);
+    }
+
+    if (repositorId) {
+      filtros.push('rat.rat_repositor_id = ?');
+      args.push(repositorId);
+    }
+
+    if (clienteId) {
+      filtros.push('(rat.rat_cliente_codigo LIKE ? OR cli.nome LIKE ? OR cli.fantasia LIKE ?)');
+      const termo = `%${clienteId}%`;
+      args.push(termo, termo, termo);
+    }
+
+    if (cidadeId) {
+      filtros.push('COALESCE(cli.cidade, "") LIKE ?');
+      args.push(`%${cidadeId}%`);
+    }
+
+    const whereClause = filtros.length ? `WHERE ${filtros.join(' AND ')}` : '';
+
+    const sql = `
+      SELECT
+        rat.rat_id,
+        rat.rat_cliente_codigo,
+        rat.rat_repositor_id,
+        rat.rat_percentual,
+        rat.rat_vigencia_inicio,
+        rat.rat_vigencia_fim,
+        rat.rat_criado_em,
+        rat.rat_atualizado_em,
+        cli.cliente AS cliente_codigo,
+        cli.nome AS cliente_nome,
+        cli.fantasia AS cliente_fantasia,
+        cli.cidade AS cidade_nome,
+        cli.estado AS cliente_estado,
+        cli.cnpj_cpf AS cliente_documento,
+        repo.repo_nome AS repositor_nome
+      FROM rat_cliente_repositor rat
+      LEFT JOIN tab_cliente cli ON cli.cliente = rat.rat_cliente_codigo
+      LEFT JOIN cad_repositor repo ON repo.repo_cod = rat.rat_repositor_id
+      ${whereClause}
+      ORDER BY
+        COALESCE(cli.cidade, ''),
+        COALESCE(cli.nome, cli.fantasia, rat.rat_cliente_codigo),
+        COALESCE(repo.repo_nome, rat.rat_repositor_id, '')
+    `;
+
+    const resultado = await this.execute(sql, args);
+    const linhas = resultado?.rows || [];
+
+    return linhas.map((row) => ({
+      rat_id: row.rat_id,
+      cliente_codigo: normalizeClienteId(row.rat_cliente_codigo),
+      cliente_nome: row.cliente_nome || row.cliente_fantasia || row.rat_cliente_codigo,
+      cliente_fantasia: row.cliente_fantasia || '',
+      cidade_nome: row.cidade_nome || '',
+      cliente_estado: row.cliente_estado || '',
+      cliente_documento: row.cliente_documento || '',
+      rat_repositor_id: row.rat_repositor_id,
+      repositor_nome: row.repositor_nome || '',
+      rat_percentual: row.rat_percentual,
+      rat_vigencia_inicio: row.rat_vigencia_inicio,
+      rat_vigencia_fim: row.rat_vigencia_fim,
+      rat_criado_em: row.rat_criado_em,
+      rat_atualizado_em: row.rat_atualizado_em
+    }));
+  }
+
+  async atualizarRateioById(ratId, { percentual, vigenciaInicio, vigenciaFim }) {
+    if (!ratId) {
+      const error = new Error('ID do rateio é obrigatório');
+      error.code = 'RATEIO_ID_OBRIGATORIO';
+      throw error;
+    }
+
+    await this.ensureRateioSchema();
+
+    const updates = [];
+    const args = [];
+
+    if (percentual !== undefined) {
+      updates.push('rat_percentual = ?');
+      args.push(percentual);
+    }
+
+    if (vigenciaInicio !== undefined) {
+      updates.push('rat_vigencia_inicio = ?');
+      args.push(vigenciaInicio || null);
+    }
+
+    if (vigenciaFim !== undefined) {
+      updates.push('rat_vigencia_fim = ?');
+      args.push(vigenciaFim || null);
+    }
+
+    updates.push('rat_atualizado_em = CURRENT_TIMESTAMP');
+    args.push(ratId);
+
+    const sql = `UPDATE rat_cliente_repositor SET ${updates.join(', ')} WHERE rat_id = ?`;
+    const resultado = await this.execute(sql, args);
+
+    if (!resultado || (resultado.rowsAffected ?? 0) === 0) {
+      return null;
+    }
+
+    const atualizado = await this.listarRateiosManutencao({ rateioId: ratId });
+    return atualizado?.[0] || null;
   }
 
   async hasTabela(nome) {

@@ -8,6 +8,7 @@ import googleOAuthRoutes from './routes/google-oauth.js';
 import documentosRoutes from './routes/documentos.js';
 import arquivosRoutes from './routes/arquivos.js';
 import campanhasRoutes from './routes/campanhas.js';
+import rateioRoutes from './routes/rateio.js';
 
 const app = express();
 
@@ -70,6 +71,7 @@ app.use('/api/google/oauth', googleOAuthRoutes);
 app.use('/api/documentos', documentosRoutes);
 app.use('/api/arquivos', arquivosRoutes);
 app.use('/api/campanhas', campanhasRoutes);
+app.use('/api/rateio', rateioRoutes);
 
 // Rota 404
 app.use((req, res) => {
