@@ -123,6 +123,7 @@ class App {
         this.rateioClientesManutencao = [];
         this.rateioClienteEmFoco = null;
         this.rateioBuscaTimeout = null;
+        this.rateioEdicoesPendentes = {};
         this.repositoresCache = [];
         this.exportacaoRoteiroContexto = null;
         this.cacheUltimaAtualizacaoRoteiro = {};
@@ -2671,24 +2672,12 @@ class App {
 
         // Popular filtro de repositores
         const selectRepositor = document.getElementById('filtroRepositor');
-        if (selectRepositor) {
+        if (selectRepositor && selectRepositor.options.length === 1) {
             this.rateioRepositores.forEach(repo => {
                 const option = document.createElement('option');
                 option.value = repo.repo_cod;
                 option.textContent = `${repo.repo_cod} - ${repo.repo_nome}`;
                 selectRepositor.appendChild(option);
-            });
-        }
-
-        // Popular filtro de cidades
-        const cidades = await db.obterCidadesComRateio();
-        const selectCidade = document.getElementById('filtroCidade');
-        if (selectCidade) {
-            cidades.forEach(cidade => {
-                const option = document.createElement('option');
-                option.value = cidade;
-                option.textContent = cidade;
-                selectCidade.appendChild(option);
             });
         }
 
@@ -2712,6 +2701,8 @@ class App {
                 }
             });
         }
+
+        await this.carregarListaRateioManutencao();
     }
 
     obterFiltrosRateio() {
@@ -2731,47 +2722,43 @@ class App {
         await this.carregarListaRateioManutencao(filtros);
     }
 
-    agruparRateiosManutencao(linhas = []) {
-        const mapa = new Map();
-        const registros = Array.isArray(linhas) ? linhas : [];
+    async buscarRateiosManutencao(filtros = {}) {
+        const url = new URL(`${API_BASE_URL}/api/rateio/manutencao`);
 
-        registros.forEach(item => {
-            const codigo = item.cliente_codigo || item.rat_cliente_codigo || item.cliente;
-            if (!codigo) return;
-            const chave = String(codigo);
+        if (filtros?.cidade) {
+            url.searchParams.set('cidade_id', filtros.cidade);
+        }
 
-            if (!mapa.has(chave)) {
-                mapa.set(chave, {
-                    cliente: chave,
-                    nome: item.cliente_nome || item.cliente_fantasia || '',
-                    fantasia: item.cliente_fantasia || '',
-                    cidade: item.cliente_cidade || '',
-                    estado: item.cliente_estado || '',
-                    cnpj_cpf: item.cnpj_cpf || '',
-                    linhas: []
-                });
-            }
+        if (filtros?.cliente) {
+            url.searchParams.set('cliente_id', filtros.cliente);
+        }
 
-            mapa.get(chave).linhas.push({
-                rat_repositor_id: item.rat_repositor_id,
-                repositor_nome: item.repo_nome || item.rat_repositor_id,
-                rat_percentual: item.rat_percentual === null || item.rat_percentual === undefined ? '' : Number(item.rat_percentual),
-                rat_vigencia_inicio: item.rat_vigencia_inicio || '',
-                rat_vigencia_fim: item.rat_vigencia_fim || '',
-                rat_criado_em: item.rat_criado_em || '',
-                rat_atualizado_em: item.rat_atualizado_em || ''
-            });
-        });
+        if (filtros?.repositorId) {
+            url.searchParams.set('repositor_id', filtros.repositorId);
+        }
 
-        return [...mapa.values()];
+        const resposta = await fetch(url.toString());
+
+        if (!resposta.ok) {
+            const texto = await resposta.text();
+            throw new Error(`Erro ao buscar rateios (${resposta.status}): ${texto}`);
+        }
+
+        const payload = await resposta.json();
+        return Array.isArray(payload?.data) ? payload.data : [];
     }
 
-    obterTotalRateioCliente(clienteCodigo) {
-        const cliente = (this.rateioClientesManutencao || []).find(c => String(c.cliente) === String(clienteCodigo));
-        if (!cliente) return 0;
-
-        const total = cliente.linhas.reduce((acc, linha) => acc + Number(linha.rat_percentual || 0), 0);
-        return Math.round(total * 100) / 100;
+    preencherFiltrosRateio() {
+        const selectCidade = document.getElementById('filtroCidade');
+        if (selectCidade && selectCidade.options.length === 1) {
+            const cidades = [...new Set((this.rateioLinhas || []).map(l => l.cidade_nome).filter(Boolean))];
+            cidades.forEach(cidade => {
+                const option = document.createElement('option');
+                option.value = cidade;
+                option.textContent = cidade;
+                selectCidade.appendChild(option);
+            });
+        }
     }
 
     async carregarListaRateioManutencao(filtros = {}) {
@@ -2786,19 +2773,14 @@ class App {
         }
 
         try {
-            const linhas = await db.listarRateiosDetalhados(filtros);
-            const linhasNormalizadas = Array.isArray(linhas) ? linhas : [];
-
-            this.rateioClientesManutencao = this.agruparRateiosManutencao(linhasNormalizadas);
+            const linhas = await this.buscarRateiosManutencao(filtros);
+            this.rateioLinhas = linhas;
+            this.rateioEdicoesPendentes = {};
+            this.preencherFiltrosRateio();
             this.renderRateioManutencao();
-            // await this.atualizarAlertaRateioGlobal(); // DESABILITADO - tabela cliente não existe no banco principal
 
-            if (this.rateioClientesManutencao.length > 0) {
-                this.showNotification(`${this.rateioClientesManutencao.length} cliente(s) encontrado(s)`, 'success');
-            }
-
-            if (this.rateioClienteEmFoco) {
-                this.destacarClienteRateio(this.rateioClienteEmFoco);
+            if (this.rateioLinhas.length > 0) {
+                this.showNotification(`${this.rateioLinhas.length} vínculo(s) de rateio encontrado(s)`, 'success');
             }
         } catch (error) {
             this.showNotification('Erro ao carregar rateios cadastrados: ' + error.message, 'error');
@@ -2809,8 +2791,8 @@ class App {
         const container = document.getElementById('rateioManutencaoContainer');
         if (!container) return;
 
-        const clientes = this.rateioClientesManutencao || [];
-        if (!clientes.length) {
+        const linhas = this.rateioLinhas || [];
+        if (!linhas.length) {
             container.innerHTML = `
                 <div class="empty-state">
                     <div class="empty-state-icon">🧭</div>
@@ -2820,214 +2802,151 @@ class App {
             return;
         }
 
-        container.innerHTML = clientes.map(cliente => {
-            const total = this.obterTotalRateioCliente(cliente.cliente);
-            const ok = Math.abs(total - 100) <= 0.01;
-            const documento = documentoParaExibicao(cliente.cnpj_cpf);
-            const cidadeEstado = cliente.cidade ? `${cliente.cidade}${cliente.estado ? ' - ' + cliente.estado : ''}` : '';
+        const linhasHtml = linhas.map(linha => `
+            <tr data-rateio-id="${linha.rat_id}">
+                <td data-label="Cidade">${linha.cidade_nome || '-'}</td>
+                <td data-label="Cliente">
+                    <div class="cliente-detalhe">
+                        <strong>${linha.cliente_codigo || '-'}</strong>
+                        <span>${linha.cliente_nome || ''}</span>
+                    </div>
+                </td>
+                <td data-label="Repositor">
+                    <div class="repositor-detalhe">
+                        <strong>${linha.rat_repositor_id || '-'}</strong>
+                        <span>${linha.repositor_nome || ''}</span>
+                    </div>
+                </td>
+                <td data-label="% e vigência" class="col-editavel">
+                    <div class="rateio-inputs">
+                        <input type="number" class="input-rateio-percentual" data-rateio-id="${linha.rat_id}" min="0" max="100" step="0.01" value="${linha.rat_percentual ?? ''}">
+                        <div class="vigencias">
+                            <input type="date" class="input-rateio-vigencia" data-tipo="inicio" data-rateio-id="${linha.rat_id}" value="${linha.rat_vigencia_inicio || ''}">
+                            <input type="date" class="input-rateio-vigencia" data-tipo="fim" data-rateio-id="${linha.rat_id}" value="${linha.rat_vigencia_fim || ''}">
+                        </div>
+                        <small class="texto-menor">Atualizado em: ${linha.rat_atualizado_em ? normalizarDataISO(linha.rat_atualizado_em) : 'N/D'}</small>
+                    </div>
+                </td>
+                <td data-label="Ações" class="col-acoes">
+                    <button class="btn btn-primary btn-sm" data-salvar-rateio="${linha.rat_id}">Salvar</button>
+                </td>
+            </tr>
+        `).join('');
 
-            return `
-                <div class="rateio-manutencao-card" id="rateio-cliente-${cliente.cliente}">
-                    <div class="rateio-manutencao-header">
-                        <div>
-                            <p class="form-card-eyebrow">Cliente ${cliente.cliente}</p>
-                            <h4>${cliente.nome || cliente.fantasia || 'Cliente sem nome'}</h4>
-                            <div class="rateio-manutencao-meta">
-                                ${documento ? `<span>${documento}</span>` : '<span>Documento não informado</span>'}
-                                ${cidadeEstado ? `<span>${cidadeEstado}</span>` : ''}
-                            </div>
-                        </div>
-                        <div class="rateio-total-indicador ${ok ? 'ok' : 'alerta'}" data-total-cliente="${cliente.cliente}">
-                            Total: ${total.toFixed(2)}%
-                        </div>
-                    </div>
-                    <div class="rateio-manutencao-body">
-                        <div class="table-container rateio-table-container">
-                            <table class="rateio-table">
-                                <thead>
-                                    <tr>
-                                        <th>Repositor</th>
-                                        <th>Percentual (%)</th>
-                                        <th>Data início</th>
-                                        <th>Data fim</th>
-                                        <th>Data atualização</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${cliente.linhas.map((linha, index) => `
-                                        <tr>
-                                            <td>${linha.repositor_nome || linha.rat_repositor_id}</td>
-                                            <td>
-                                                <div class="input-percentual">
-                                                    <input type="number" class="rateio-percentual-manutencao" data-cliente="${cliente.cliente}" data-index="${index}" min="0" max="100" step="0.01" value="${linha.rat_percentual ?? ''}">
-                                                    <span class="input-sufixo">%</span>
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <input type="date" class="rateio-vigencia-inicio" data-cliente="${cliente.cliente}" data-index="${index}" value="${linha.rat_vigencia_inicio || ''}">
-                                            </td>
-                                            <td>
-                                                <input type="date" class="rateio-vigencia-fim" data-cliente="${cliente.cliente}" data-index="${index}" value="${linha.rat_vigencia_fim || ''}">
-                                            </td>
-                                            <td>${this.formatarDataSimples(linha.rat_atualizado_em || linha.rat_criado_em) || '-'}</td>
-                                        </tr>
-                                    `).join('')}
-                                    <tr class="rateio-total-linha ${ok ? '' : 'alerta'}">
-                                        <td>Total % do cliente</td>
-                                        <td data-total-cliente-soma="${cliente.cliente}">${total.toFixed(2)}%</td>
-                                        <td colspan="3"></td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                    <div class="rateio-manutencao-rodape">
-                        <button class="btn btn-primary" data-salvar-rateio="${cliente.cliente}">Salvar ajustes</button>
-                    </div>
-                </div>
-            `;
-        }).join('');
+        container.innerHTML = `
+            <div class="table-container rateio-table-container">
+                <table class="rateio-table rateio-manutencao-tabela">
+                    <thead>
+                        <tr>
+                            <th>Cidade</th>
+                            <th>Cliente</th>
+                            <th>Repositor</th>
+                            <th>%</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${linhasHtml}
+                    </tbody>
+                </table>
+            </div>
+        `;
 
-        container.querySelectorAll('.rateio-percentual-manutencao').forEach(input => {
-            const idx = Number(input.dataset.index);
-            const cliente = input.dataset.cliente;
+        this.registrarEventosRateioManutencao();
+    }
+
+    registrarEventosRateioManutencao() {
+        const container = document.getElementById('rateioManutencaoContainer');
+        if (!container) return;
+
+        container.querySelectorAll('.input-rateio-percentual').forEach(input => {
             input.addEventListener('input', () => {
                 const valor = input.value === '' ? '' : Number(input.value);
-                this.atualizarPercentualManutencao(cliente, idx, valor);
+                this.registrarEdicaoRateio(input.dataset.rateioId, 'rat_percentual', valor);
             });
         });
 
-        container.querySelectorAll('.rateio-vigencia-inicio').forEach(input => {
-            const idx = Number(input.dataset.index);
-            const cliente = input.dataset.cliente;
+        container.querySelectorAll('.input-rateio-vigencia').forEach(input => {
             input.addEventListener('change', () => {
-                this.atualizarVigenciaInicioManutencao(cliente, idx, input.value || '');
-            });
-        });
-
-        container.querySelectorAll('.rateio-vigencia-fim').forEach(input => {
-            const idx = Number(input.dataset.index);
-            const cliente = input.dataset.cliente;
-            input.addEventListener('change', () => {
-                this.atualizarVigenciaFimManutencao(cliente, idx, input.value || '');
+                const tipo = input.dataset.tipo === 'fim' ? 'rat_vigencia_fim' : 'rat_vigencia_inicio';
+                this.registrarEdicaoRateio(input.dataset.rateioId, tipo, input.value || null);
             });
         });
 
         container.querySelectorAll('[data-salvar-rateio]').forEach(btn => {
-            btn.addEventListener('click', () => this.salvarRateioManutencao(btn.dataset.salvarRateio));
+            btn.addEventListener('click', () => this.salvarEdicaoRateio(btn.dataset.salvarRateio));
         });
     }
 
-    atualizarPercentualManutencao(clienteCodigo, index, valor) {
-        const cliente = (this.rateioClientesManutencao || []).find(c => String(c.cliente) === String(clienteCodigo));
-        if (!cliente || !cliente.linhas[index]) return;
+    registrarEdicaoRateio(rateioId, campo, valor) {
+        if (!rateioId) return;
+        const linha = (this.rateioLinhas || []).find(l => String(l.rat_id) === String(rateioId));
+        if (!linha) return;
 
-        cliente.linhas[index].rat_percentual = valor;
-        this.atualizarResumoRateioCliente(clienteCodigo);
-    }
+        linha[campo] = valor;
+        this.rateioEdicoesPendentes[rateioId] = {
+            ...(this.rateioEdicoesPendentes[rateioId] || {}),
+            [campo]: valor
+        };
 
-    atualizarVigenciaInicioManutencao(clienteCodigo, index, valor) {
-        const cliente = (this.rateioClientesManutencao || []).find(c => String(c.cliente) === String(clienteCodigo));
-        if (!cliente || !cliente.linhas[index]) return;
-
-        cliente.linhas[index].rat_vigencia_inicio = normalizarDataISO(valor) || '';
-        this.marcarRoteiroPendente();
-    }
-
-    atualizarVigenciaFimManutencao(clienteCodigo, index, valor) {
-        const cliente = (this.rateioClientesManutencao || []).find(c => String(c.cliente) === String(clienteCodigo));
-        if (!cliente || !cliente.linhas[index]) return;
-
-        cliente.linhas[index].rat_vigencia_fim = normalizarDataISO(valor) || '';
-        this.marcarRoteiroPendente();
-    }
-
-    atualizarResumoRateioCliente(clienteCodigo) {
-        const total = this.obterTotalRateioCliente(clienteCodigo);
-        const ok = Math.abs(total - 100) <= 0.01;
-
-        const indicador = document.querySelector(`[data-total-cliente="${clienteCodigo}"]`);
-        if (indicador) {
-            indicador.textContent = `Total: ${total.toFixed(2)}%`;
-            indicador.classList.toggle('ok', ok);
-            indicador.classList.toggle('alerta', !ok);
-        }
-
-        const totalLinha = document.querySelector(`[data-total-cliente-soma="${clienteCodigo}"]`);
-        if (totalLinha) {
-            totalLinha.textContent = `${total.toFixed(2)}%`;
-            totalLinha.classList.toggle('alerta', !ok);
+        const linhaTabela = document.querySelector(`tr[data-rateio-id="${rateioId}"]`);
+        if (linhaTabela) {
+            linhaTabela.classList.add('pendente');
         }
     }
 
-    async salvarRateioManutencao(clienteCodigo) {
-        const cliente = (this.rateioClientesManutencao || []).find(c => String(c.cliente) === String(clienteCodigo));
-        if (!cliente) {
-            this.showNotification('Cliente não encontrado para salvar o rateio.', 'warning');
+    async salvarEdicaoRateio(rateioId) {
+        if (!rateioId) return;
+
+        const pendente = this.rateioEdicoesPendentes[rateioId] || {};
+        const linha = (this.rateioLinhas || []).find(l => String(l.rat_id) === String(rateioId));
+
+        if (!linha) {
+            this.showNotification('Registro de rateio não encontrado.', 'warning');
+            return;
+        }
+
+        const payload = {
+            rat_percentual: pendente.rat_percentual ?? linha.rat_percentual,
+            rat_vigencia_inicio: pendente.rat_vigencia_inicio ?? linha.rat_vigencia_inicio,
+            rat_vigencia_fim: pendente.rat_vigencia_fim ?? linha.rat_vigencia_fim
+        };
+
+        if (payload.rat_percentual === '' || payload.rat_percentual === null || Number.isNaN(Number(payload.rat_percentual))) {
+            this.showNotification('Informe um percentual válido para salvar.', 'warning');
+            return;
+        }
+
+        const valorNumerico = Number(payload.rat_percentual);
+        if (valorNumerico < 0 || valorNumerico > 100) {
+            this.showNotification('O percentual deve estar entre 0 e 100%.', 'warning');
             return;
         }
 
         try {
-            const linhasValidadas = this.validarRateioLocal(cliente.linhas);
-            const usuario = this.usuarioLogado?.username || 'desconhecido';
-            await db.salvarRateioCliente(clienteCodigo, linhasValidadas, usuario);
-            this.showNotification('Rateio salvo com sucesso!', 'success');
-            this.rateioClienteEmFoco = clienteCodigo;
-            await this.carregarListaRateioManutencao();
+            const resposta = await fetch(`${API_BASE_URL}/api/rateio/${rateioId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!resposta.ok) {
+                const detalhe = await resposta.text();
+                throw new Error(detalhe || 'Falha ao salvar rateio.');
+            }
+
+            const resultado = await resposta.json();
+            const atualizado = resultado?.data;
+            if (atualizado) {
+                Object.assign(linha, atualizado);
+            }
+
+            delete this.rateioEdicoesPendentes[rateioId];
+            this.showNotification('Rateio atualizado com sucesso.', 'success');
+            await this.carregarListaRateioManutencao(this.obterFiltrosRateio());
         } catch (error) {
             this.showNotification(error.message || 'Erro ao salvar rateio.', 'error');
         }
-    }
-
-    async selecionarClienteRateio(cliente) {
-        const codigo = cliente?.cliente || cliente?.cliente_codigo || cliente?.rat_cliente_codigo;
-        if (!codigo) return;
-
-        const vinculado = await db.verificarClienteVinculadoARoteiro(codigo);
-        if (!vinculado) {
-            this.showNotification('Cadastre o cliente em um roteiro antes de configurar o rateio.', 'warning');
-            return;
-        }
-
-        this.rateioClienteEmFoco = codigo;
-        await this.carregarListaRateioManutencao();
-        this.destacarClienteRateio(codigo);
-    }
-
-    destacarClienteRateio(clienteCodigo) {
-        const card = document.getElementById(`rateio-cliente-${clienteCodigo}`);
-        if (!card) return;
-
-        card.classList.add('destacado');
-        card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-        setTimeout(() => card.classList.remove('destacado'), 1600);
-    }
-
-    validarRateioLocal(linhas) {
-        const preenchidas = linhas.filter(linha => linha.rat_repositor_id && linha.rat_percentual !== '' && linha.rat_percentual !== null);
-        if (preenchidas.length === 0) {
-            throw new Error('Inclua ao menos um repositor com percentual para salvar o rateio.');
-        }
-
-        const total = preenchidas.reduce((acc, linha) => acc + Number(linha.rat_percentual || 0), 0);
-        const arredondado = Math.round(total * 100) / 100;
-        if (Math.abs(arredondado - 100) > 0.01) {
-            throw new Error(`O rateio deve totalizar 100%. Soma atual: ${arredondado.toFixed(2)}%.`);
-        }
-
-        const reposSet = new Set();
-        for (const linha of preenchidas) {
-            if (reposSet.has(linha.rat_repositor_id)) {
-                throw new Error('Há repositores repetidos no rateio.');
-            }
-            reposSet.add(linha.rat_repositor_id);
-        }
-
-        return preenchidas.map(linha => ({
-            ...linha,
-            rat_percentual: Number(linha.rat_percentual)
-        }));
     }
     // ==================== VALIDAÇÃO DE DADOS ====================
 
