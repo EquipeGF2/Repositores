@@ -107,6 +107,34 @@ async function gerarNomeCampanha({ parentFolderId, clienteIdNorm, nomeClienteSan
   return `${base}${sufixoFinal}.jpg`;
 }
 
+function validarSessaoAbertaParaOperacao(sessao, { clienteIdNorm, repIdNumber }) {
+  if (!sessao) {
+    return { ok: false, status: 404, code: 'ATENDIMENTO_NAO_ENCONTRADO', message: 'Atendimento não encontrado' };
+  }
+
+  if (!sessao.checkin_at) {
+    return { ok: false, status: 409, code: 'CHECKIN_NAO_INICIADO', message: 'Check-in não iniciado para este atendimento.' };
+  }
+
+  if (sessao.cancelado_em || String(sessao.status).toUpperCase() === 'CANCELADO') {
+    return { ok: false, status: 409, code: 'ATENDIMENTO_CANCELADO', message: 'Atendimento cancelado no sistema.' };
+  }
+
+  if (sessao.checkout_at || String(sessao.status).toUpperCase() === 'FECHADA') {
+    return { ok: false, status: 409, code: 'ATENDIMENTO_FECHADO', message: 'Atendimento já finalizado no sistema.' };
+  }
+
+  if (repIdNumber && Number(sessao.rep_id) !== Number(repIdNumber)) {
+    return { ok: false, status: 409, code: 'ATENDIMENTO_REPOSITOR_DIFERENTE', message: 'Atendimento pertence a outro repositor.' };
+  }
+
+  if (clienteIdNorm && normalizeClienteId(sessao.cliente_id) !== clienteIdNorm) {
+    return { ok: false, status: 409, code: 'ATENDIMENTO_CLIENTE_DIFERENTE', message: 'Atendimento pertence a outro cliente.' };
+  }
+
+  return { ok: true, sessao };
+}
+
 function gerarNomeArquivo({ repId, clienteIdNorm, tipo, sessaoId, dataHoraIso, sequencia }) {
   const data = new Date(dataHoraIso);
   const pad = (num, size = 2) => String(num).padStart(size, '0');
@@ -385,6 +413,8 @@ router.post('/visitas', upload.any(), async (req, res) => {
     const sessaoExistente = dataReferencia
       ? await tursoService.obterSessaoPorChave(repIdNumber, clienteIdNorm, dataReferencia)
       : null;
+    const rvSessaoId = rv_id || req.body?.sessao_id || req.body?.rv_sessao_id || null;
+    const sessaoPorId = rvSessaoId ? await tursoService.obterSessaoPorId(rvSessaoId) : null;
 
     if (rvTipo === 'checkin') {
       if (sessaoEmAndamentoCliente) {
@@ -438,20 +468,30 @@ router.post('/visitas', upload.any(), async (req, res) => {
     }
 
     if (rvTipo === 'checkout') {
-      const rvSessaoId = rv_id || req.body?.sessao_id || req.body?.rv_sessao_id || null;
-      const sessaoCheckout = rvSessaoId
-        ? await tursoService.obterSessaoPorId(rvSessaoId)
-        : null;
-
-      const sessaoAlvo = sessaoCheckout || sessaoEmAndamentoCliente || sessaoAberta;
-
-      if (!sessaoAlvo) {
-        return res.status(400).json({
+      if (rvSessaoId && !sessaoPorId) {
+        return res.status(404).json({
           ok: false,
-          code: 'CHECKIN_NAO_ENCONTRADO',
-          message: 'Não há check-in em aberto para este cliente. Faça o check-in primeiro.'
+          code: 'ATENDIMENTO_NAO_ENCONTRADO',
+          message: 'Atendimento não encontrado para o checkout solicitado.'
         });
       }
+
+      const sessaoAlvoBase = sessaoPorId || sessaoEmAndamentoCliente || sessaoAberta;
+
+      const sessaoValidacao = validarSessaoAbertaParaOperacao(sessaoAlvoBase, {
+        clienteIdNorm,
+        repIdNumber
+      });
+
+      if (!sessaoValidacao.ok) {
+        return res.status(sessaoValidacao.status).json({
+          ok: false,
+          code: sessaoValidacao.code,
+          message: sessaoValidacao.message
+        });
+      }
+
+      const sessaoAlvo = sessaoValidacao.sessao;
       if (sessaoAberta && normalizeClienteId(sessaoAberta.cliente_id) !== clienteIdNorm) {
         console.info('OPEN_ATTENDANCE_BLOCK', { rv_id: sessaoAberta.sessao_id, rep_id: repIdNumber, cliente_id: clienteIdNorm });
         return res.status(409).json({
@@ -466,13 +506,33 @@ router.post('/visitas', upload.any(), async (req, res) => {
         : null;
     }
     if (rvTipo === 'campanha') {
-      if (!sessaoExistente || !sessaoExistente.checkin_at) {
+      if (rvSessaoId && !sessaoPorId) {
+        return res.status(404).json({ ok: false, code: 'ATENDIMENTO_NAO_ENCONTRADO', message: 'Atendimento não encontrado' });
+      }
+
+      const sessaoBaseCampanha = rvSessaoId ? sessaoPorId : sessaoExistente;
+      const sessaoValidada = validarSessaoAbertaParaOperacao(sessaoBaseCampanha, {
+        clienteIdNorm,
+        repIdNumber
+      });
+
+      if (!sessaoValidada.ok) {
+        return res.status(sessaoValidada.status).json({
+          ok: false,
+          code: sessaoValidada.code,
+          message: sessaoValidada.message
+        });
+      }
+
+      const sessaoCampanha = sessaoValidada.sessao;
+
+      if (!sessaoCampanha || !sessaoCampanha.checkin_at) {
         return res.status(409).json({ ok: false, code: 'CAMPANHA_SEM_CHECKIN', message: 'Faça o check-in antes de registrar campanha.' });
       }
-      if (sessaoExistente.checkout_at) {
+      if (sessaoCampanha.checkout_at) {
         return res.status(409).json({ ok: false, code: 'CAMPANHA_APOS_CHECKOUT', message: 'Campanha não permitida após o check-out.' });
       }
-      sessaoId = sessaoExistente.sessao_id;
+      sessaoId = sessaoCampanha.sessao_id;
     }
 
     const mimeType = foto_mime || 'image/jpeg';
@@ -882,6 +942,48 @@ router.get('/sessao-aberta', async (req, res) => {
   }
 });
 
+// ==================== GET /api/registro-rota/atendimento-aberto ====================
+router.get('/atendimento-aberto', async (req, res) => {
+  try {
+    const { repositor_id } = req.query;
+
+    if (!repositor_id) {
+      return res.status(400).json({ ok: false, code: 'REP_ID_REQUIRED', message: 'repositor_id é obrigatório' });
+    }
+
+    const repIdNumber = Number(repositor_id);
+    if (Number.isNaN(repIdNumber)) {
+      return res.status(400).json({ ok: false, code: 'INVALID_REP_ID', message: 'repositor_id deve ser numérico' });
+    }
+
+    const sessao = await tursoService.buscarSessaoAbertaPorRep(repIdNumber, { dataPlanejada: null });
+    const resposta = sessao
+      ? {
+          existe: true,
+          rv_id: sessao.sessao_id,
+          cliente_id: normalizeClienteId(sessao.cliente_id),
+          checkin_em: sessao.checkin_at,
+          status: sessao.status || 'ABERTA'
+        }
+      : {
+          existe: false,
+          rv_id: null,
+          cliente_id: null,
+          checkin_em: null,
+          status: null
+        };
+
+    return res.json(sanitizeForJson({ ok: true, ...resposta }));
+  } catch (error) {
+    if (error instanceof DatabaseNotConfiguredError) {
+      return res.status(503).json({ ok: false, code: error.code, message: error.message });
+    }
+
+    console.error('Erro ao buscar atendimento aberto:', error?.stack || error);
+    return res.status(500).json({ ok: false, code: 'ATENDIMENTO_ABERTO_ERROR', message: 'Erro ao buscar atendimento aberto' });
+  }
+});
+
 // ==================== GET /api/registro-rota/atendimentos-abertos ====================
 router.get('/atendimentos-abertos', async (req, res) => {
   try {
@@ -983,12 +1085,10 @@ router.patch('/sessoes/:sessao_id/servicos', async (req, res) => {
     }
 
     const sessao = await tursoService.obterSessaoPorId(sessao_id);
-    if (!sessao) {
-      return res.status(404).json({ ok: false, code: 'SESSAO_NAO_ENCONTRADA', message: 'Sessão não encontrada' });
-    }
+    const validacao = validarSessaoAbertaParaOperacao(sessao, { clienteIdNorm: null, repIdNumber: null });
 
-    if (String(sessao.status).toUpperCase() === 'FECHADA' || sessao.checkout_at) {
-      return res.status(409).json({ ok: false, code: 'SESSAO_FECHADA', message: 'Não é possível editar serviços após checkout.' });
+    if (!validacao.ok) {
+      return res.status(validacao.status).json({ ok: false, code: validacao.code, message: validacao.message });
     }
 
     const atualizada = await tursoService.atualizarServicosSessao(sessao_id, {

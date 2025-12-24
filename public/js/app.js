@@ -240,6 +240,79 @@ class App {
         }
     }
 
+
+    async tratarAtendimentoNaoEncontrado(repId, clienteId, clienteNome) {
+        const normalizeClienteId = (v) => String(v ?? '').trim().replace(/\.0$/, '');
+        const clienteIdNorm = normalizeClienteId(clienteId);
+        const atendimentoBackend = await this.syncAtendimentoAberto(repId);
+        const existeBackend = atendimentoBackend?.existe && atendimentoBackend?.rv_id;
+        const mesmoCliente = existeBackend
+            ? normalizeClienteId(atendimentoBackend.cliente_id) === clienteIdNorm
+            : false;
+
+        const conteudo = document.createElement('div');
+        conteudo.className = 'modal-body-text';
+        conteudo.innerHTML = `
+            <p style="margin-bottom: 12px;">Atendimento não encontrado. Deseja limpar e iniciar novo check-in?</p>
+            ${existeBackend && !mesmoCliente ? `<p style="margin-bottom: 12px;">Atendimento em aberto encontrado para o cliente ${atendimentoBackend.cliente_id}.</p>` : ''}
+        `;
+
+        const rodape = document.createElement('div');
+        rodape.className = 'modal-footer modal-footer-inline';
+
+        const btnFechar = document.createElement('button');
+        btnFechar.className = 'btn btn-secondary';
+        btnFechar.type = 'button';
+        btnFechar.textContent = 'Fechar';
+
+        const btnLimpar = document.createElement('button');
+        btnLimpar.className = 'btn btn-warning';
+        btnLimpar.type = 'button';
+        btnLimpar.textContent = 'Limpar atendimento local';
+
+        const btnCancelar = document.createElement('button');
+        btnCancelar.className = 'btn btn-danger';
+        btnCancelar.type = 'button';
+        btnCancelar.textContent = 'Cancelar atendimento';
+        btnCancelar.style.display = mesmoCliente ? 'inline-flex' : 'none';
+
+        rodape.appendChild(btnFechar);
+        rodape.appendChild(btnLimpar);
+        rodape.appendChild(btnCancelar);
+
+        const modal = this.criarModalOverlay({
+            titulo: 'Atendimento não encontrado',
+            conteudo,
+            rodape
+        });
+
+        const limparLocal = () => {
+            this.atualizarStatusClienteLocal(clienteIdNorm, {
+                status: 'sem_checkin',
+                rv_id: null,
+                atividades_count: 0,
+                rep_id: repId
+            });
+            this.limparAtendimentoLocal(repId, clienteIdNorm);
+            this.carregarRoteiroRepositor();
+        };
+
+        btnLimpar.onclick = () => {
+            limparLocal();
+            modal.remove();
+            this.showNotification('Atendimento local limpo. Inicie um novo check-in.', 'info');
+        };
+
+        btnCancelar.onclick = () => {
+            modal.remove();
+            if (mesmoCliente) {
+                this.confirmarCancelarAtendimento(repId, clienteIdNorm, clienteNome || clienteIdNorm);
+            }
+        };
+
+        btnFechar.onclick = () => modal.remove();
+    }
+
     marcarPerformance(nome) {
         try {
             performance.mark(nome);
@@ -5365,6 +5438,26 @@ class App {
         return `ATENDIMENTO_ABERTO_${repId}_${clienteId}`;
     }
 
+    listarAtendimentosLocais(repId) {
+        try {
+            const prefixo = `ATENDIMENTO_ABERTO_${repId}_`;
+            const encontrados = [];
+
+            for (let i = 0; i < localStorage.length; i += 1) {
+                const chave = localStorage.key(i);
+                if (chave && chave.startsWith(prefixo)) {
+                    const clienteId = chave.replace(prefixo, '');
+                    encontrados.push({ chave, clienteId });
+                }
+            }
+
+            return encontrados;
+        } catch (error) {
+            console.warn('Não foi possível listar atendimentos locais', error);
+            return [];
+        }
+    }
+
     getRegistroRotaContextKey() {
         return 'REGISTRO_ROTA_CONTEXTO';
     }
@@ -5381,9 +5474,16 @@ class App {
     }
 
     persistirAtendimentoLocal(repId, clienteId, dados) {
+        if (!dados?.rv_id) return;
         try {
             const chave = this.getAtendimentoStorageKey(repId, clienteId);
-            localStorage.setItem(chave, JSON.stringify(dados));
+            const payload = {
+                rv_id: dados.rv_id,
+                repositor_id: repId,
+                cliente_id: clienteId,
+                salvo_em: new Date().toISOString()
+            };
+            localStorage.setItem(chave, JSON.stringify(payload));
         } catch (error) {
             console.warn('Não foi possível persistir atendimento localmente', error);
         }
@@ -5517,6 +5617,8 @@ class App {
 
         this.salvarContextoRegistroRota(repId, dataVisita);
 
+        await this.syncAtendimentoAberto(repId);
+
         // Mostrar loading
         container.innerHTML = `
             <div style="text-align:center;padding:40px;">
@@ -5567,23 +5669,7 @@ class App {
 
             if (aberto.rv_id) {
                 this.persistirAtendimentoLocal(repId, cliNorm, {
-                    rv_id: aberto.rv_id,
-                    atividades_count: atividades
-                });
-            }
-        });
-
-        roteiro.forEach((cliente) => {
-            const cliNorm = normalizeClienteId(cliente.cli_codigo);
-            const salvo = this.recuperarAtendimentoPersistido(repId, cliNorm);
-
-            if (salvo && (!mapaResumo.has(cliNorm) || mapaResumo.get(cliNorm).status !== 'finalizado')) {
-                const atual = mapaResumo.get(cliNorm) || {};
-                mapaResumo.set(cliNorm, {
-                    ...atual,
-                    status: 'em_atendimento',
-                    rv_id: salvo.rv_id || atual.rv_id,
-                    atividades_count: Number(salvo.atividades_count || atual.atividades_count || 0)
+                    rv_id: aberto.rv_id
                 });
             }
         });
@@ -6027,6 +6113,60 @@ class App {
             console.warn('Não foi possível obter detalhes do erro da API:', err);
             return '';
         }
+    }
+
+    async buscarAtendimentoAberto(repId) {
+        try {
+            const url = `${this.registroRotaState.backendUrl}/api/registro-rota/atendimento-aberto?repositor_id=${repId}`;
+            const response = await fetch(url);
+            if (!response.ok) return null;
+
+            const data = await response.json();
+            return data || null;
+        } catch (error) {
+            console.warn('Erro ao buscar atendimento aberto:', error);
+            return null;
+        }
+    }
+
+    async syncAtendimentoAberto(repId) {
+        const normalizeClienteId = (v) => String(v ?? '').trim().replace(/\.0$/, '');
+        const atendimento = await this.buscarAtendimentoAberto(repId);
+        const existeBackend = atendimento?.existe && atendimento?.rv_id;
+
+        const locais = this.listarAtendimentosLocais(repId);
+        let corrigiu = false;
+
+        if (!existeBackend && locais.length > 0) {
+            locais.forEach(({ clienteId }) => this.limparAtendimentoLocal(repId, clienteId));
+            corrigiu = true;
+        }
+
+        if (!(this.registroRotaState.atendimentosAbertos instanceof Map)) {
+            this.registroRotaState.atendimentosAbertos = new Map();
+        }
+
+        this.registroRotaState.atendimentosAbertos.clear();
+
+        if (existeBackend) {
+            const clienteIdNorm = normalizeClienteId(atendimento.cliente_id);
+            const sessaoRecon = {
+                sessao_id: atendimento.rv_id,
+                cliente_id: clienteIdNorm,
+                checkin_at: atendimento.checkin_em,
+                rep_id: repId,
+                status: atendimento.status || 'ABERTA',
+                atividades_count: 0
+            };
+
+            this.reconciliarSessaoAbertaLocal(sessaoRecon, repId);
+        }
+
+        if (corrigiu) {
+            this.showNotification('Atendimento não encontrado, reiniciando sessão.', 'info');
+        }
+
+        return atendimento;
     }
 
     async buscarSessaoAberta(repId, dataPlanejada) {
@@ -6871,8 +7011,25 @@ class App {
             });
 
             if (!response.ok) {
-                const detalhesErro = await this.extrairMensagemErro(response);
-                throw new Error(detalhesErro || `Erro ao salvar visita (status ${response.status})`);
+                let corpoErro = null;
+                let detalhesErro = '';
+
+                try {
+                    const clone = response.clone();
+                    corpoErro = await clone.json();
+                    detalhesErro = corpoErro?.message || '';
+                } catch (_) {
+                    try {
+                        detalhesErro = await response.text();
+                    } catch (_) {
+                        detalhesErro = '';
+                    }
+                }
+
+                const erro = new Error(detalhesErro || `Erro ao salvar visita (status ${response.status})`);
+                erro.status = response.status;
+                erro.code = corpoErro?.code;
+                throw erro;
             }
 
             const resposta = await response.json();
@@ -6880,6 +7037,10 @@ class App {
             const rvResposta = resposta?.rv_id || resposta?.sessao_id || rvSessaoId;
 
             if (tipoRegistro === 'checkin') {
+                if (!rvResposta) {
+                    this.showNotification('Não foi possível identificar o atendimento. Tente novamente.', 'error');
+                    return;
+                }
                 this.atualizarStatusClienteLocal(clienteId, {
                     status: 'em_atendimento',
                     checkin_data_hora: dataRegistro,
@@ -6891,6 +7052,10 @@ class App {
             }
 
             if (tipoRegistro === 'checkout') {
+                if (!rvResposta) {
+                    this.showNotification('Não foi possível identificar o atendimento para checkout.', 'error');
+                    return;
+                }
                 this.atualizarStatusClienteLocal(clienteId, {
                     status: 'finalizado',
                     checkout_data_hora: dataRegistro,
@@ -6902,6 +7067,10 @@ class App {
             }
 
             if (tipoRegistro === 'campanha') {
+                if (!rvResposta) {
+                    this.showNotification('Não foi possível identificar o atendimento para campanha.', 'error');
+                    return;
+                }
                 const atuais = Number(statusCliente?.atividades_count || atendimentoPersistido.atividades_count || 0);
                 const novas = Math.max(1, listaFotos.length || 1);
 
@@ -6919,7 +7088,12 @@ class App {
             this.carregarRoteiroRepositor();
         } catch (error) {
             console.error('Erro ao salvar visita:', error);
-            this.showNotification('Erro ao salvar: ' + error.message, 'error');
+            const mensagem = String(error?.message || '').toLowerCase();
+            if (error?.status === 404 || mensagem.includes('não há check-in em aberto') || mensagem.includes('não encontrado')) {
+                await this.tratarAtendimentoNaoEncontrado(repId, clienteId, clienteNome);
+            } else {
+                this.showNotification('Erro ao salvar: ' + error.message, 'error');
+            }
         } finally {
             if (btnSalvar) {
                 btnSalvar.disabled = false;
