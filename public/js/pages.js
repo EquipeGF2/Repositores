@@ -679,7 +679,7 @@ export const pages = {
                                 <p class="form-card-eyebrow">Clientes</p>
                                 <h4>Clientes da cidade selecionada</h4>
                             </div>
-                        <button class="btn btn-primary btn-sm btn-compact" id="btnAdicionarClienteRoteiro">+ Adicionar cliente</button>
+                        <button class="btn btn-primary btn-sm btn-compact" id="btnAdicionarClienteRoteiro">➕ Cliente</button>
                         </div>
                     <div class="card-body">
                         <div id="roteiroClientesMensagem" class="roteiro-hint"></div>
@@ -3582,13 +3582,24 @@ export const pageTitles = {
     'consulta-alteracoes': 'Consulta de Alterações',
     'consulta-roteiro': 'Consulta de Roteiro',
     'custos-repositor': 'Custos por Repositor',
-  'estrutura-banco-comercial': 'Estrutura do Banco Comercial',
-  'controle-acessos': 'Controle de Acessos',
-  'roteiro-repositor': 'Roteiro do Repositor',
-  'registro-rota': 'Registro de Rota',
-  'consulta-visitas': 'Consulta de Visitas',
-  'consulta-campanha': 'Consulta Campanha',
-  'documentos': 'Registro de Documentos',
-  'consulta-documentos': 'Consulta de Documentos',
-  'analise-performance': 'Visitas'
+    'estrutura-banco-comercial': 'Estrutura do Banco Comercial',
+    'controle-acessos': 'Controle de Acessos',
+    'roteiro-repositor': 'Roteiro do Repositor',
+    'registro-rota': 'Registro de Rota',
+    'consulta-visitas': 'Consulta de Visitas',
+    'consulta-campanha': 'Consulta Campanha',
+    'documentos': 'Registro de Documentos',
+    'consulta-documentos': 'Consulta de Documentos',
+    'analise-performance': 'Visitas'
+};
+
+export const mobilePageTitles = {
+    'cadastro-repositor': 'Repositores',
+    'registro-rota': 'Rota',
+    'consulta-visitas': 'Visitas',
+    'consulta-campanha': 'Campanha',
+    'documentos': 'Docs',
+    'consulta-documentos': 'Docs',
+    'roteiro-repositor': 'Roteiro',
+    'cadastro-rateio': 'Rateio'
 };

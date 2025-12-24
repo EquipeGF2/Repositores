@@ -4,7 +4,7 @@
  */
 
 import { db } from './db.js';
-import { pages, pageTitles } from './pages.js';
+import { mobilePageTitles, pages, pageTitles } from './pages.js';
 import { ACL_RECURSOS } from './acl-resources.js';
 import { geoService } from './geo.js';
 import { formatarDataISO, normalizarDataISO, normalizarSupervisor, normalizarTextoCadastro, formatarGrupo, documentoParaBusca, documentoParaExibicao } from './utils.js';
@@ -166,6 +166,8 @@ class App {
             ultimaCaptura: geoService.lastLocation || null,
             overlay: null
         };
+        this.mobileHeaderQuery = window.matchMedia('(max-width: 480px)');
+        this.modalStateAtivo = null;
         this.init();
     }
 
@@ -181,6 +183,7 @@ class App {
         };
 
         this.setupShellResponsiva();
+        this.setupHistoryNavigation();
         this.marcarPerformance('shell_ready');
         this.renderBootPlaceholder();
 
@@ -224,8 +227,9 @@ class App {
             return;
         }
 
+        const paginaInicial = this.definirPaginaInicial();
         // Carrega a página inicial
-        await this.navigateTo(this.currentPage);
+        await this.navigateTo(paginaInicial, {}, { replaceHistory: true });
         this.marcarPerformance('primeira_pagina_renderizada');
         this.registrarResumoPerformance();
         this.iniciarKeepAliveBackend();
@@ -474,6 +478,12 @@ class App {
 
         this.closeSidebarMenu = fecharMenu;
 
+        const aplicarModoMobileHeader = () => {
+            const mobile = this.estaNoModoMobile();
+            document.body.classList.toggle('mobile-header', mobile);
+            this.atualizarTituloPaginaAtual();
+        };
+
         sidebarToggle.addEventListener('click', alternarMenu);
         sidebarBackdrop.addEventListener('click', fecharMenu);
 
@@ -481,7 +491,42 @@ class App {
             if (window.innerWidth > 992) {
                 fecharMenu();
             }
+            aplicarModoMobileHeader();
         });
+
+        aplicarModoMobileHeader();
+    }
+
+    setupHistoryNavigation() {
+        const paginaHash = this.obterPaginaDoHash();
+        if (paginaHash) {
+            this.currentPage = paginaHash;
+        }
+
+        const estadoInicial = { viewId: this.currentPage, params: {} };
+        history.replaceState(estadoInicial, '', `#${this.currentPage}`);
+
+        window.addEventListener('popstate', (event) => {
+            if (this.modalStateAtivo === 'campanha-fotos') {
+                this.fecharModalImagensCampanha(true);
+            }
+
+            const destino = event.state?.viewId || 'home';
+            const params = event.state?.params || {};
+            this.navigateTo(destino, params, { skipHistory: true, replaceHistory: true });
+        });
+    }
+
+    definirPaginaInicial() {
+        return this.obterPaginaDoHash() || this.currentPage;
+    }
+
+    obterPaginaDoHash() {
+        const hash = (window.location.hash || '').replace('#', '');
+        if (hash && pages[hash]) {
+            return hash;
+        }
+        return null;
     }
 
     setupEventListeners() {
@@ -799,7 +844,36 @@ class App {
         }
     }
 
-    async navigateTo(pageName) {
+    estaNoModoMobile() {
+        return this.mobileHeaderQuery?.matches;
+    }
+
+    obterTituloPagina(pageName) {
+        if (this.estaNoModoMobile()) {
+            return mobilePageTitles[pageName] || pageTitles[pageName] || 'Registro de Rota';
+        }
+        return pageTitles[pageName] || 'Registro de Rota';
+    }
+
+    atualizarTituloPaginaAtual() {
+        if (this.elements?.pageTitle) {
+            this.elements.pageTitle.textContent = this.obterTituloPagina(this.currentPage);
+        }
+    }
+
+    registrarEstadoNavegacao(pageName, params = {}, replace = false) {
+        const estado = { viewId: pageName, params };
+        const destino = `#${pageName}`;
+
+        if (replace) {
+            history.replaceState(estado, '', destino);
+        } else {
+            history.pushState(estado, '', destino);
+        }
+    }
+
+    async navigateTo(pageName, params = {}, options = {}) {
+        const { skipHistory = false, replaceHistory = false } = options;
         if (!this.usuarioLogado) {
             const temSessao = await this.ensureUsuarioLogado();
             if (!temSessao) return;
@@ -820,7 +894,11 @@ class App {
         });
 
         // Atualiza título
-        this.elements.pageTitle.textContent = pageTitles[pageName] || 'Registro de Rota';
+        this.elements.pageTitle.textContent = this.obterTituloPagina(pageName);
+
+        if (!skipHistory) {
+            this.registrarEstadoNavegacao(pageName, params, replaceHistory);
+        }
 
         // Mostra loading
         this.elements.contentBody.innerHTML = `
@@ -841,6 +919,7 @@ class App {
             const pageContent = await pageRenderer();
             this.elements.contentBody.innerHTML = pageContent;
             this.currentPage = pageName;
+            this.atualizarTituloPaginaAtual();
 
             if (pageName === 'cadastro-repositor') {
                 await this.aplicarFiltrosCadastroRepositores();
@@ -8673,6 +8752,10 @@ class App {
     }
 
     obterLayoutsCampanhaPermitidos(sizeMode = 'md') {
+        if (this.estaNoModoMobile()) {
+            return ['blocos'];
+        }
+
         const mapa = {
             sm: ['lista'],
             md: ['detalhes', 'blocos']
@@ -8684,9 +8767,11 @@ class App {
     normalizarCampanhaViewState() {
         const base = this.campanhaViewState || {};
         const sizePermitidos = ['sm', 'md'];
-        const sizeMode = sizePermitidos.includes(base.sizeMode) ? base.sizeMode : 'md';
+        const sizeMode = sizePermitidos.includes(base.sizeMode) ? base.sizeMode : (this.estaNoModoMobile() ? 'sm' : 'md');
         const permitidos = this.obterLayoutsCampanhaPermitidos(sizeMode);
-        const layoutMode = permitidos.includes(base.layoutMode) ? base.layoutMode : permitidos[0];
+        const layoutMode = this.estaNoModoMobile()
+            ? 'blocos'
+            : (permitidos.includes(base.layoutMode) ? base.layoutMode : permitidos[0]);
 
         if (!this.campanhaViewState || this.campanhaViewState.sizeMode !== sizeMode || this.campanhaViewState.layoutMode !== layoutMode) {
             this.campanhaViewState = { ...base, sizeMode, layoutMode };
@@ -8871,6 +8956,9 @@ class App {
 
         this.campanhaViewState = this.campanhaViewState || { sizeMode: 'md', layoutMode: 'blocos' };
         this.campanhaGrupoSelecionado = grupo;
+        if (this.estaNoModoMobile()) {
+            this.campanhaViewState = { sizeMode: 'sm', layoutMode: 'blocos' };
+        }
         this.normalizarCampanhaViewState();
         this.resetarSelecaoCampanha();
 
@@ -8887,18 +8975,19 @@ class App {
                         <button class="modal-close" aria-label="Fechar" onclick="app.fecharModalImagensCampanha()">&times;</button>
                     </div>
                     <div class="campanha-modal-body">
-                        <div class="campanha-control-bar">
+                        <div class="campanha-control-bar" data-mobile-control="${this.estaNoModoMobile()}">
                             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                                 <span style="font-weight:700; color:#374151;">Tamanho:</span>
                                 <button class="toggle-chip" data-campanha-size="sm">Pequenas</button>
                                 <button class="toggle-chip" data-campanha-size="md">Médias</button>
                             </div>
+                            ${this.estaNoModoMobile() ? '' : `
                             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                                 <span style="font-weight:700; color:#374151;">Layout:</span>
                                 <button class="toggle-chip" data-campanha-layout="lista">Lista</button>
                                 <button class="toggle-chip" data-campanha-layout="detalhes">Detalhes</button>
                                 <button class="toggle-chip" data-campanha-layout="blocos">Blocos</button>
-                            </div>
+                            </div>`}
                             <div class="campanha-selecao-bar">
                                 <span class="campanha-contador">Selecionadas: <strong id="campanhaSelecionadasCount">0</strong></span>
                                 <button id="btnCampanhaLimparSelecao" class="btn btn-secondary" disabled>🧹 Limpar seleção</button>
@@ -8918,6 +9007,9 @@ class App {
         modalDiv.innerHTML = modalHtml;
         document.body.appendChild(modalDiv.firstElementChild);
         document.body.classList.add('modal-open');
+        this.modalStateAtivo = 'campanha-fotos';
+        const hashAtual = window.location.hash || `#${this.currentPage}`;
+        history.pushState({ viewId: this.currentPage, modal: 'campanha-fotos' }, '', hashAtual);
 
         this.aplicarEstadoCampanha();
         this.renderizarGaleriaCampanha();
@@ -8940,14 +9032,22 @@ class App {
         document.addEventListener('keydown', this.campanhaModalEscHandler);
     }
 
-    fecharModalImagensCampanha() {
+    fecharModalImagensCampanha(peloHistorico = false) {
         const modal = document.getElementById('modalImagensCampanha');
         if (modal) modal.remove();
         document.body.classList.remove('modal-open');
+        this.modalStateAtivo = null;
         this.fecharViewerCampanha();
         if (this.campanhaModalEscHandler) {
             document.removeEventListener('keydown', this.campanhaModalEscHandler);
             this.campanhaModalEscHandler = null;
+        }
+
+        if (!peloHistorico) {
+            const estadoAtual = history.state;
+            if (estadoAtual?.modal === 'campanha-fotos') {
+                history.back();
+            }
         }
     }
 

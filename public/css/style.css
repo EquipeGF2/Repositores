@@ -65,6 +65,7 @@ body {
     background: var(--bg-gray);
     color: var(--gray-900);
     line-height: 1.6;
+    scroll-padding-top: 80px;
 }
 
 /* Utilitários gerais */
@@ -126,7 +127,7 @@ body {
     height: 100vh;
     overflow-y: auto;
     box-shadow: var(--shadow-md);
-    z-index: 1000;
+    z-index: 1200;
 }
 
 .sidebar-header {
@@ -249,7 +250,7 @@ body {
     box-shadow: var(--shadow-sm);
     position: sticky;
     top: 0;
-    z-index: 1100;
+    z-index: 900;
     min-height: 72px;
 }
 
@@ -265,6 +266,22 @@ body {
     flex: 1;
     min-width: 0;
     padding: 4px 0;
+}
+
+.mobile-header .content-header {
+    gap: var(--spacing-sm);
+    padding: var(--spacing) var(--spacing);
+    min-height: 64px;
+}
+
+.mobile-header .content-header h2 {
+    font-size: 1.25rem;
+    max-width: 100%;
+    white-space: nowrap;
+}
+
+.mobile-header .content-header .user-info {
+    display: none;
 }
 
 .user-info {
@@ -299,7 +316,7 @@ body {
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.35);
-    z-index: 900;
+    z-index: 1150;
     display: none;
 }
 
@@ -2110,13 +2127,14 @@ tbody td {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
-    min-width: 90px;
-    max-width: 110px;
+    min-width: 80px;
+    max-width: 100px;
     margin-right: 0;
+    flex: 0 0 auto;
 }
 
 .cidade-ordem-wrapper input {
-    max-width: 110px;
+    max-width: 100px;
     padding: 0.55rem 0.65rem;
 }
 
@@ -2477,6 +2495,10 @@ tbody td {
 
     .btn {
         width: 100%;
+    }
+
+    .card-header .btn {
+        width: auto;
     }
 }
 
