@@ -67,11 +67,46 @@ class GoogleDriveService {
 
     return {
       client_id_suffix: clientId ? String(clientId).slice(-6) : undefined,
+      client_id_from: config?.oauth?.sources?.clientId,
       refresh_token_length: refreshTokenStr ? refreshTokenStr.length : 0,
       refresh_token_trim_changed: refreshTokenStr ? refreshTokenStr.trim() !== refreshTokenStr : false,
       google_error: error?.response?.data?.error || error?.code || error?.message,
       google_error_description: error?.response?.data?.error_description
     };
+  }
+
+  buildConfigDiagnostics({ requestId } = {}) {
+    const oauth = config?.oauth || {};
+    const clientIdStr = oauth?.clientId ? String(oauth.clientId) : '';
+    const clientSecretStr = oauth?.clientSecret ? String(oauth.clientSecret) : '';
+    const refreshTokenStr = oauth?.refreshToken ? String(oauth.refreshToken) : '';
+    const redirectUriStr = oauth?.redirectUri ? String(oauth.redirectUri) : '';
+
+    return {
+      requestId,
+      stage: 'DRIVE_CONFIG',
+      client_id_suffix: clientIdStr ? clientIdStr.slice(-6) : undefined,
+      client_id_length: clientIdStr.length,
+      client_id_from: oauth?.sources?.clientId,
+      client_secret_length: clientSecretStr.length,
+      client_secret_from: oauth?.sources?.clientSecret,
+      refresh_token_length: refreshTokenStr.length,
+      refresh_token_from: oauth?.sources?.refreshToken,
+      refresh_token_trim_changed: refreshTokenStr ? refreshTokenStr.trim() !== refreshTokenStr : false,
+      redirect_uri_from: oauth?.sources?.redirectUri,
+      missing_client_id: !clientIdStr,
+      missing_client_secret: !clientSecretStr,
+      missing_refresh_token: !refreshTokenStr,
+      missing_redirect_uri: !redirectUriStr
+    };
+  }
+
+  logDriveConfig(diagnostics) {
+    try {
+      console.info(JSON.stringify({ code: 'DRIVE_CONFIG', ...diagnostics }));
+    } catch (error) {
+      console.info('DRIVE_CONFIG', diagnostics, error?.message);
+    }
   }
 
   logDriveError(stage, error, extras = {}) {
@@ -91,12 +126,25 @@ class GoogleDriveService {
     }
   }
 
-  async authenticate({ forceValidation = false } = {}) {
+  async authenticate({ forceValidation = false, requestId } = {}) {
+    const configDiag = this.buildConfigDiagnostics({ requestId });
+    this.logDriveConfig(configDiag);
+
     if (this.auth && this.drive && this.authValidationDone && !forceValidation) return;
 
+    const missingCredencial = configDiag.missing_client_id
+      || configDiag.missing_client_secret
+      || configDiag.missing_refresh_token
+      || configDiag.missing_redirect_uri;
+
     try {
-      if (!this.isConfigured()) {
-        throw new OAuthNotConfiguredError();
+      if (missingCredencial) {
+        throw new IntegrationAuthError({
+          message: 'Configuração do Drive ausente no servidor.',
+          code: 'DRIVE_MISCONFIG',
+          httpStatus: 503,
+          stage: 'DRIVE_CONFIG'
+        });
       }
 
       if (!this.auth || !this.drive) {
@@ -116,23 +164,13 @@ class GoogleDriveService {
       this.auth = null;
       this.drive = null;
       this.authValidationDone = false;
-      this.logDriveError('DRIVE_AUTH', mapped);
+      this.logDriveError('DRIVE_AUTH', mapped, { requestId });
       throw mapped;
     }
   }
 
-  isConfigured() {
-    return Boolean(
-      config.drive.rootFolderId &&
-      config.oauth.refreshToken &&
-      config.oauth.clientId &&
-      config.oauth.clientSecret &&
-      config.oauth.redirectUri
-    );
-  }
-
-  async criarPastaRepositor(repId, repoNome) {
-    await this.authenticate();
+  async criarPastaRepositor(repId, repoNome, { requestId } = {}) {
+    await this.authenticate({ requestId });
 
     // Verificar se já existe no cache
     if (this.folderCache.has(repId)) {
@@ -184,8 +222,8 @@ class GoogleDriveService {
     }
   }
 
-  async createFolderIfNotExists(parentId, folderName) {
-    await this.authenticate();
+  async createFolderIfNotExists(parentId, folderName, { requestId } = {}) {
+    await this.authenticate({ requestId });
 
     const cacheKey = `${parentId}::${folderName}`;
     if (this.subfolderCache.has(cacheKey)) {
@@ -226,12 +264,12 @@ class GoogleDriveService {
     }
   }
 
-  async uploadFotoBase64({ base64Data, mimeType, filename, repId, repoNome, parentFolderId }) {
-    await this.authenticate();
+  async uploadFotoBase64({ base64Data, mimeType, filename, repId, repoNome, parentFolderId, requestId }) {
+    await this.authenticate({ requestId });
 
     try {
       // Obter/criar pasta do repositor
-      const folderId = parentFolderId || await this.criarPastaRepositor(repId, repoNome);
+      const folderId = parentFolderId || await this.criarPastaRepositor(repId, repoNome, { requestId });
 
       const base64WithoutPrefix = base64Data.replace(/^data:.*;base64,/, '');
       const buffer = Buffer.from(base64WithoutPrefix, 'base64');
@@ -276,8 +314,8 @@ class GoogleDriveService {
     }
   }
 
-  async listarArquivosPorPasta(parentId) {
-    await this.authenticate();
+  async listarArquivosPorPasta(parentId, { requestId } = {}) {
+    await this.authenticate({ requestId });
     let pageToken = undefined;
     const arquivos = [];
 
@@ -302,8 +340,8 @@ class GoogleDriveService {
     }
   }
 
-  async obterLinkPasta(repId) {
-    await this.authenticate();
+  async obterLinkPasta(repId, { requestId } = {}) {
+    await this.authenticate({ requestId });
 
     const folderId = this.folderCache.get(repId);
     if (!folderId) {
@@ -313,8 +351,8 @@ class GoogleDriveService {
     return `https://drive.google.com/drive/folders/${folderId}`;
   }
 
-  async renameFile(fileId, newName) {
-    await this.authenticate();
+  async renameFile(fileId, newName, { requestId } = {}) {
+    await this.authenticate({ requestId });
 
     const updated = await this.drive.files.update({
       fileId,
@@ -329,8 +367,8 @@ class GoogleDriveService {
     };
   }
 
-  async findFileInFolderByName(parentId, name) {
-    await this.authenticate();
+  async findFileInFolderByName(parentId, name, { requestId } = {}) {
+    await this.authenticate({ requestId });
 
     const res = await this.drive.files.list({
       q: `name='${name}' and '${parentId}' in parents and trashed=false`,
@@ -341,9 +379,9 @@ class GoogleDriveService {
     return res.data.files?.[0] || null;
   }
 
-  async ensureCampanhaFolder(repId, repoNome) {
-    const root = await this.criarPastaRepositor(repId, repoNome);
-    return this.createFolderIfNotExists(root, 'CAMPANHA');
+  async ensureCampanhaFolder(repId, repoNome, { requestId } = {}) {
+    const root = await this.criarPastaRepositor(repId, repoNome, { requestId });
+    return this.createFolderIfNotExists(root, 'CAMPANHA', { requestId });
   }
 
   slugify(text) {
@@ -361,11 +399,21 @@ class GoogleDriveService {
     const { clientId, clientSecret, redirectUri, refreshToken } = config.oauth;
 
     if (!clientId || !clientSecret || !redirectUri) {
-      throw new OAuthNotConfiguredError('Client ID, Client Secret ou Redirect URI não configurados');
+      throw new IntegrationAuthError({
+        message: 'Configuração do Drive ausente no servidor.',
+        code: 'DRIVE_MISCONFIG',
+        httpStatus: 503,
+        stage: 'DRIVE_CONFIG'
+      });
     }
 
     if (!refreshToken) {
-      throw new OAuthNotConfiguredError('Refresh token do OAuth não configurado');
+      throw new IntegrationAuthError({
+        message: 'Configuração do Drive ausente no servidor.',
+        code: 'DRIVE_MISCONFIG',
+        httpStatus: 503,
+        stage: 'DRIVE_CONFIG'
+      });
     }
 
     const oauthClient = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
@@ -386,12 +434,12 @@ class GoogleDriveService {
     await this.drive.about.get({ fields: 'user' });
   }
 
-  async criarSubpasta(nome, parentId) {
-    return this.createFolderIfNotExists(parentId, nome);
+  async criarSubpasta(nome, parentId, { requestId } = {}) {
+    return this.createFolderIfNotExists(parentId, nome, { requestId });
   }
 
-  async uploadArquivo({ buffer, mimeType, filename, parentFolderId }) {
-    await this.authenticate();
+  async uploadArquivo({ buffer, mimeType, filename, parentFolderId, requestId }) {
+    await this.authenticate({ requestId });
 
     try {
       const fileMetadata = {
@@ -433,8 +481,8 @@ class GoogleDriveService {
     }
   }
 
-  async downloadArquivo(fileId) {
-    await this.authenticate();
+  async downloadArquivo(fileId, { requestId } = {}) {
+    await this.authenticate({ requestId });
 
     try {
       const response = await this.drive.files.get(
@@ -450,8 +498,8 @@ class GoogleDriveService {
     }
   }
 
-  async downloadArquivoComInfo(fileId) {
-    await this.authenticate();
+  async downloadArquivoComInfo(fileId, { requestId } = {}) {
+    await this.authenticate({ requestId });
 
     try {
       const metadata = await this.drive.files.get({
@@ -478,7 +526,7 @@ class GoogleDriveService {
 
   async healthCheck({ requestId } = {}) {
     try {
-      await this.authenticate({ forceValidation: true });
+      await this.authenticate({ forceValidation: true, requestId });
       const folderId = config.drive.rootFolderId;
       const target = folderId || 'root';
       await this.drive.files.get({ fileId: target, fields: 'id, name' });

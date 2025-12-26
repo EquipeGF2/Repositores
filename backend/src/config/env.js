@@ -11,6 +11,22 @@ const warnMissing = (name) => {
   console.warn(`⚠️ Variável de ambiente não definida: ${name}`);
 };
 
+const pickEnv = (keys = []) => {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (value !== undefined && value !== null && value !== '') {
+      return { value, keyUsed: key };
+    }
+  }
+
+  return { value: undefined, keyUsed: keys[0] };
+};
+
+const oauthClientId = pickEnv(['GOOGLE_CLIENT_ID', 'GOOGLE_DRIVE_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_ID']);
+const oauthClientSecret = pickEnv(['GOOGLE_CLIENT_SECRET', 'GOOGLE_DRIVE_CLIENT_SECRET', 'GOOGLE_OAUTH_CLIENT_SECRET']);
+const oauthRefreshToken = pickEnv(['GOOGLE_REFRESH_TOKEN', 'GOOGLE_DRIVE_REFRESH_TOKEN', 'GOOGLE_OAUTH_REFRESH_TOKEN']);
+const oauthRedirectUri = pickEnv(['GOOGLE_OAUTH_REDIRECT_URI']);
+
 // Exportar configurações
 export const config = {
   port: process.env.PORT || 3001,
@@ -32,10 +48,16 @@ export const config = {
   },
 
   oauth: {
-    clientId: process.env.GOOGLE_OAUTH_CLIENT_ID,
-    clientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
-    redirectUri: process.env.GOOGLE_OAUTH_REDIRECT_URI,
-    refreshToken: process.env.GOOGLE_OAUTH_REFRESH_TOKEN
+    clientId: oauthClientId.value,
+    clientSecret: oauthClientSecret.value,
+    redirectUri: oauthRedirectUri.value,
+    refreshToken: oauthRefreshToken.value,
+    sources: {
+      clientId: oauthClientId.keyUsed,
+      clientSecret: oauthClientSecret.keyUsed,
+      redirectUri: oauthRedirectUri.keyUsed,
+      refreshToken: oauthRefreshToken.keyUsed
+    }
   },
 
   email: {
@@ -51,8 +73,9 @@ export const config = {
 if (!config.turso.url) warnMissing('TURSO_DATABASE_URL');
 if (!config.turso.authToken) warnMissing('TURSO_AUTH_TOKEN');
 if (!config.drive.rootFolderId) warnMissing('GOOGLE_DRIVE_FOLDER_ID');
-if (!config.oauth.clientId) warnMissing('GOOGLE_OAUTH_CLIENT_ID');
-if (!config.oauth.clientSecret) warnMissing('GOOGLE_OAUTH_CLIENT_SECRET');
-if (!config.oauth.redirectUri) warnMissing('GOOGLE_OAUTH_REDIRECT_URI');
+if (!config.oauth.clientId) warnMissing(config.oauth.sources.clientId);
+if (!config.oauth.clientSecret) warnMissing(config.oauth.sources.clientSecret);
+if (!config.oauth.redirectUri) warnMissing(config.oauth.sources.redirectUri);
+if (!config.oauth.refreshToken) warnMissing(config.oauth.sources.refreshToken);
 
 console.log('✅ Configurações carregadas com sucesso');

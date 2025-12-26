@@ -89,7 +89,7 @@ function calcularStatusPontualidade(checkoutEm, dataPrevista) {
 
 async function gerarNomeCampanha({ parentFolderId, clienteIdNorm, nomeClienteSanitizado, partesData }) {
   const base = `${clienteIdNorm}_${nomeClienteSanitizado}_${partesData.ddmmaa}`;
-  const arquivos = await googleDriveService.listarArquivosPorPasta(parentFolderId);
+    const arquivos = await googleDriveService.listarArquivosPorPasta(parentFolderId);
 
   let maiorSufixo = 1;
   const regex = new RegExp(`^${base}(?:_(\\d{2}))?\\.jpg$`, 'i');
@@ -365,7 +365,7 @@ router.post('/drive/retry-pendencias', async (req, res) => {
       try {
         const repositorInfo = pendencia.rep_id ? await tursoService.obterRepositor(pendencia.rep_id) : null;
         const repoNome = repositorInfo?.repo_nome || `REP_${pendencia.rep_id}`;
-        const parentFolder = await googleDriveService.criarPastaRepositor(pendencia.rep_id, repoNome);
+        const parentFolder = await googleDriveService.criarPastaRepositor(pendencia.rep_id, repoNome, { requestId });
 
         const uploadResult = await googleDriveService.uploadFotoBase64({
           base64Data: pendencia.arquivo_base64,
@@ -373,7 +373,8 @@ router.post('/drive/retry-pendencias', async (req, res) => {
           filename: pendencia.arquivo_nome,
           repId: pendencia.rep_id,
           repoNome,
-          parentFolderId: parentFolder
+          parentFolderId: parentFolder,
+          requestId
         });
 
         await tursoService.atualizarRegistroVisita(pendencia.rv_id, {
@@ -595,17 +596,6 @@ router.post('/visitas', upload.any(), async (req, res) => {
       return responderErro({ res, status: 404, message: 'Repositor não encontrado', code: 'REPOSITOR_NOT_FOUND', requestId });
     }
 
-    if (!googleDriveService.isConfigured()) {
-      return responderErro({
-        res,
-        status: 400,
-        code: 'OAUTH_NOT_CONFIGURED',
-        message: 'Autorização do Google não configurada.',
-        requestId,
-        detalhes: { startUrl: '/api/google/oauth/start' }
-      });
-    }
-
     let sessaoId = null;
     let tempoTrabalhoMin = null;
 
@@ -770,6 +760,7 @@ router.post('/visitas', upload.any(), async (req, res) => {
     const mimeType = foto_mime || 'image/jpeg';
     let parentFolderId = null;
     let driveIndisponivel = false;
+    let driveErroCritico = null;
 
     const tratarErroDrive = (etapa, erro, extras = {}) => {
       const driveError = googleDriveService.mapDriveError(etapa, erro);
@@ -782,14 +773,11 @@ router.post('/visitas', upload.any(), async (req, res) => {
         ...extras
       });
 
-      if (driveError instanceof IntegrationAuthError || driveError?.code === 'DRIVE_INVALID_GRANT') {
-        return responderErro({
-          res,
-          status: driveError?.httpStatus || 503,
-          code: 'DRIVE_INVALID_GRANT',
-          message: driveError?.message || 'Integração com Google Drive desconectada. Reautentique e atualize o token.',
-          requestId
-        });
+      const isCredencialError = driveError instanceof IntegrationAuthError
+        || ['DRIVE_INVALID_GRANT', 'DRIVE_MISCONFIG'].includes(driveError?.code);
+
+      if (isCredencialError) {
+        driveErroCritico = driveError;
       }
 
       driveIndisponivel = true;
@@ -798,8 +786,8 @@ router.post('/visitas', upload.any(), async (req, res) => {
 
     try {
       parentFolderId = rvTipo === 'campanha'
-        ? await googleDriveService.ensureCampanhaFolder(repIdNumber, repositor.repo_nome)
-        : await googleDriveService.criarPastaRepositor(repIdNumber, repositor.repo_nome);
+        ? await googleDriveService.ensureCampanhaFolder(repIdNumber, repositor.repo_nome, { requestId })
+        : await googleDriveService.criarPastaRepositor(repIdNumber, repositor.repo_nome, { requestId });
     } catch (driveErroPasta) {
       const resposta = tratarErroDrive('DRIVE_FOLDER', driveErroPasta, { repId: repIdNumber });
       if (resposta) return resposta;
@@ -932,7 +920,8 @@ router.post('/visitas', upload.any(), async (req, res) => {
           filename: nomeFinal,
           repId: repIdNumber,
           repoNome: repositor.repo_nome,
-          parentFolderId
+          parentFolderId,
+          requestId
         });
       } catch (uploadError) {
         const resposta = tratarErroDrive('DRIVE_UPLOAD', uploadError, { arquivo: nomeFinal });
@@ -1009,7 +998,7 @@ router.post('/visitas', upload.any(), async (req, res) => {
       });
     }
 
-    if (rvTipo === 'checkin' && sessaoCheckinPayload) {
+    if (rvTipo === 'checkin' && sessaoCheckinPayload && !houvePendenciaUpload) {
       const {
         sessaoBase,
         sessaoId: sessaoCheckinId,
@@ -1112,21 +1101,26 @@ router.post('/visitas', upload.any(), async (req, res) => {
     }
 
     if (houvePendenciaUpload) {
+      const mensagemPendencia = driveErroCritico
+        ? 'Registro salvo; upload pendente por indisponibilidade do Drive.'
+        : 'Registro salvo, upload pendente.';
+
       return res.status(202).json(sanitizeForJson({
         ...payload,
-        code: 'UPLOAD_PENDENTE',
-        message: 'Registro salvo, upload pendente.',
+        status: 'PENDENTE_UPLOAD',
+        code: driveErroCritico?.code || 'UPLOAD_PENDENTE',
+        message: mensagemPendencia,
         requestId
       }));
     }
 
     return res.status(201).json(sanitizeForJson({ ...payload, requestId }));
   } catch (error) {
-    if (error instanceof IntegrationAuthError || error?.code === 'DRIVE_INVALID_GRANT') {
+    if (error instanceof IntegrationAuthError || ['DRIVE_INVALID_GRANT', 'DRIVE_MISCONFIG'].includes(error?.code)) {
       return responderErro({
         res,
         status: error?.httpStatus || 503,
-        code: 'DRIVE_INVALID_GRANT',
+        code: error?.code || 'DRIVE_INVALID_GRANT',
         message: error?.message || 'Integração com Google Drive desconectada. Reautentique e atualize o token.',
         requestId
       });

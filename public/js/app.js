@@ -6976,7 +6976,9 @@ class App {
             const resposta = await response.json();
             const dataRegistro = resposta?.data_hora || new Date().toISOString();
             const rvResposta = resposta?.rv_id || resposta?.sessao_id || rvSessaoId;
-            const uploadPendente = response.status === 202 || resposta?.code === 'UPLOAD_PENDENTE';
+            const uploadPendente = response.status === 202
+                || resposta?.code === 'UPLOAD_PENDENTE'
+                || resposta?.status === 'PENDENTE_UPLOAD';
 
             if (tipoRegistro === 'checkin') {
                 if (!rvResposta) {
@@ -7026,7 +7028,10 @@ class App {
 
             if (uploadPendente) {
                 const protocolo = resposta?.requestId ? ` (Protocolo: ${resposta.requestId})` : '';
-                this.showNotification(`Registrado com sucesso. Upload será concluído quando a integração normalizar.${protocolo}`, 'warning');
+                const mensagem = (response.status === 202 && resposta?.status === 'PENDENTE_UPLOAD')
+                    ? `Registrado; upload pendente${protocolo}`
+                    : `Registrado com sucesso. Upload será concluído quando a integração normalizar.${protocolo}`;
+                this.showNotification(mensagem, 'warning');
             } else {
                 this.showNotification('Visita registrada com sucesso!', 'success');
             }
