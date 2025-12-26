@@ -10,6 +10,7 @@ import documentosRoutes from './routes/documentos.js';
 import arquivosRoutes from './routes/arquivos.js';
 import campanhasRoutes from './routes/campanhas.js';
 import rateioRoutes from './routes/rateio.js';
+import healthRoutes from './routes/health.js';
 
 const app = express();
 
@@ -89,6 +90,7 @@ app.get('/api/health', async (req, res) => {
 
 // Rotas de registro de rota
 app.use('/api/registro-rota', registroRotaRoutes);
+app.use('/api/health', healthRoutes);
 app.use('/api/google/oauth', googleOAuthRoutes);
 app.use('/api/documentos', documentosRoutes);
 app.use('/api/arquivos', arquivosRoutes);

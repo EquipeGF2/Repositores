@@ -325,7 +325,7 @@ router.get('/health/drive', async (req, res) => {
   res.setHeader('x-request-id', requestId);
   const inicio = Date.now();
 
-  const resultado = await googleDriveService.healthCheck();
+  const resultado = await googleDriveService.healthCheck({ requestId });
   const duracaoMs = Date.now() - inicio;
 
   logEstruturado('DRIVE_HEALTHCHECK', {
