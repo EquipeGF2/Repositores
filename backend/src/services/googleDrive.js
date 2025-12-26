@@ -26,14 +26,18 @@ class GoogleDriveService {
     this.auth = null;
     this.folderCache = new Map(); // Cache de pastas dos repositores
     this.subfolderCache = new Map(); // Cache de subpastas (ex.: campanha)
+    this.authValidationDone = false;
+  }
+
+  isInvalidGrantError(error) {
+    return error?.message === 'invalid_grant'
+      || error?.response?.data?.error === 'invalid_grant'
+      || error?.code === 'invalid_grant'
+      || error?.code === 'DRIVE_INVALID_GRANT';
   }
 
   mapDriveError(stage, error) {
-    const isInvalidGrant = error?.message === 'invalid_grant'
-      || error?.response?.data?.error === 'invalid_grant'
-      || error?.code === 'invalid_grant';
-
-    if (isInvalidGrant) {
+    if (this.isInvalidGrantError(error)) {
       return new IntegrationAuthError({
         stage,
         message: 'Integração com Google Drive desconectada. Reautentique e atualize o token.',
@@ -55,14 +59,31 @@ class GoogleDriveService {
     return mapped;
   }
 
+  buildInvalidGrantDiagnostics(error) {
+    if (!this.isInvalidGrantError(error)) return null;
+
+    const { clientId, refreshToken } = config.oauth || {};
+    const refreshTokenStr = typeof refreshToken === 'string' ? refreshToken : String(refreshToken || '');
+
+    return {
+      client_id_suffix: clientId ? String(clientId).slice(-6) : undefined,
+      refresh_token_length: refreshTokenStr ? refreshTokenStr.length : 0,
+      refresh_token_trim_changed: refreshTokenStr ? refreshTokenStr.trim() !== refreshTokenStr : false,
+      google_error: error?.response?.data?.error || error?.code || error?.message,
+      google_error_description: error?.response?.data?.error_description
+    };
+  }
+
   logDriveError(stage, error, extras = {}) {
     try {
+      const invalidGrantDiag = this.buildInvalidGrantDiagnostics(error);
       console.error(JSON.stringify({
         code: error?.code || 'DRIVE_ERROR',
         stage,
         message: error?.message,
         status: error?.httpStatus,
         stack: error?.stack,
+        ...(invalidGrantDiag ? { invalid_grant_diag: invalidGrantDiag } : {}),
         ...extras
       }));
     } catch (logError) {
@@ -70,21 +91,31 @@ class GoogleDriveService {
     }
   }
 
-  async authenticate() {
-    if (this.auth) return;
+  async authenticate({ forceValidation = false } = {}) {
+    if (this.auth && this.drive && this.authValidationDone && !forceValidation) return;
 
     try {
       if (!this.isConfigured()) {
         throw new OAuthNotConfiguredError();
       }
 
-      this.auth = this.createOAuthClient();
+      if (!this.auth || !this.drive) {
+        this.auth = this.createOAuthClient();
+        this.drive = google.drive({ version: 'v3', auth: this.auth });
+        this.authValidationDone = false;
+      }
 
-      this.drive = google.drive({ version: 'v3', auth: this.auth });
+      await this.validateDriveAccess();
 
-      console.log('✅ Autenticado no Google Drive');
+      if (!this.authValidationDone) {
+        console.log('✅ Autenticado no Google Drive');
+        this.authValidationDone = true;
+      }
     } catch (error) {
       const mapped = this.mapDriveError('DRIVE_AUTH', error);
+      this.auth = null;
+      this.drive = null;
+      this.authValidationDone = false;
       this.logDriveError('DRIVE_AUTH', mapped);
       throw mapped;
     }
@@ -343,6 +374,18 @@ class GoogleDriveService {
     return oauthClient;
   }
 
+  async validateDriveAccess() {
+    if (!this.drive) {
+      throw new IntegrationAuthError({
+        stage: 'DRIVE_AUTH',
+        message: 'Cliente do Drive não inicializado',
+        httpStatus: 503
+      });
+    }
+
+    await this.drive.about.get({ fields: 'user' });
+  }
+
   async criarSubpasta(nome, parentId) {
     return this.createFolderIfNotExists(parentId, nome);
   }
@@ -433,16 +476,16 @@ class GoogleDriveService {
     }
   }
 
-  async healthCheck() {
+  async healthCheck({ requestId } = {}) {
     try {
-      await this.authenticate();
+      await this.authenticate({ forceValidation: true });
       const folderId = config.drive.rootFolderId;
       const target = folderId || 'root';
       await this.drive.files.get({ fileId: target, fields: 'id, name' });
       return { ok: true };
     } catch (error) {
       const mapped = this.mapDriveError('DRIVE_HEALTH', error);
-      this.logDriveError('DRIVE_HEALTH', mapped);
+      this.logDriveError('DRIVE_HEALTH', mapped, { requestId });
       return { ok: false, error: mapped };
     }
   }
