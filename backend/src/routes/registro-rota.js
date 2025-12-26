@@ -1114,16 +1114,6 @@ router.post('/visitas', upload.any(), async (req, res) => {
 
     return res.status(201).json(sanitizeForJson({ ...payload, requestId }));
   } catch (error) {
-    if (error instanceof IntegrationAuthError || error?.code === 'DRIVE_INVALID_GRANT') {
-      return responderErro({
-        res,
-        status: error?.httpStatus || 503,
-        code: 'DRIVE_INVALID_GRANT',
-        message: error?.message || 'Integração com Google Drive desconectada. Reautentique e atualize o token.',
-        requestId
-      });
-    }
-
     if (error instanceof OAuthNotConfiguredError) {
       return responderErro({
         res,
