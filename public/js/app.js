@@ -5881,6 +5881,14 @@ class App {
 
     async reidratarAtendimentosAposCancelamento(repId) {
         try {
+            const sessaoAtualizada = await this.buscarSessaoAberta(repId);
+            if (sessaoAtualizada) {
+                this.reconciliarSessaoAbertaLocal(sessaoAtualizada, repId);
+            } else {
+                const locais = this.listarAtendimentosLocais(repId);
+                locais.forEach(({ clienteId }) => this.limparAtendimentoLocal(repId, clienteId));
+            }
+
             await this.carregarRoteiroRepositor();
         } catch (error) {
             console.warn('Falha ao reidratar atendimentos após cancelamento', error);
@@ -7006,7 +7014,7 @@ class App {
 
             this.showNotification('Visita registrada com sucesso!', 'success');
 
-            this.fecharModalCaptura();
+            await this.fecharModalCaptura();
             this.carregarRoteiroRepositor();
         } catch (error) {
             console.error('Erro ao salvar visita:', error);
@@ -7026,7 +7034,12 @@ class App {
     }
 
 
-    fecharModalCaptura() {
+    async fecharModalCaptura() {
+        const clienteAtual = this.registroRotaState.clienteAtual || {};
+        const repIdAtual = clienteAtual.repId;
+        const clienteIdAtual = clienteAtual.clienteId;
+        const dataPlanejadaAtual = clienteAtual.dataVisita || null;
+
         this.pararStreamVideo();
 
         this.registroRotaState.novaVisita = false;
@@ -7056,6 +7069,20 @@ class App {
             window.removeEventListener('resize', this.registroRotaState.resizeHandler);
             this.registroRotaState.resizeHandler = null;
         }
+
+        if (repIdAtual) {
+            const sessaoAberta = await this.buscarSessaoAberta(repIdAtual, dataPlanejadaAtual);
+            if (sessaoAberta) {
+                this.reconciliarSessaoAbertaLocal(sessaoAberta, repIdAtual);
+            } else if (clienteIdAtual) {
+                this.atualizarStatusClienteLocal(clienteIdAtual, {
+                    status: 'sem_checkin',
+                    rv_id: null,
+                    atividades_count: 0,
+                    rep_id: repIdAtual
+                });
+            }
+        }
     }
 
     // ==================== ATIVIDADES ====================
@@ -7067,6 +7094,12 @@ class App {
         // Buscar sessão ativa
         const sessaoAberta = await this.buscarSessaoAberta(repId, dataPlanejada);
         if (!sessaoAberta || normalizeClienteId(sessaoAberta.cliente_id) !== clienteIdNorm) {
+            this.atualizarStatusClienteLocal(clienteIdNorm, {
+                status: 'sem_checkin',
+                rv_id: null,
+                atividades_count: 0,
+                rep_id: Number(repId)
+            });
             this.showNotification('Sessão não encontrada. Realize o check-in primeiro.', 'warning');
             return;
         }

@@ -471,6 +471,8 @@ router.post('/visitas', upload.any(), async (req, res) => {
     const rvSessaoId = rv_id || req.body?.sessao_id || req.body?.rv_sessao_id || null;
     const sessaoPorId = rvSessaoId ? await tursoService.obterSessaoPorId(rvSessaoId) : null;
 
+    let sessaoCheckinPayload = null;
+
     if (rvTipo === 'checkin') {
       if (sessaoEmAndamentoCliente) {
         return responderErro({
@@ -513,25 +515,18 @@ router.post('/visitas', upload.any(), async (req, res) => {
       }
       const sessaoBase = !allowNovaVisita && sessaoExistente && !sessaoExistente.checkin_at ? sessaoExistente : null;
       sessaoId = sessaoBase?.sessao_id || crypto.randomUUID();
-      if (!sessaoBase) {
-        await tursoService.criarSessaoVisita({
-          sessaoId,
-          repId: repIdNumber,
-          clienteId: clienteIdNorm,
-          clienteNome: cliente_nome,
-          enderecoCliente,
-          dataPlanejada: dataReferencia,
-          checkinAt: dataHoraRegistro,
-          enderecoCheckin: enderecoSnapshot,
-          diaPrevisto: diaPrevistoCodigo,
-          roteiroId
-        });
-      } else {
-        await tursoService.execute(
-          'UPDATE cc_visita_sessao SET checkin_at = ?, status = "ABERTA", endereco_cliente = ?, endereco_checkin = ?, dia_previsto = ?, roteiro_id = ? WHERE sessao_id = ?',
-          [dataHoraRegistro, enderecoCliente, enderecoSnapshot, diaPrevistoCodigo, roteiroId, sessaoId]
-        );
-      }
+
+      sessaoCheckinPayload = {
+        sessaoBase,
+        sessaoId,
+        dataHoraRegistro,
+        enderecoCliente,
+        enderecoSnapshot,
+        diaPrevistoCodigo,
+        roteiroId,
+        clienteNome: cliente_nome,
+        dataReferencia
+      };
     }
 
     if (rvTipo === 'checkout') {
@@ -741,6 +736,40 @@ router.post('/visitas', upload.any(), async (req, res) => {
         data_hora: dataHoraArquivo,
         nome_arquivo: nomeFinal
       });
+    }
+
+    if (rvTipo === 'checkin' && sessaoCheckinPayload) {
+      const {
+        sessaoBase,
+        sessaoId: sessaoCheckinId,
+        dataHoraRegistro: dataCheckin,
+        enderecoCliente: enderecoSessao,
+        enderecoSnapshot: enderecoSessaoCheckin,
+        diaPrevistoCodigo,
+        roteiroId: roteiroSessao,
+        clienteNome: clienteNomeSessao,
+        dataReferencia: dataPlanejadaSessao
+      } = sessaoCheckinPayload;
+
+      if (!sessaoBase) {
+        await tursoService.criarSessaoVisita({
+          sessaoId: sessaoCheckinId,
+          repId: repIdNumber,
+          clienteId: clienteIdNorm,
+          clienteNome: clienteNomeSessao,
+          enderecoCliente: enderecoSessao,
+          dataPlanejada: dataPlanejadaSessao,
+          checkinAt: dataCheckin,
+          enderecoCheckin: enderecoSessaoCheckin,
+          diaPrevisto: diaPrevistoCodigo,
+          roteiroId: roteiroSessao
+        });
+      } else {
+        await tursoService.execute(
+          'UPDATE cc_visita_sessao SET checkin_at = ?, status = "ABERTA", endereco_cliente = ?, endereco_checkin = ?, dia_previsto = ?, roteiro_id = ? WHERE sessao_id = ?',
+          [dataCheckin, enderecoSessao, enderecoSessaoCheckin, diaPrevistoCodigo, roteiroSessao, sessaoCheckinId]
+        );
+      }
     }
 
     if (rvTipo === 'checkout') {
@@ -1040,16 +1069,19 @@ router.get('/fotos/:fileId', async (req, res) => {
 
 // ==================== GET /api/registro-rota/sessao-aberta ====================
 router.get('/sessao-aberta', async (req, res) => {
+  const requestId = req.requestId || crypto.randomUUID();
+  res.setHeader('x-request-id', requestId);
+
   try {
     const { rep_id, data_planejada } = req.query;
 
     if (!rep_id) {
-      return res.status(400).json({ ok: false, code: 'REP_ID_REQUIRED', message: 'rep_id é obrigatório' });
+      return res.status(400).json({ ok: false, code: 'REP_ID_REQUIRED', message: 'rep_id é obrigatório', requestId });
     }
 
     const repIdNumber = Number(rep_id);
     if (Number.isNaN(repIdNumber)) {
-      return res.status(400).json({ ok: false, code: 'INVALID_REP_ID', message: 'rep_id deve ser numérico' });
+      return res.status(400).json({ ok: false, code: 'INVALID_REP_ID', message: 'rep_id deve ser numérico', requestId });
     }
 
     const dataReferencia = validarDataPlanejada(data_planejada) || new Date().toISOString().split('T')[0];
@@ -1065,29 +1097,32 @@ router.get('/sessao-aberta', async (req, res) => {
         }
       : null;
 
-    return res.json(sanitizeForJson({ ok: true, sessao_aberta: sessaoResposta }));
+    return res.json(sanitizeForJson({ ok: true, sessao_aberta: sessaoResposta, requestId }));
   } catch (error) {
     if (error instanceof DatabaseNotConfiguredError) {
-      return res.status(503).json({ ok: false, code: error.code, message: error.message });
+      return res.status(503).json({ ok: false, code: error.code, message: error.message, requestId });
     }
 
     console.error('Erro ao buscar sessão aberta:', error?.stack || error);
-    return res.status(500).json({ ok: false, code: 'BUSCAR_SESSAO_ERROR', message: 'Erro ao buscar sessão aberta' });
+    return res.status(500).json({ ok: false, code: 'BUSCAR_SESSAO_ERROR', message: 'Erro ao buscar sessão aberta', requestId });
   }
 });
 
 // ==================== GET /api/registro-rota/atendimento-aberto ====================
 router.get('/atendimento-aberto', async (req, res) => {
+  const requestId = req.requestId || crypto.randomUUID();
+  res.setHeader('x-request-id', requestId);
+
   try {
     const { repositor_id } = req.query;
 
     if (!repositor_id) {
-      return res.status(400).json({ ok: false, code: 'REP_ID_REQUIRED', message: 'repositor_id é obrigatório' });
+      return res.status(400).json({ ok: false, code: 'REP_ID_REQUIRED', message: 'repositor_id é obrigatório', requestId });
     }
 
     const repIdNumber = Number(repositor_id);
     if (Number.isNaN(repIdNumber)) {
-      return res.status(400).json({ ok: false, code: 'INVALID_REP_ID', message: 'repositor_id deve ser numérico' });
+      return res.status(400).json({ ok: false, code: 'INVALID_REP_ID', message: 'repositor_id deve ser numérico', requestId });
     }
 
     const sessao = await tursoService.buscarSessaoAbertaPorRep(repIdNumber, { dataPlanejada: null });
@@ -1107,29 +1142,32 @@ router.get('/atendimento-aberto', async (req, res) => {
           status: null
         };
 
-    return res.json(sanitizeForJson({ ok: true, ...resposta }));
+    return res.json(sanitizeForJson({ ok: true, ...resposta, requestId }));
   } catch (error) {
     if (error instanceof DatabaseNotConfiguredError) {
-      return res.status(503).json({ ok: false, code: error.code, message: error.message });
+      return res.status(503).json({ ok: false, code: error.code, message: error.message, requestId });
     }
 
     console.error('Erro ao buscar atendimento aberto:', error?.stack || error);
-    return res.status(500).json({ ok: false, code: 'ATENDIMENTO_ABERTO_ERROR', message: 'Erro ao buscar atendimento aberto' });
+    return res.status(500).json({ ok: false, code: 'ATENDIMENTO_ABERTO_ERROR', message: 'Erro ao buscar atendimento aberto', requestId });
   }
 });
 
 // ==================== GET /api/registro-rota/atendimentos-abertos ====================
 router.get('/atendimentos-abertos', async (req, res) => {
+  const requestId = req.requestId || crypto.randomUUID();
+  res.setHeader('x-request-id', requestId);
+
   try {
     const { repositor_id } = req.query;
 
     if (!repositor_id) {
-      return res.status(400).json({ ok: false, code: 'REP_ID_REQUIRED', message: 'repositor_id é obrigatório' });
+      return res.status(400).json({ ok: false, code: 'REP_ID_REQUIRED', message: 'repositor_id é obrigatório', requestId });
     }
 
     const repIdNumber = Number(repositor_id);
     if (Number.isNaN(repIdNumber)) {
-      return res.status(400).json({ ok: false, code: 'INVALID_REP_ID', message: 'repositor_id deve ser numérico' });
+      return res.status(400).json({ ok: false, code: 'INVALID_REP_ID', message: 'repositor_id deve ser numérico', requestId });
     }
 
     const sessoes = await tursoService.listarAtendimentosAbertos(repIdNumber);
@@ -1144,24 +1182,27 @@ router.get('/atendimentos-abertos', async (req, res) => {
       dia_previsto: sessao.dia_previsto || null
     }));
 
-    return res.json(sanitizeForJson({ ok: true, atendimentos_abertos: resposta }));
+    return res.json(sanitizeForJson({ ok: true, atendimentos_abertos: resposta, requestId }));
   } catch (error) {
     if (error instanceof DatabaseNotConfiguredError) {
-      return res.status(503).json({ ok: false, code: error.code, message: error.message });
+      return res.status(503).json({ ok: false, code: error.code, message: error.message, requestId });
     }
 
     console.error('Erro ao buscar atendimentos abertos:', error?.stack || error);
-    return res.status(500).json({ ok: false, code: 'ATENDIMENTOS_ABERTOS_ERROR', message: 'Erro ao listar atendimentos abertos' });
+    return res.status(500).json({ ok: false, code: 'ATENDIMENTOS_ABERTOS_ERROR', message: 'Erro ao listar atendimentos abertos', requestId });
   }
 });
 
 // ==================== POST /api/registro-rota/cancelar-atendimento ====================
 router.post('/cancelar-atendimento', async (req, res) => {
+  const requestId = req.requestId || crypto.randomUUID();
+  res.setHeader('x-request-id', requestId);
+
   try {
     const { rv_id, repositor_id, motivo } = req.body || {};
 
     if (!rv_id) {
-      return res.status(400).json({ ok: false, code: 'RV_ID_REQUIRED', message: 'rv_id é obrigatório' });
+      return res.status(400).json({ ok: false, code: 'RV_ID_REQUIRED', message: 'rv_id é obrigatório', requestId });
     }
 
     console.info('CANCEL_START', { rv_id, rep_id: repositor_id });
@@ -1170,17 +1211,17 @@ router.post('/cancelar-atendimento', async (req, res) => {
 
     if (!sessao) {
       console.info('CANCEL_FAIL', { rv_id, reason: 'NOT_FOUND' });
-      return res.status(404).json({ ok: false, code: 'ATENDIMENTO_NAO_ENCONTRADO', message: 'Atendimento não encontrado' });
+      return res.json({ ok: true, rv_id, status: 'SEM_ATENDIMENTO', message: 'Nenhum atendimento pendente.', requestId });
     }
 
     if (sessao.checkout_at) {
       console.info('CANCEL_FAIL', { rv_id, reason: 'CHECKOUT_ALREADY_DONE' });
-      return res.status(409).json({ ok: false, code: 'ATENDIMENTO_FINALIZADO', message: 'Atendimento já finalizado' });
+      return res.json({ ok: true, rv_id, status: 'FINALIZADO', message: 'Atendimento já encerrado.', requestId });
     }
 
     if (sessao.cancelado_em || String(sessao.status).toUpperCase() === 'CANCELADO') {
       console.info('CANCEL_FAIL', { rv_id, reason: 'ALREADY_CANCELED' });
-      return res.status(409).json({ ok: false, code: 'ATENDIMENTO_JA_CANCELADO', message: 'Atendimento já cancelado' });
+      return res.json({ ok: true, rv_id, status: 'CANCELADO', message: 'Atendimento já encerrado.', requestId });
     }
 
     const motivoLimpo = motivo?.toString().slice(0, 500) || null;
@@ -1188,15 +1229,15 @@ router.post('/cancelar-atendimento', async (req, res) => {
 
     console.info('CANCEL_OK', { rv_id, rep_id: repositor_id || sessao.rep_id, cliente_id: sessao.cliente_id });
 
-    return res.json({ ok: true, rv_id, status: 'CANCELADO' });
+    return res.json({ ok: true, rv_id, status: 'CANCELADO', requestId });
   } catch (error) {
     if (error instanceof DatabaseNotConfiguredError) {
-      return res.status(503).json({ ok: false, code: error.code, message: error.message });
+      return res.status(503).json({ ok: false, code: error.code, message: error.message, requestId });
     }
 
     console.error('Erro ao cancelar atendimento:', error?.stack || error);
     console.info('CANCEL_FAIL', { rv_id: req.body?.rv_id, reason: error?.code || error?.message || 'UNKNOWN' });
-    return res.status(500).json({ ok: false, code: 'CANCELAR_ATENDIMENTO_ERROR', message: 'Erro ao cancelar atendimento' });
+    return res.status(500).json({ ok: false, code: 'CANCELAR_ATENDIMENTO_ERROR', message: 'Erro ao cancelar atendimento', requestId });
   }
 });
 

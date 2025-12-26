@@ -663,7 +663,17 @@ class TursoService {
     sql += ' ORDER BY checkin_at DESC LIMIT 1';
 
     const result = await this.execute(sql, args);
-    return result.rows[0] || null;
+    const sessao = result.rows[0] || null;
+
+    if (!sessao) return null;
+
+    const valida = await this.sessaoPossuiCheckinComFoto(sessao.sessao_id);
+    if (!valida) {
+      await this.marcarSessaoSemEvidenciaComoCancelada(sessao.sessao_id);
+      return null;
+    }
+
+    return sessao;
   }
 
   async buscarSessaoAbertaPorRep(repId, { dataPlanejada, inicioIso, fimIso }) {
@@ -689,7 +699,17 @@ class TursoService {
     sql += ' ORDER BY checkin_at DESC LIMIT 1';
 
     const result = await this.execute(sql, args);
-    return result.rows[0] || null;
+    const sessao = result.rows[0] || null;
+
+    if (!sessao) return null;
+
+    const valida = await this.sessaoPossuiCheckinComFoto(sessao.sessao_id);
+    if (!valida) {
+      await this.marcarSessaoSemEvidenciaComoCancelada(sessao.sessao_id);
+      return null;
+    }
+
+    return sessao;
   }
 
   async obterSessaoPorDataReal(repId, clienteId, dataIso) {
@@ -722,7 +742,17 @@ class TursoService {
     `;
 
     const result = await this.execute(sql, [repId, normalizeClienteId(clienteId)]);
-    return result.rows[0] || null;
+    const sessao = result.rows[0] || null;
+
+    if (!sessao) return null;
+
+    const valida = await this.sessaoPossuiCheckinComFoto(sessao.sessao_id);
+    if (!valida) {
+      await this.marcarSessaoSemEvidenciaComoCancelada(sessao.sessao_id);
+      return null;
+    }
+
+    return sessao;
   }
 
   async mapearDiaPrevistoClientes(repId) {
@@ -920,8 +950,18 @@ class TursoService {
     const result = await this.execute(sql, [repId]);
     const sessoes = result.rows || [];
 
+    const sessoesValidas = [];
+    for (const sessao of sessoes) {
+      const valida = await this.sessaoPossuiCheckinComFoto(sessao.sessao_id);
+      if (valida) {
+        sessoesValidas.push(sessao);
+      } else {
+        await this.marcarSessaoSemEvidenciaComoCancelada(sessao.sessao_id);
+      }
+    }
+
     const comAtividades = await Promise.all(
-      sessoes.map(async (sessao) => {
+      sessoesValidas.map(async (sessao) => {
         const atividades = await this.contarAtividadesSessao(sessao.sessao_id);
         return {
           ...sessao,
@@ -957,6 +997,32 @@ class TursoService {
     );
 
     return this.obterSessaoPorId(sessaoId);
+  }
+
+  async sessaoPossuiCheckinComFoto(sessaoId) {
+    const resultado = await this.execute(
+      `
+        SELECT COUNT(1) AS total
+        FROM cc_registro_visita
+        WHERE COALESCE(rv_sessao_id, sessao_id) = ?
+          AND lower(rv_tipo) = 'checkin'
+          AND (
+            COALESCE(rv_drive_file_id, drive_file_id, '') != ''
+            OR COALESCE(rv_drive_file_url, drive_file_url, '') != ''
+          )
+      `,
+      [sessaoId]
+    );
+
+    return Number(resultado?.rows?.[0]?.total || 0) > 0;
+  }
+
+  async marcarSessaoSemEvidenciaComoCancelada(sessaoId) {
+    try {
+      await this.cancelarAtendimento(sessaoId, 'SANEAMENTO_SEM_FOTO');
+    } catch (error) {
+      console.warn('SANEAR_SESSAO_SEM_FOTO_FAIL', { sessaoId, message: error?.message });
+    }
   }
 
   async ensureRegistroVisitaSchema() {
