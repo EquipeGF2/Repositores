@@ -11,6 +11,9 @@ import arquivosRoutes from './routes/arquivos.js';
 import campanhasRoutes from './routes/campanhas.js';
 import rateioRoutes from './routes/rateio.js';
 import healthRoutes from './routes/health.js';
+import authRoutes from './routes/auth.js';
+import usuariosRoutes from './routes/usuarios.js';
+import { authService } from './services/auth.js';
 
 const app = express();
 
@@ -88,10 +91,14 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// Rotas de registro de rota
-app.use('/api/registro-rota', registroRotaRoutes);
-app.use('/api/health', healthRoutes);
+// Rotas públicas (sem autenticação)
+app.use('/api/auth', authRoutes);
 app.use('/api/google/oauth', googleOAuthRoutes);
+app.use('/api/health', healthRoutes);
+
+// Rotas protegidas (requerem autenticação - será implementado progressivamente)
+app.use('/api/usuarios', usuariosRoutes);
+app.use('/api/registro-rota', registroRotaRoutes);
 app.use('/api/documentos', documentosRoutes);
 app.use('/api/arquivos', arquivosRoutes);
 app.use('/api/campanhas', campanhasRoutes);
@@ -125,6 +132,32 @@ async function inicializar() {
     initDbClient();
     await tursoService.ensureSchemaRegistroRota();
     await tursoService.ensureSchemaDocumentos();
+    await tursoService.ensureUsuariosSchema();
+
+    // Criar usuário administrador inicial se não existir
+    try {
+      const adminExistente = await tursoService.buscarUsuarioPorUsername('admin');
+
+      if (!adminExistente) {
+        console.log('🔐 Criando usuário administrador inicial...');
+
+        const passwordHash = await authService.hashPassword('admin123');
+        await tursoService.criarUsuario({
+          username: 'admin',
+          passwordHash,
+          nomeCompleto: 'Administrador',
+          email: 'admin@germani.com.br',
+          repId: null,
+          perfil: 'admin'
+        });
+
+        console.log('✅ Usuário admin criado com sucesso!');
+        console.log('   Usuário: admin | Senha: admin123');
+        console.log('   ⚠️  IMPORTANTE: Altere a senha após o primeiro login!');
+      }
+    } catch (adminError) {
+      console.warn('⚠️  Aviso ao verificar/criar admin:', adminError.message);
+    }
 
     // Iniciar servidor
     app.listen(config.port, () => {

@@ -24,6 +24,9 @@ class TursoService {
       this.ensureDrivePendenciaSchema().catch((err) => {
         console.warn('⚠️  Falha ao garantir schema de pendência de Drive:', err?.message || err);
       });
+      this.ensureUsuariosSchema().catch((err) => {
+        console.warn('⚠️  Falha ao garantir schema de usuários:', err?.message || err);
+      });
     } catch (error) {
       if (error instanceof DatabaseNotConfiguredError) {
         this.client = null;
@@ -1412,6 +1415,117 @@ class TursoService {
     }
 
     console.log('✅ Schema de documentos garantido');
+  }
+
+  // ==================== AUTENTICAÇÃO E USUÁRIOS ====================
+
+  async ensureUsuariosSchema() {
+    const sqlUsuarios = `
+      CREATE TABLE IF NOT EXISTS cc_usuarios (
+        usuario_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        nome_completo TEXT NOT NULL,
+        email TEXT,
+        rep_id INTEGER,
+        perfil TEXT NOT NULL DEFAULT 'repositor',
+        ativo INTEGER DEFAULT 1,
+        criado_em TEXT DEFAULT (datetime('now')),
+        atualizado_em TEXT DEFAULT (datetime('now')),
+        ultimo_login TEXT,
+        FOREIGN KEY (rep_id) REFERENCES cc_repositor(rep_id)
+      )
+    `;
+
+    await this.execute(sqlUsuarios, []);
+    console.log('✅ Tabela cc_usuarios garantida');
+
+    // Criar índices
+    await this.execute('CREATE INDEX IF NOT EXISTS idx_usuarios_username ON cc_usuarios(username)', []);
+    await this.execute('CREATE INDEX IF NOT EXISTS idx_usuarios_rep_id ON cc_usuarios(rep_id)', []);
+    await this.execute('CREATE INDEX IF NOT EXISTS idx_usuarios_perfil ON cc_usuarios(perfil)', []);
+  }
+
+  async criarUsuario({ username, passwordHash, nomeCompleto, email, repId, perfil = 'repositor' }) {
+    const sql = `
+      INSERT INTO cc_usuarios (username, password_hash, nome_completo, email, rep_id, perfil)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `;
+
+    const result = await this.execute(sql, [username, passwordHash, nomeCompleto, email, repId, perfil]);
+    return { usuario_id: Number(result.lastInsertRowid), username, perfil };
+  }
+
+  async buscarUsuarioPorUsername(username) {
+    const sql = 'SELECT * FROM cc_usuarios WHERE username = ? AND ativo = 1';
+    const result = await this.execute(sql, [username]);
+    return result.rows[0] || null;
+  }
+
+  async buscarUsuarioPorId(usuarioId) {
+    const sql = `
+      SELECT u.*, r.repo_nome
+      FROM cc_usuarios u
+      LEFT JOIN cc_repositor r ON u.rep_id = r.rep_id
+      WHERE u.usuario_id = ? AND u.ativo = 1
+    `;
+    const result = await this.execute(sql, [usuarioId]);
+    return result.rows[0] || null;
+  }
+
+  async listarUsuarios() {
+    const sql = `
+      SELECT u.usuario_id, u.username, u.nome_completo, u.email, u.rep_id, u.perfil, u.ativo, u.ultimo_login, r.repo_nome
+      FROM cc_usuarios u
+      LEFT JOIN cc_repositor r ON u.rep_id = r.rep_id
+      ORDER BY u.nome_completo
+    `;
+    const result = await this.execute(sql, []);
+    return result.rows;
+  }
+
+  async atualizarUsuario(usuarioId, dados) {
+    const campos = [];
+    const valores = [];
+
+    if (dados.nomeCompleto !== undefined) {
+      campos.push('nome_completo = ?');
+      valores.push(dados.nomeCompleto);
+    }
+    if (dados.email !== undefined) {
+      campos.push('email = ?');
+      valores.push(dados.email);
+    }
+    if (dados.passwordHash !== undefined) {
+      campos.push('password_hash = ?');
+      valores.push(dados.passwordHash);
+    }
+    if (dados.perfil !== undefined) {
+      campos.push('perfil = ?');
+      valores.push(dados.perfil);
+    }
+    if (dados.ativo !== undefined) {
+      campos.push('ativo = ?');
+      valores.push(dados.ativo);
+    }
+
+    if (campos.length === 0) return;
+
+    campos.push('atualizado_em = datetime("now")');
+    valores.push(usuarioId);
+
+    const sql = `UPDATE cc_usuarios SET ${campos.join(', ')} WHERE usuario_id = ?`;
+    await this.execute(sql, valores);
+  }
+
+  async registrarUltimoLogin(usuarioId) {
+    const sql = 'UPDATE cc_usuarios SET ultimo_login = datetime("now") WHERE usuario_id = ?';
+    await this.execute(sql, [usuarioId]);
+  }
+
+  async desativarUsuario(usuarioId) {
+    const sql = 'UPDATE cc_usuarios SET ativo = 0, atualizado_em = datetime("now") WHERE usuario_id = ?';
+    await this.execute(sql, [usuarioId]);
   }
 
   async ensureSchemaRegistroRota() {
