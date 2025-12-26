@@ -1,0 +1,29 @@
+{
+  "name": "Sistema de Repositores - Germani Alimentos",
+  "short_name": "Repositores Germani",
+  "description": "Sistema de registro de rotas e visitas para repositores da Germani Alimentos",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ef4444",
+  "orientation": "portrait",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity"],
+  "screenshots": [],
+  "prefer_related_applications": false,
+  "offline_enabled": true,
+  "features": [
+    "offline",
+    "geolocation",
+    "camera",
+    "background-sync"
+  ]
+}
