@@ -6932,11 +6932,13 @@ class App {
             if (!response.ok) {
                 let corpoErro = null;
                 let detalhesErro = '';
+                let protocolo = response.headers.get('x-request-id') || '';
 
                 try {
                     const clone = response.clone();
                     corpoErro = await clone.json();
                     detalhesErro = corpoErro?.message || '';
+                    protocolo = protocolo || corpoErro?.requestId || '';
                 } catch (_) {
                     try {
                         detalhesErro = await response.text();
@@ -6948,6 +6950,7 @@ class App {
                 const erro = new Error(detalhesErro || `Erro ao salvar visita (status ${response.status})`);
                 erro.status = response.status;
                 erro.code = corpoErro?.code;
+                erro.requestId = protocolo;
                 throw erro;
             }
 
@@ -7011,7 +7014,8 @@ class App {
             if (error?.status === 404 || mensagem.includes('não há check-in em aberto') || mensagem.includes('não encontrado')) {
                 await this.tratarAtendimentoNaoEncontrado(repId, clienteId, clienteNome);
             } else {
-                this.showNotification('Erro ao salvar: ' + error.message, 'error');
+                const protocolo = error?.requestId ? ` (Protocolo: ${error.requestId})` : '';
+                this.showNotification(`Não foi possível registrar visita: ${error.message}${protocolo}`, 'error');
             }
         } finally {
             if (btnSalvar) {

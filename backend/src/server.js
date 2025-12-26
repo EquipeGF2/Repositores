@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import crypto from 'crypto';
 import { config } from './config/env.js';
 import { getDbClient, initDbClient, DatabaseNotConfiguredError } from './config/db.js';
 import { tursoService } from './services/turso.js';
@@ -13,6 +14,17 @@ import rateioRoutes from './routes/rateio.js';
 const app = express();
 
 // ==================== MIDDLEWARES ====================
+
+// Identificador de requisição para rastreabilidade
+app.use((req, res, next) => {
+  const requestIdHeader = req.headers['x-request-id'];
+  const requestId = typeof requestIdHeader === 'string' && requestIdHeader.trim() ? requestIdHeader : crypto.randomUUID();
+
+  req.requestId = requestId;
+  res.locals.requestId = requestId;
+  res.setHeader('x-request-id', requestId);
+  next();
+});
 
 // CORS - permitir frontend
 app.use(cors({
@@ -41,7 +53,17 @@ app.use((req, res, next) => {
     const fim = process.hrtime.bigint();
     const duracaoMs = Number(fim - inicio) / 1e6;
     const timestamp = new Date().toISOString();
-    console.log(`[${timestamp}] ${req.method} ${req.originalUrl} -> ${res.statusCode} (${duracaoMs.toFixed(1)}ms)`);
+    console.log(
+      JSON.stringify({
+        code: 'REQ_FINISH',
+        requestId: req.requestId,
+        metodo: req.method,
+        rota: req.originalUrl,
+        status: res.statusCode,
+        duracao_ms: Number(duracaoMs.toFixed(1)),
+        timestamp
+      })
+    );
   });
   next();
 });

@@ -1,6 +1,7 @@
 import express from 'express';
 import crypto from 'node:crypto';
 import multer from 'multer';
+import { LibsqlError } from '@libsql/client';
 import { tursoService, DatabaseNotConfiguredError, normalizeClienteId } from '../services/turso.js';
 import { googleDriveService, OAuthNotConfiguredError } from '../services/googleDrive.js';
 import { emailService } from '../services/email.js';
@@ -264,6 +265,24 @@ function normalizarDataConsulta(dataStr) {
   return null;
 }
 
+function responderErro({ res, status = 500, code = 'VISITA_INSERT_FAILED', message, requestId, detalhes = {} }) {
+  return res.status(status).json({
+    ok: false,
+    code,
+    message: message || 'Não foi possível registrar a visita no momento.',
+    requestId,
+    ...detalhes
+  });
+}
+
+function logEstruturado(evento, payload = {}) {
+  try {
+    console.info(JSON.stringify({ code: evento, ...payload }));
+  } catch (e) {
+    console.info(evento, payload);
+  }
+}
+
 function logVisitasQueryInvalid(motivo, parametros) {
   console.info('VISITAS_QUERY_INVALID', { motivo, parametros });
 }
@@ -303,7 +322,11 @@ async function garantirNomeCampanhaUnico(folderId, nomeBase) {
 // ==================== POST /api/registro-rota/visitas ====================
 // Registrar nova visita com foto
 router.post('/visitas', upload.any(), async (req, res) => {
+  const requestId = req.requestId || crypto.randomUUID();
+  res.setHeader('x-request-id', requestId);
+
   try {
+
     const {
       rep_id,
       cliente_id,
@@ -323,56 +346,81 @@ router.post('/visitas', upload.any(), async (req, res) => {
 
     const arquivos = Array.isArray(req.files) ? req.files : [];
 
-    const enderecoCliente = cliente_endereco || req.body.endereco_cliente || '';
+    logEstruturado('VISITA_REQUEST_START', {
+      requestId,
+      rota: req.originalUrl,
+      metodo: req.method,
+      timestamp: new Date().toISOString(),
+      payload_keys: Object.keys(req.body || {}).filter((k) => !String(k || '').toLowerCase().includes('foto')),
+      arquivos_qtd: arquivos.length
+    });
+    const normalizarTexto = (valor) => {
+      const texto = typeof valor === 'string' ? valor.trim() : String(valor ?? '').trim();
+      return texto === '' ? null : texto;
+    };
+
+    const enderecoCliente = normalizarTexto(cliente_endereco || req.body.endereco_cliente);
 
     if (!rep_id || !cliente_id || (!foto_base64 && arquivos.length === 0) || !tipo || !cliente_nome || !enderecoCliente) {
-      return res.status(400).json({
-        ok: false,
+      return responderErro({
+        res,
+        status: 400,
         code: 'INVALID_PAYLOAD',
-        message: 'Campos obrigatórios ausentes: rep_id, cliente_id, tipo, foto(s), cliente_nome, cliente_endereco'
+        message: 'Campos obrigatórios ausentes: rep_id, cliente_id, tipo, foto(s), cliente_nome, cliente_endereco',
+        requestId
       });
     }
 
     const repIdNumber = Number(rep_id);
     if (!Number.isFinite(repIdNumber)) {
-      return res.status(400).json({ ok: false, message: 'rep_id inválido', code: 'INVALID_REP_ID' });
+      return responderErro({ res, status: 400, message: 'rep_id inválido', code: 'INVALID_REP_ID', requestId });
     }
 
     const latitudeNumber = Number(latitude);
     const longitudeNumber = Number(longitude);
     if (!Number.isFinite(latitudeNumber) || !Number.isFinite(longitudeNumber)) {
-      return res.status(400).json({ ok: false, message: 'Localização obrigatória', code: 'LOCATION_REQUIRED' });
+      return responderErro({ res, status: 400, message: 'Localização obrigatória', code: 'LOCATION_REQUIRED', requestId });
     }
 
-    const enderecoSnapshot = String(endereco_resolvido || '').trim();
+    const enderecoSnapshot = normalizarTexto(endereco_resolvido);
     if (!enderecoSnapshot) {
-      return res.status(400).json({ ok: false, code: 'ENDERECO_OBRIGATORIO', message: 'Endereço resolvido é obrigatório' });
+      return responderErro({
+        res,
+        status: 400,
+        code: 'ENDERECO_OBRIGATORIO',
+        message: 'Endereço resolvido é obrigatório',
+        requestId
+      });
     }
 
     const tipoNormalizado = String(tipo).toLowerCase();
     if (!RV_TIPOS.includes(tipoNormalizado)) {
-      return res.status(400).json({ ok: false, code: 'TIPO_INVALIDO', message: 'Tipo de registro inválido' });
+      return responderErro({ res, status: 400, code: 'TIPO_INVALIDO', message: 'Tipo de registro inválido', requestId });
     }
 
     const dataHoraRegistro = new Date().toISOString();
     const rvTipo = tipoNormalizado;
     const clienteIdNorm = normalizeClienteId(cliente_id);
-    const dataPlanejadaValida = validarDataPlanejada(data_planejada);
+    const dataPlanejadaValida = validarDataPlanejada(normalizarTexto(data_planejada));
     const atrasoCheckin = rvTipo === 'checkin' ? calcularAtrasoRoteiroDias(dataPlanejadaValida) : { dias: null, bloqueado: false };
 
     if (rvTipo === 'checkin' && !dataPlanejadaValida) {
-      return res.status(400).json({
-        ok: false,
+      return responderErro({
+        res,
+        status: 400,
         code: 'DATA_ROTEIRO_OBRIGATORIA',
-        message: 'Informe a data do roteiro (YYYY-MM-DD) para o check-in.'
+        message: 'Informe a data do roteiro (YYYY-MM-DD) para o check-in.',
+        requestId
       });
     }
 
     if (rvTipo === 'checkin' && atrasoCheckin.bloqueado) {
-      return res.status(409).json({
-        ok: false,
+      return responderErro({
+        res,
+        status: 409,
         code: 'CHECKIN_ATRASO_SUPERIOR_7_DIAS',
-        message: 'Atraso superior a 7 dias. Check-in bloqueado.'
+        message: 'Atraso superior a 7 dias. Check-in bloqueado.',
+        requestId
       });
     }
     const dataReferencia = dataPlanejadaValida || dataLocalIso(dataHoraRegistro);
@@ -400,11 +448,18 @@ router.post('/visitas', upload.any(), async (req, res) => {
 
     const repositor = await tursoService.obterRepositor(repIdNumber);
     if (!repositor) {
-      return res.status(404).json({ ok: false, message: 'Repositor não encontrado', code: 'REPOSITOR_NOT_FOUND' });
+      return responderErro({ res, status: 404, message: 'Repositor não encontrado', code: 'REPOSITOR_NOT_FOUND', requestId });
     }
 
     if (!googleDriveService.isConfigured()) {
-      return res.status(400).json({ ok: false, code: 'OAUTH_NOT_CONFIGURED', startUrl: '/api/google/oauth/start' });
+      return responderErro({
+        res,
+        status: 400,
+        code: 'OAUTH_NOT_CONFIGURED',
+        message: 'Autorização do Google não configurada.',
+        requestId,
+        detalhes: { startUrl: '/api/google/oauth/start' }
+      });
     }
 
     let sessaoId = null;
@@ -418,30 +473,42 @@ router.post('/visitas', upload.any(), async (req, res) => {
 
     if (rvTipo === 'checkin') {
       if (sessaoEmAndamentoCliente) {
-        return res.status(409).json({
-          ok: false,
+        return responderErro({
+          res,
+          status: 409,
           code: 'CHECKIN_EXISTENTE',
-          message: 'Já existe um atendimento em andamento para este cliente. Finalize o checkout primeiro.'
+          message: 'Já existe um atendimento em andamento para este cliente. Finalize o checkout primeiro.',
+          requestId
         });
       }
       const atendimentoFechadoHoje = Boolean(sessaoDiaOperacional?.checkin_at && sessaoDiaOperacional?.checkout_at);
 
       if (sessaoDiaOperacional?.checkin_at && !atendimentoFechadoHoje) {
-        return res.status(409).json({ ok: false, code: 'CHECKIN_EXISTENTE', message: 'Já existe check-in para este cliente no dia.' });
+        return responderErro({
+          res,
+          status: 409,
+          code: 'CHECKIN_EXISTENTE',
+          message: 'Já existe check-in para este cliente no dia.',
+          requestId
+        });
       }
 
       if (atendimentoFechadoHoje && !allowNovaVisita) {
-        return res.status(409).json({
-          ok: false,
+        return responderErro({
+          res,
+          status: 409,
           code: 'CHECKIN_DIA_FINALIZADO',
-          message: "Cliente já atendido hoje. Use 'Nova visita' para registrar novo atendimento."
+          message: "Cliente já atendido hoje. Use 'Nova visita' para registrar novo atendimento.",
+          requestId
         });
       }
       if (sessaoAberta && normalizeClienteId(sessaoAberta.cliente_id) !== clienteIdNorm) {
-        return res.status(409).json({
-          ok: false,
+        return responderErro({
+          res,
+          status: 409,
           code: 'SESSAO_ABERTA_OUTRO_CLIENTE',
-          message: `Há um atendimento em aberto para o cliente ${sessaoAberta.cliente_id}. Finalize o checkout antes de iniciar outro check-in.`
+          message: `Há um atendimento em aberto para o cliente ${sessaoAberta.cliente_id}. Finalize o checkout antes de iniciar outro check-in.`,
+          requestId
         });
       }
       const sessaoBase = !allowNovaVisita && sessaoExistente && !sessaoExistente.checkin_at ? sessaoExistente : null;
@@ -469,10 +536,12 @@ router.post('/visitas', upload.any(), async (req, res) => {
 
     if (rvTipo === 'checkout') {
       if (rvSessaoId && !sessaoPorId) {
-        return res.status(404).json({
-          ok: false,
+        return responderErro({
+          res,
+          status: 404,
           code: 'ATENDIMENTO_NAO_ENCONTRADO',
-          message: 'Atendimento não encontrado para o checkout solicitado.'
+          message: 'Atendimento não encontrado para o checkout solicitado.',
+          requestId
         });
       }
 
@@ -484,20 +553,24 @@ router.post('/visitas', upload.any(), async (req, res) => {
       });
 
       if (!sessaoValidacao.ok) {
-        return res.status(sessaoValidacao.status).json({
-          ok: false,
+        return responderErro({
+          res,
+          status: sessaoValidacao.status,
           code: sessaoValidacao.code,
-          message: sessaoValidacao.message
+          message: sessaoValidacao.message,
+          requestId
         });
       }
 
       const sessaoAlvo = sessaoValidacao.sessao;
       if (sessaoAberta && normalizeClienteId(sessaoAberta.cliente_id) !== clienteIdNorm) {
         console.info('OPEN_ATTENDANCE_BLOCK', { rv_id: sessaoAberta.sessao_id, rep_id: repIdNumber, cliente_id: clienteIdNorm });
-        return res.status(409).json({
-          ok: false,
+        return responderErro({
+          res,
+          status: 409,
           code: 'CHECKOUT_CLIENTE_DIFERENTE',
-          message: `Existe um check-in aberto para o cliente ${sessaoAberta.cliente_id}. Realize o checkout nele antes de finalizar outro cliente.`
+          message: `Existe um check-in aberto para o cliente ${sessaoAberta.cliente_id}. Realize o checkout nele antes de finalizar outro cliente.`,
+          requestId
         });
       }
       sessaoId = sessaoAlvo.sessao_id.toString();
@@ -507,7 +580,13 @@ router.post('/visitas', upload.any(), async (req, res) => {
     }
     if (rvTipo === 'campanha') {
       if (rvSessaoId && !sessaoPorId) {
-        return res.status(404).json({ ok: false, code: 'ATENDIMENTO_NAO_ENCONTRADO', message: 'Atendimento não encontrado' });
+        return responderErro({
+          res,
+          status: 404,
+          code: 'ATENDIMENTO_NAO_ENCONTRADO',
+          message: 'Atendimento não encontrado',
+          requestId
+        });
       }
 
       const sessaoBaseCampanha = rvSessaoId ? sessaoPorId : sessaoExistente;
@@ -517,20 +596,34 @@ router.post('/visitas', upload.any(), async (req, res) => {
       });
 
       if (!sessaoValidada.ok) {
-        return res.status(sessaoValidada.status).json({
-          ok: false,
+        return responderErro({
+          res,
+          status: sessaoValidada.status,
           code: sessaoValidada.code,
-          message: sessaoValidada.message
+          message: sessaoValidada.message,
+          requestId
         });
       }
 
       const sessaoCampanha = sessaoValidada.sessao;
 
       if (!sessaoCampanha || !sessaoCampanha.checkin_at) {
-        return res.status(409).json({ ok: false, code: 'CAMPANHA_SEM_CHECKIN', message: 'Faça o check-in antes de registrar campanha.' });
+        return responderErro({
+          res,
+          status: 409,
+          code: 'CAMPANHA_SEM_CHECKIN',
+          message: 'Faça o check-in antes de registrar campanha.',
+          requestId
+        });
       }
       if (sessaoCampanha.checkout_at) {
-        return res.status(409).json({ ok: false, code: 'CAMPANHA_APOS_CHECKOUT', message: 'Campanha não permitida após o check-out.' });
+        return responderErro({
+          res,
+          status: 409,
+          code: 'CAMPANHA_APOS_CHECKOUT',
+          message: 'Campanha não permitida após o check-out.',
+          requestId
+        });
       }
       sessaoId = sessaoCampanha.sessao_id;
     }
@@ -546,7 +639,13 @@ router.post('/visitas', upload.any(), async (req, res) => {
     const arquivosParaProcessar = arquivos.length > 0 ? arquivos : [{ buffer: Buffer.from(foto_base64, 'base64'), mimetype: mimeType }];
 
     if (rvTipo === 'campanha' && arquivosParaProcessar.length > MAX_CAMPANHA_FOTOS) {
-      return res.status(400).json({ ok: false, code: 'LIMITE_FOTOS', message: `Limite de ${MAX_CAMPANHA_FOTOS} fotos excedido.` });
+      return responderErro({
+        res,
+        status: 400,
+        code: 'LIMITE_FOTOS',
+        message: `Limite de ${MAX_CAMPANHA_FOTOS} fotos excedido.`,
+        requestId
+      });
     }
 
     const isCheckin = rvTipo === 'checkin';
@@ -591,7 +690,13 @@ router.post('/visitas', upload.any(), async (req, res) => {
       });
 
       if (!uploadResult?.fileId || !uploadResult?.webViewLink) {
-        return res.status(400).json({ ok: false, code: 'DRIVE_UPLOAD_UNAVAILABLE', message: 'Upload no Drive não disponível' });
+        return responderErro({
+          res,
+          status: 400,
+          code: 'DRIVE_UPLOAD_UNAVAILABLE',
+          message: 'Upload no Drive não disponível',
+          requestId
+        });
       }
 
       const visita = await tursoService.salvarVisitaDetalhada({
@@ -649,10 +754,12 @@ router.post('/visitas', upload.any(), async (req, res) => {
           cliente_id: clienteIdNorm,
           activities_count: activitiesCount
         });
-        return res.status(409).json({
-          ok: false,
+        return responderErro({
+          res,
+          status: 409,
           code: 'ATIVIDADE_OBRIGATORIA',
-          message: 'Registre ao menos 1 atividade antes do checkout.'
+          message: 'Registre ao menos 1 atividade antes do checkout.',
+          requestId
         });
       }
 
@@ -682,22 +789,49 @@ router.post('/visitas', upload.any(), async (req, res) => {
       console.info('CHECKIN_OK', { rv_id: sessaoId, rep_id: repIdNumber, cliente_id: clienteIdNorm });
     }
 
-    return res.status(201).json(sanitizeForJson(payload));
+    return res.status(201).json(sanitizeForJson({ ...payload, requestId }));
   } catch (error) {
     if (error instanceof OAuthNotConfiguredError) {
-      return res.status(400).json({ ok: false, code: error.code, startUrl: '/api/google/oauth/start', message: error.message });
+      return responderErro({
+        res,
+        status: 400,
+        code: error.code,
+        message: error.message,
+        requestId,
+        detalhes: { startUrl: '/api/google/oauth/start' }
+      });
     }
 
     if (error instanceof DatabaseNotConfiguredError) {
-      return res.status(503).json({ ok: false, code: error.code, message: error.message });
+      return responderErro({ res, status: 503, code: error.code, message: error.message, requestId });
     }
 
-    console.error('Erro ao registrar visita:', error?.stack || error);
-    return res.status(500).json({
-      ok: false,
-      code: 'REGISTRO_VISITA_ERROR',
-      message: 'Erro ao registrar visita'
+    if (error instanceof LibsqlError) {
+      const mensagemErro = String(error?.message || '');
+      const msgLower = mensagemErro.toLowerCase();
+      const isSchema = msgLower.includes('values for') || msgLower.includes('no such column');
+      const isConstraint = msgLower.includes('constraint');
+      const status = isConstraint ? 409 : isSchema ? 400 : 500;
+      const code = isConstraint ? 'VISITA_CONFLITO' : 'VISITA_BD_ERRO';
+      logEstruturado('VISITA_DB_ERROR', { requestId, rota: req.originalUrl, message: mensagemErro, stack: error?.stack });
+      return responderErro({
+        res,
+        status,
+        code,
+        message: isSchema
+          ? 'Formato de dados da visita incompatível com o banco. Atualize o app e tente novamente.'
+          : 'Não foi possível salvar a visita no banco de dados.',
+        requestId
+      });
+    }
+
+    logEstruturado('VISITA_UNHANDLED_ERROR', {
+      requestId,
+      rota: req.originalUrl,
+      message: error?.message,
+      stack: error?.stack
     });
+    return responderErro({ res, status: 500, code: 'REGISTRO_VISITA_ERROR', message: 'Erro ao registrar visita', requestId });
   }
 });
 
