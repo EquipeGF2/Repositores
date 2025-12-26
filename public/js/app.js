@@ -134,7 +134,6 @@ class App {
         this.primeiraApiRegistrada = false;
         this.recursosPorPagina = {
             'cadastro-repositor': 'mod_repositores',
-            'cadastro-usuario': 'mod_configuracoes',
             'validacao-dados': 'mod_repositores',
             'resumo-periodo': 'mod_repositores',
             'resumo-mensal': 'mod_repositores',
@@ -919,22 +918,6 @@ class App {
         }
     }
 
-    // ==================== GESTÃO DE USUÁRIOS ====================
-
-    async inicializarGestaoUsuarios() {
-        // Verifica se é admin
-        if (!window.authManager || !window.authManager.isAdmin()) {
-            this.showNotification('Acesso negado. Apenas administradores podem acessar esta página.', 'error');
-            this.navigateTo('home');
-            return;
-        }
-
-        // Inicializa o módulo de gestão de usuários
-        if (window.gestaoUsuarios) {
-            await window.gestaoUsuarios.init();
-        }
-    }
-
     estaNoModoMobile() {
         return this.mobileHeaderQuery?.matches;
     }
@@ -1014,8 +997,6 @@ class App {
 
             if (pageName === 'cadastro-repositor') {
                 await this.aplicarFiltrosCadastroRepositores();
-            } else if (pageName === 'cadastro-usuario') {
-                await this.inicializarGestaoUsuarios();
             } else if (pageName === 'controle-acessos') {
                 await this.inicializarControleAcessos();
             } else if (pageName === 'roteiro-repositor') {

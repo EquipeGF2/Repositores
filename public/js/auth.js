@@ -101,6 +101,8 @@ class AuthManager {
    */
   async login(username, password) {
     try {
+      console.log('[AUTH] Tentando login...', { username, url: `${this.apiBaseUrl}/api/auth/login` });
+
       const response = await fetch(`${this.apiBaseUrl}/api/auth/login`, {
         method: 'POST',
         headers: {
@@ -109,7 +111,10 @@ class AuthManager {
         body: JSON.stringify({ username, password })
       });
 
+      console.log('[AUTH] Resposta recebida:', { status: response.status, ok: response.ok });
+
       const data = await response.json();
+      console.log('[AUTH] Dados da resposta:', data);
 
       if (!response.ok) {
         throw new Error(data.message || 'Erro ao fazer login');
@@ -121,10 +126,11 @@ class AuthManager {
 
       // Salvar sessão
       this.salvarSessao(data.token, data.usuario, data.permissoes);
+      console.log('[AUTH] Login bem-sucedido!', { usuario: data.usuario.username, perfil: data.usuario.perfil });
 
       return { success: true, usuario: data.usuario };
     } catch (error) {
-      console.error('Erro no login:', error);
+      console.error('[AUTH] Erro no login:', error);
       throw error;
     }
   }
