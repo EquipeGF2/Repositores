@@ -782,16 +782,8 @@ router.post('/visitas', upload.any(), async (req, res) => {
         ...extras
       });
 
-      if (driveError instanceof IntegrationAuthError || driveError?.code === 'DRIVE_INVALID_GRANT') {
-        return responderErro({
-          res,
-          status: driveError?.httpStatus || 503,
-          code: 'DRIVE_INVALID_GRANT',
-          message: driveError?.message || 'Integração com Google Drive desconectada. Reautentique e atualize o token.',
-          requestId
-        });
-      }
-
+      // Marcar Drive como indisponível para todos os erros (incluindo INVALID_GRANT)
+      // e continuar o fluxo salvando localmente como pendência
       driveIndisponivel = true;
       return null;
     };
