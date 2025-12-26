@@ -9,12 +9,31 @@ class AuthManager {
     this.usuario = null;
     this.permissoes = [];
     this.apiBaseUrl = window.API_BASE_URL || 'https://repositor-backend.onrender.com';
+    this.isPWA = this.detectarPWA();
+  }
+
+  /**
+   * Detectar se está rodando como PWA (aplicativo instalado)
+   */
+  detectarPWA() {
+    // Verifica se está em modo standalone (app instalado)
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+
+    // Verifica se foi adicionado à tela inicial (iOS)
+    const isIOSStandalone = window.navigator.standalone === true;
+
+    // Verifica se é mobile
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+    return isStandalone || isIOSStandalone || isMobile;
   }
 
   /**
    * Inicializar ao carregar a página
    */
   init() {
+    console.log('[AUTH] Modo de execução:', this.isPWA ? 'PWA/Mobile' : 'Web Desktop');
+
     this.carregarSessao();
     return this.verificarAutenticacao();
   }
@@ -147,8 +166,22 @@ class AuthManager {
    * Verificar autenticação e redirecionar se necessário
    */
   verificarAutenticacao() {
-    // Se não está autenticado, mostrar tela de login
+    // Se NÃO é PWA (web desktop), permitir acesso sem login
+    if (!this.isPWA) {
+      console.log('[AUTH] Acesso web desktop - login não obrigatório');
+
+      // Se não tem sessão, criar uma sessão guest para compatibilidade
+      if (!this.isAuthenticated()) {
+        this.criarSessaoGuest();
+      }
+
+      this.mostrarAplicacao();
+      return true;
+    }
+
+    // Se é PWA e não está autenticado, exigir login
     if (!this.isAuthenticated()) {
+      console.log('[AUTH] PWA/Mobile - login obrigatório');
       this.mostrarTelaLogin();
       return false;
     }
@@ -156,6 +189,44 @@ class AuthManager {
     // Se está autenticado, mostrar aplicação
     this.mostrarAplicacao();
     return true;
+  }
+
+  /**
+   * Criar sessão guest para acesso web sem login
+   */
+  criarSessaoGuest() {
+    console.log('[AUTH] Criando sessão guest para acesso web');
+
+    // Criar usuário guest com permissões de admin para web
+    this.usuario = {
+      usuario_id: null,
+      username: 'guest',
+      nome_completo: 'Usuário Web',
+      perfil: 'admin', // Web tem acesso total
+      rep_id: null
+    };
+
+    this.permissoes = [
+      'home',
+      'cadastro-repositor',
+      'roteiro-repositor',
+      'cadastro-rateio',
+      'validacao-dados',
+      'consulta-visitas',
+      'consulta-campanha',
+      'consulta-alteracoes',
+      'consulta-roteiro',
+      'consulta-documentos',
+      'registro-rota',
+      'registro-documentos'
+    ];
+
+    // Manter compatibilidade com sistema antigo
+    localStorage.setItem('GERMANI_AUTH_USER', JSON.stringify({
+      rep_id: null,
+      rep_name: 'Usuário Web',
+      perfil: 'admin'
+    }));
   }
 
   /**
