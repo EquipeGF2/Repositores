@@ -21,6 +21,9 @@ class TursoService {
       this.ensureRateioSchema().catch((err) => {
         console.warn('⚠️  Falha ao garantir schema de rateio:', err?.message || err);
       });
+      this.ensureDrivePendenciaSchema().catch((err) => {
+        console.warn('⚠️  Falha ao garantir schema de pendência de Drive:', err?.message || err);
+      });
     } catch (error) {
       if (error instanceof DatabaseNotConfiguredError) {
         this.client = null;
@@ -367,6 +370,24 @@ class TursoService {
     return { id: typeof insertedId === 'bigint' ? insertedId.toString() : String(insertedId) };
   }
 
+  async _updateDynamic(tableName, keyColumn, keyValue, dataObj) {
+    const availableColumns = await this._getTableColumns(tableName);
+    const entries = Object.entries(dataObj).filter(([key]) => availableColumns.includes(key));
+
+    if (entries.length === 0) {
+      return { updated: 0 };
+    }
+
+    const setters = entries.map(([key]) => `${key} = ?`).join(', ');
+    const values = entries.map(([, value]) => value);
+    values.push(keyValue);
+
+    const sql = `UPDATE ${tableName} SET ${setters} WHERE ${keyColumn} = ?`;
+    const result = await this.execute(sql, values);
+
+    return { updated: result.rowsAffected || 0 };
+  }
+
   async salvarVisitaDetalhada({
     repId,
     clienteId,
@@ -433,6 +454,71 @@ class TursoService {
     };
 
     return await this._insertDynamic('cc_registro_visita', row);
+  }
+
+  async ensureDrivePendenciaSchema() {
+    try {
+      await this.execute(
+        `CREATE TABLE IF NOT EXISTS cc_drive_pendencia (
+          pend_id INTEGER PRIMARY KEY AUTOINCREMENT,
+          rv_id INTEGER,
+          sessao_id TEXT,
+          rep_id INTEGER,
+          cliente_id TEXT,
+          tipo TEXT,
+          arquivo_nome TEXT,
+          arquivo_mime TEXT,
+          arquivo_size INTEGER,
+          arquivo_base64 TEXT,
+          arquivo_path_tmp TEXT,
+          status TEXT NOT NULL DEFAULT 'PENDENTE',
+          criado_em TEXT NOT NULL DEFAULT (datetime('now')),
+          atualizado_em TEXT,
+          erro_ultimo TEXT
+        )`
+      );
+      await this.execute('CREATE INDEX IF NOT EXISTS idx_drive_pend_status ON cc_drive_pendencia (status, criado_em)');
+    } catch (error) {
+      console.error('❌ Erro ao garantir schema de cc_drive_pendencia:', error?.message || error);
+      throw error;
+    }
+  }
+
+  async registrarPendenciaDrive(data) {
+    await this.ensureDrivePendenciaSchema();
+    return this._insertDynamic('cc_drive_pendencia', {
+      rv_id: data.rvId,
+      sessao_id: data.sessaoId,
+      rep_id: data.repId,
+      cliente_id: data.clienteId,
+      tipo: data.tipo,
+      arquivo_nome: data.arquivoNome,
+      arquivo_mime: data.arquivoMime,
+      arquivo_size: data.arquivoSize,
+      arquivo_base64: data.arquivoBase64,
+      arquivo_path_tmp: data.arquivoPathTmp,
+      status: data.status || 'PENDENTE',
+      erro_ultimo: data.erroUltimo || null
+    });
+  }
+
+  async listarPendenciasDrive({ limit = 10 } = {}) {
+    await this.ensureDrivePendenciaSchema();
+    const result = await this.execute(
+      'SELECT * FROM cc_drive_pendencia WHERE status = "PENDENTE" ORDER BY criado_em ASC LIMIT ?',
+      [limit]
+    );
+    return result.rows || [];
+  }
+
+  async atualizarPendenciaDrive(pendId, fields) {
+    await this.ensureDrivePendenciaSchema();
+    const payload = { ...fields, atualizado_em: new Date().toISOString() };
+    return this._updateDynamic('cc_drive_pendencia', 'pend_id', pendId, payload);
+  }
+
+  async atualizarRegistroVisita(rvId, fields) {
+    return this._updateDynamic('cc_registro_visita', 'id', rvId, fields);
   }
 
   async listarVisitasDetalhadas({ repId, inicioIso, fimIso, tipo, servico }) {

@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import multer from 'multer';
 import { LibsqlError } from '@libsql/client';
 import { tursoService, DatabaseNotConfiguredError, normalizeClienteId } from '../services/turso.js';
-import { googleDriveService, OAuthNotConfiguredError } from '../services/googleDrive.js';
+import { googleDriveService, OAuthNotConfiguredError, IntegrationAuthError } from '../services/googleDrive.js';
 import { emailService } from '../services/email.js';
 
 const router = express.Router();
@@ -318,6 +318,116 @@ async function garantirNomeCampanhaUnico(folderId, nomeBase) {
 
   return nomeFinal;
 }
+
+// ==================== GET /api/health/drive ====================
+router.get('/health/drive', async (req, res) => {
+  const requestId = req.requestId || crypto.randomUUID();
+  res.setHeader('x-request-id', requestId);
+  const inicio = Date.now();
+
+  const resultado = await googleDriveService.healthCheck();
+  const duracaoMs = Date.now() - inicio;
+
+  logEstruturado('DRIVE_HEALTHCHECK', {
+    requestId,
+    ok: resultado.ok,
+    code: resultado?.error?.code,
+    stage: resultado?.error?.stage,
+    duracao_ms: duracaoMs
+  });
+
+  if (resultado.ok) {
+    return res.json({ ok: true, requestId });
+  }
+
+  const erro = resultado.error;
+  const status = erro?.httpStatus || 502;
+  return res.status(status).json({
+    ok: false,
+    code: erro?.code || 'DRIVE_HEALTH_FAIL',
+    message: erro?.message || 'Falha ao validar integração com o Drive.',
+    requestId
+  });
+});
+
+// ==================== POST /api/drive/retry-pendencias ====================
+router.post('/drive/retry-pendencias', async (req, res) => {
+  const requestId = req.requestId || crypto.randomUUID();
+  res.setHeader('x-request-id', requestId);
+  const limite = Number(req.body?.limit || 5) || 5;
+  const resultados = [];
+
+  try {
+    const pendencias = await tursoService.listarPendenciasDrive({ limit: limite });
+
+    for (const pendencia of pendencias) {
+      const contextoPendencia = { pend_id: pendencia.pend_id, rv_id: pendencia.rv_id, rep_id: pendencia.rep_id };
+      try {
+        const repositorInfo = pendencia.rep_id ? await tursoService.obterRepositor(pendencia.rep_id) : null;
+        const repoNome = repositorInfo?.repo_nome || `REP_${pendencia.rep_id}`;
+        const parentFolder = await googleDriveService.criarPastaRepositor(pendencia.rep_id, repoNome);
+
+        const uploadResult = await googleDriveService.uploadFotoBase64({
+          base64Data: pendencia.arquivo_base64,
+          mimeType: pendencia.arquivo_mime || 'image/jpeg',
+          filename: pendencia.arquivo_nome,
+          repId: pendencia.rep_id,
+          repoNome,
+          parentFolderId: parentFolder
+        });
+
+        await tursoService.atualizarRegistroVisita(pendencia.rv_id, {
+          drive_file_id: uploadResult?.fileId,
+          drive_file_url: uploadResult?.webViewLink,
+          rv_drive_file_id: uploadResult?.fileId,
+          rv_drive_file_url: uploadResult?.webViewLink,
+          rv_status: 'ENVIADO',
+          status: 'ENVIADO'
+        });
+
+        await tursoService.atualizarPendenciaDrive(pendencia.pend_id, { status: 'ENVIADO', erro_ultimo: null });
+
+        resultados.push({ ok: true, pend_id: pendencia.pend_id, rv_id: pendencia.rv_id, drive_file_id: uploadResult?.fileId });
+      } catch (retryError) {
+        const driveError = googleDriveService.mapDriveError('DRIVE_UPLOAD', retryError);
+        await tursoService.atualizarPendenciaDrive(pendencia.pend_id, {
+          status: 'PENDENTE',
+          erro_ultimo: driveError?.message || retryError?.message || String(retryError)
+        });
+
+        resultados.push({
+          ok: false,
+          pend_id: pendencia.pend_id,
+          rv_id: pendencia.rv_id,
+          code: driveError?.code,
+          message: driveError?.message
+        });
+
+        logEstruturado('DRIVE_RETRY_FAIL', { requestId, ...contextoPendencia, code: driveError?.code, message: driveError?.message });
+
+        if (driveError instanceof IntegrationAuthError || driveError?.code === 'DRIVE_INVALID_GRANT') {
+          return res.status(driveError?.httpStatus || 503).json({
+            ok: false,
+            code: 'DRIVE_INVALID_GRANT',
+            message: driveError?.message,
+            requestId,
+            resultados
+          });
+        }
+      }
+    }
+
+    return res.json({ ok: true, resultados, requestId });
+  } catch (error) {
+    logEstruturado('DRIVE_RETRY_ERROR', { requestId, message: error?.message, stack: error?.stack });
+    return res.status(500).json({
+      ok: false,
+      code: 'DRIVE_RETRY_ERROR',
+      message: 'Falha ao reprocessar pendências.',
+      requestId
+    });
+  }
+});
 
 // ==================== POST /api/registro-rota/visitas ====================
 // Registrar nova visita com foto
@@ -658,9 +768,42 @@ router.post('/visitas', upload.any(), async (req, res) => {
     }
 
     const mimeType = foto_mime || 'image/jpeg';
-    const parentFolderId = rvTipo === 'campanha'
-      ? await googleDriveService.ensureCampanhaFolder(repIdNumber, repositor.repo_nome)
-      : await googleDriveService.criarPastaRepositor(repIdNumber, repositor.repo_nome);
+    let parentFolderId = null;
+    let driveIndisponivel = false;
+
+    const tratarErroDrive = (etapa, erro, extras = {}) => {
+      const driveError = googleDriveService.mapDriveError(etapa, erro);
+      logEstruturado('VISITA_DRIVE_ERROR', {
+        requestId,
+        etapa,
+        code: driveError?.code,
+        message: driveError?.message,
+        status: driveError?.httpStatus,
+        ...extras
+      });
+
+      if (driveError instanceof IntegrationAuthError || driveError?.code === 'DRIVE_INVALID_GRANT') {
+        return responderErro({
+          res,
+          status: driveError?.httpStatus || 503,
+          code: 'DRIVE_INVALID_GRANT',
+          message: driveError?.message || 'Integração com Google Drive desconectada. Reautentique e atualize o token.',
+          requestId
+        });
+      }
+
+      driveIndisponivel = true;
+      return null;
+    };
+
+    try {
+      parentFolderId = rvTipo === 'campanha'
+        ? await googleDriveService.ensureCampanhaFolder(repIdNumber, repositor.repo_nome)
+        : await googleDriveService.criarPastaRepositor(repIdNumber, repositor.repo_nome);
+    } catch (driveErroPasta) {
+      const resposta = tratarErroDrive('DRIVE_FOLDER', driveErroPasta, { repId: repIdNumber });
+      if (resposta) return resposta;
+    }
 
     const nomeClienteSanitizado = sanitizeNomeCliente(cliente_nome || cliente_id);
     const partesData = formatDataHoraLocal(dataHoraRegistro);
@@ -680,6 +823,73 @@ router.post('/visitas', upload.any(), async (req, res) => {
     const isCheckin = rvTipo === 'checkin';
     const isCheckout = rvTipo === 'checkout';
     const registrosSalvos = [];
+    let houvePendenciaUpload = false;
+
+    const registrarPendenciaUpload = async ({ arquivo, nomeFinal, dataHoraArquivo }) => {
+      houvePendenciaUpload = true;
+      let visitaPendente;
+      try {
+        visitaPendente = await tursoService.salvarVisitaDetalhada({
+          repId: repIdNumber,
+          clienteId: clienteIdNorm,
+          dataHora: dataHoraArquivo,
+          latitude: latitudeNumber,
+          longitude: longitudeNumber,
+          enderecoResolvido: enderecoSnapshot,
+          rvTipo,
+          rvSessaoId: sessaoId,
+          rvDataPlanejada: dataReferencia,
+          rvClienteNome: cliente_nome || cliente_id,
+          rvEnderecoCliente: enderecoCliente || null,
+          rvPastaDriveId: parentFolderId,
+          rvDataHoraRegistro: dataHoraArquivo,
+          rvEnderecoRegistro: enderecoSnapshot,
+          rvEnderecoCheckin: isCheckin ? enderecoSnapshot : null,
+          rvEnderecoCheckout: isCheckout ? enderecoSnapshot : null,
+          rvLatitude: latitudeNumber,
+          rvLongitude: longitudeNumber,
+          rvDiaPrevisto: diaPrevistoCodigo,
+          rvRoteiroId: roteiroId,
+          sessao_id: sessaoId,
+          tipo: rvTipo,
+          data_hora_registro: dataHoraArquivo,
+          endereco_registro: enderecoSnapshot,
+          latitudeBase: latitudeNumber,
+          longitudeBase: longitudeNumber,
+          rv_status: 'PENDENTE_UPLOAD',
+          status: 'PENDENTE_UPLOAD'
+        });
+      } catch (pendDbError) {
+        logErroEtapa('insert_cc_registro_visita_pendente', pendDbError, { arquivo: nomeFinal });
+      }
+
+      const arquivoBase64 = arquivo.buffer?.toString('base64') || '';
+      try {
+        await tursoService.registrarPendenciaDrive({
+          rvId: visitaPendente?.id || null,
+          sessaoId,
+          repId: repIdNumber,
+          clienteId: clienteIdNorm,
+          tipo: rvTipo,
+          arquivoNome: nomeFinal,
+          arquivoMime: arquivo.mimetype || mimeType,
+          arquivoSize: arquivo.size || arquivo.buffer?.length || null,
+          arquivoBase64,
+          erroUltimo: null
+        });
+      } catch (pendError) {
+        logErroEtapa('registrar_pendencia_drive', pendError, { arquivo: nomeFinal });
+      }
+
+      registrosSalvos.push({
+        id: visitaPendente?.id ?? null,
+        drive_file_id: null,
+        drive_file_url: null,
+        data_hora: dataHoraArquivo,
+        nome_arquivo: nomeFinal,
+        status: 'PENDENTE_UPLOAD'
+      });
+    };
 
     for (let i = 0; i < arquivosParaProcessar.length; i += 1) {
       const arquivo = arquivosParaProcessar[i];
@@ -710,6 +920,11 @@ router.post('/visitas', upload.any(), async (req, res) => {
       const base64Data = arquivo.buffer.toString('base64');
 
       let uploadResult;
+      if (driveIndisponivel) {
+        await registrarPendenciaUpload({ arquivo, nomeFinal, dataHoraArquivo });
+        continue;
+      }
+
       try {
         uploadResult = await googleDriveService.uploadFotoBase64({
           base64Data,
@@ -720,14 +935,10 @@ router.post('/visitas', upload.any(), async (req, res) => {
           parentFolderId
         });
       } catch (uploadError) {
-        logErroEtapa('upload_drive', uploadError, { arquivo: nomeFinal });
-        return responderErro({
-          res,
-          status: 502,
-          code: 'DRIVE_UPLOAD_FAIL',
-          message: 'Falha ao enviar arquivo. Tente novamente.',
-          requestId
-        });
+        const resposta = tratarErroDrive('DRIVE_UPLOAD', uploadError, { arquivo: nomeFinal });
+        if (resposta) return resposta;
+        await registrarPendenciaUpload({ arquivo, nomeFinal, dataHoraArquivo });
+        continue;
       }
 
       if (!uploadResult?.fileId || !uploadResult?.webViewLink) {
@@ -900,8 +1111,27 @@ router.post('/visitas', upload.any(), async (req, res) => {
       console.info('CHECKIN_OK', { rv_id: sessaoId, rep_id: repIdNumber, cliente_id: clienteIdNorm });
     }
 
+    if (houvePendenciaUpload) {
+      return res.status(202).json(sanitizeForJson({
+        ...payload,
+        code: 'UPLOAD_PENDENTE',
+        message: 'Registro salvo, upload pendente.',
+        requestId
+      }));
+    }
+
     return res.status(201).json(sanitizeForJson({ ...payload, requestId }));
   } catch (error) {
+    if (error instanceof IntegrationAuthError || error?.code === 'DRIVE_INVALID_GRANT') {
+      return responderErro({
+        res,
+        status: error?.httpStatus || 503,
+        code: 'DRIVE_INVALID_GRANT',
+        message: error?.message || 'Integração com Google Drive desconectada. Reautentique e atualize o token.',
+        requestId
+      });
+    }
+
     if (error instanceof OAuthNotConfiguredError) {
       return responderErro({
         res,

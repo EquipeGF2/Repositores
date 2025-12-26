@@ -6976,6 +6976,7 @@ class App {
             const resposta = await response.json();
             const dataRegistro = resposta?.data_hora || new Date().toISOString();
             const rvResposta = resposta?.rv_id || resposta?.sessao_id || rvSessaoId;
+            const uploadPendente = response.status === 202 || resposta?.code === 'UPLOAD_PENDENTE';
 
             if (tipoRegistro === 'checkin') {
                 if (!rvResposta) {
@@ -7023,13 +7024,23 @@ class App {
                 });
             }
 
-            this.showNotification('Visita registrada com sucesso!', 'success');
+            if (uploadPendente) {
+                const protocolo = resposta?.requestId ? ` (Protocolo: ${resposta.requestId})` : '';
+                this.showNotification(`Registrado com sucesso. Upload será concluído quando a integração normalizar.${protocolo}`, 'warning');
+            } else {
+                this.showNotification('Visita registrada com sucesso!', 'success');
+            }
 
             await this.fecharModalCaptura();
             this.carregarRoteiroRepositor();
         } catch (error) {
             console.error('Erro ao salvar visita:', error);
             const mensagem = String(error?.message || '').toLowerCase();
+            if (error?.code === 'DRIVE_INVALID_GRANT') {
+                const protocolo = error?.requestId ? ` Protocolo: ${error.requestId}` : '';
+                this.showNotification(`Integração com Drive desconectada. Acione o administrador.${protocolo}`, 'error');
+                return;
+            }
             if (error?.status === 404 || mensagem.includes('não há check-in em aberto') || mensagem.includes('não encontrado')) {
                 await this.tratarAtendimentoNaoEncontrado(repId, clienteId, clienteNome);
             } else {

@@ -10,12 +10,64 @@ export class OAuthNotConfiguredError extends Error {
   }
 }
 
+export class IntegrationAuthError extends Error {
+  constructor({ message, code = 'DRIVE_INVALID_GRANT', httpStatus = 503, stage = 'DRIVE_AUTH' }) {
+    super(message);
+    this.name = 'IntegrationAuthError';
+    this.code = code;
+    this.httpStatus = httpStatus;
+    this.stage = stage;
+  }
+}
+
 class GoogleDriveService {
   constructor() {
     this.drive = null;
     this.auth = null;
     this.folderCache = new Map(); // Cache de pastas dos repositores
     this.subfolderCache = new Map(); // Cache de subpastas (ex.: campanha)
+  }
+
+  mapDriveError(stage, error) {
+    const isInvalidGrant = error?.message === 'invalid_grant'
+      || error?.response?.data?.error === 'invalid_grant'
+      || error?.code === 'invalid_grant';
+
+    if (isInvalidGrant) {
+      return new IntegrationAuthError({
+        stage,
+        message: 'Integração com Google Drive desconectada. Reautentique e atualize o token.',
+        httpStatus: 503,
+        code: 'DRIVE_INVALID_GRANT'
+      });
+    }
+
+    if (error instanceof IntegrationAuthError) {
+      error.stage = error.stage || stage;
+      return error;
+    }
+
+    const mapped = new Error(error?.message || 'Falha na integração com Google Drive');
+    mapped.code = error?.code || 'DRIVE_ERROR';
+    mapped.httpStatus = error?.httpStatus || 502;
+    mapped.stage = stage;
+    mapped.originalError = error;
+    return mapped;
+  }
+
+  logDriveError(stage, error, extras = {}) {
+    try {
+      console.error(JSON.stringify({
+        code: error?.code || 'DRIVE_ERROR',
+        stage,
+        message: error?.message,
+        status: error?.httpStatus,
+        stack: error?.stack,
+        ...extras
+      }));
+    } catch (logError) {
+      console.error('DRIVE_LOG_ERROR', stage, error, extras, logError);
+    }
   }
 
   async authenticate() {
@@ -32,8 +84,9 @@ class GoogleDriveService {
 
       console.log('✅ Autenticado no Google Drive');
     } catch (error) {
-      console.error('❌ Erro ao autenticar no Google Drive:', error.message);
-      throw error;
+      const mapped = this.mapDriveError('DRIVE_AUTH', error);
+      this.logDriveError('DRIVE_AUTH', mapped);
+      throw mapped;
     }
   }
 
@@ -94,8 +147,9 @@ class GoogleDriveService {
 
       return folderId;
     } catch (error) {
-      console.error('❌ Erro ao criar pasta no Drive:', error.message);
-      throw error;
+      const mapped = this.mapDriveError('DRIVE_FOLDER', error);
+      this.logDriveError('DRIVE_FOLDER', mapped, { repId, repoNome });
+      throw mapped;
     }
   }
 
@@ -135,8 +189,9 @@ class GoogleDriveService {
       this.subfolderCache.set(cacheKey, folderId);
       return folderId;
     } catch (error) {
-      console.error('❌ Erro ao criar subpasta no Drive:', error.message);
-      throw error;
+      const mapped = this.mapDriveError('DRIVE_FOLDER', error);
+      this.logDriveError('DRIVE_FOLDER', mapped, { parentId, folderName });
+      throw mapped;
     }
   }
 
@@ -184,8 +239,9 @@ class GoogleDriveService {
         webViewLink: file.data.webViewLink
       };
     } catch (error) {
-      console.error('❌ Erro ao fazer upload no Drive:', error.message);
-      throw error;
+      const mapped = this.mapDriveError('DRIVE_UPLOAD', error);
+      this.logDriveError('DRIVE_UPLOAD', mapped, { filename, repId });
+      throw mapped;
     }
   }
 
@@ -209,8 +265,9 @@ class GoogleDriveService {
 
       return arquivos;
     } catch (error) {
-      console.error('❌ Erro ao listar arquivos:', error.message);
-      throw error;
+      const mapped = this.mapDriveError('DRIVE_FOLDER', error);
+      this.logDriveError('DRIVE_FOLDER', mapped, { parentId });
+      throw mapped;
     }
   }
 
@@ -327,8 +384,9 @@ class GoogleDriveService {
         webViewLink: file.data.webViewLink
       };
     } catch (error) {
-      console.error('❌ Erro ao fazer upload no Drive:', error.message);
-      throw error;
+      const mapped = this.mapDriveError('DRIVE_UPLOAD', error);
+      this.logDriveError('DRIVE_UPLOAD', mapped, { filename, parentFolderId });
+      throw mapped;
     }
   }
 
@@ -343,8 +401,9 @@ class GoogleDriveService {
 
       return response.data;
     } catch (error) {
-      console.error('❌ Erro ao fazer download do Drive:', error.message);
-      throw error;
+      const mapped = this.mapDriveError('DRIVE_DOWNLOAD', error);
+      this.logDriveError('DRIVE_DOWNLOAD', mapped, { fileId });
+      throw mapped;
     }
   }
 
@@ -368,8 +427,23 @@ class GoogleDriveService {
         filename: metadata?.data?.name
       };
     } catch (error) {
-      console.error('❌ Erro ao fazer download do Drive:', error.message);
-      throw error;
+      const mapped = this.mapDriveError('DRIVE_DOWNLOAD', error);
+      this.logDriveError('DRIVE_DOWNLOAD', mapped, { fileId });
+      throw mapped;
+    }
+  }
+
+  async healthCheck() {
+    try {
+      await this.authenticate();
+      const folderId = config.drive.rootFolderId;
+      const target = folderId || 'root';
+      await this.drive.files.get({ fileId: target, fields: 'id, name' });
+      return { ok: true };
+    } catch (error) {
+      const mapped = this.mapDriveError('DRIVE_HEALTH', error);
+      this.logDriveError('DRIVE_HEALTH', mapped);
+      return { ok: false, error: mapped };
     }
   }
 }
