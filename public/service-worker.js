@@ -8,7 +8,8 @@ const RUNTIME_CACHE = 'germani-runtime-v1';
 const ESSENTIAL_FILES = [
   '/',
   '/index.html',
-  '/css/styles.css',
+  '/css/style.css',
+  '/js/auth.js',
   '/js/app.js',
   '/js/db.js',
   '/js/pages.js',
@@ -32,16 +33,27 @@ self.addEventListener('install', (event) => {
 
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => {
+      .then(async (cache) => {
         console.log('[SW] Cache aberto, adicionando arquivos essenciais...');
-        return cache.addAll(ESSENTIAL_FILES);
-      })
-      .then(() => {
+
+        // Tentar cachear cada arquivo individualmente para evitar falha total
+        const cachePromises = ESSENTIAL_FILES.map(async (file) => {
+          try {
+            await cache.add(file);
+            console.log(`[SW] ✅ Cacheado: ${file}`);
+          } catch (error) {
+            console.warn(`[SW] ⚠️ Não foi possível cachear: ${file}`, error.message);
+          }
+        });
+
+        await Promise.allSettled(cachePromises);
         console.log('[SW] ✅ Service Worker instalado com sucesso!');
         return self.skipWaiting(); // Ativa imediatamente
       })
       .catch((error) => {
         console.error('[SW] ❌ Erro ao instalar Service Worker:', error);
+        // Mesmo com erro, continuar instalação
+        return self.skipWaiting();
       })
   );
 });

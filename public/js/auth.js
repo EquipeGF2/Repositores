@@ -250,26 +250,9 @@ class AuthManager {
     if (loginScreen) loginScreen.classList.add('hidden');
     if (appScreen) appScreen.classList.remove('hidden');
 
-    // Atualizar informações do usuário na UI
-    this.atualizarUIUsuario();
-
-    // Filtrar menu baseado em permissões
-    this.filtrarMenu();
-  }
-
-  /**
-   * Atualizar UI com informações do usuário
-   */
-  atualizarUIUsuario() {
-    const nomeUsuario = document.getElementById('nomeUsuario');
-    const perfilUsuario = document.getElementById('perfilUsuario');
-
-    if (nomeUsuario && this.usuario) {
-      nomeUsuario.textContent = this.usuario.nome_completo || this.usuario.username;
-    }
-
-    if (perfilUsuario && this.usuario) {
-      perfilUsuario.textContent = this.usuario.perfil === 'admin' ? 'Administrador' : 'Repositor';
+    // Filtrar menu baseado em permissões (apenas no PWA)
+    if (this.isPWA) {
+      this.filtrarMenu();
     }
   }
 
