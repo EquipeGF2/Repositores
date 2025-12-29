@@ -926,6 +926,29 @@ class App {
     // ==================== GESTÃO DE USUÁRIOS ====================
 
     async inicializarGestaoUsuarios() {
+        // Verificar se está autenticado
+        const token = localStorage.getItem('auth_token');
+        console.log('[GESTAO_USUARIOS] Verificando autenticação... Token:', token ? 'Presente' : 'AUSENTE');
+
+        if (!token) {
+            console.error('[GESTAO_USUARIOS] Token não encontrado. Usuário não está autenticado.');
+            this.showNotification('Você precisa fazer login para acessar esta página', 'error');
+            setTimeout(() => this.navigateTo('home'), 1500);
+            return;
+        }
+
+        // Verificar se é admin
+        const usuario = JSON.parse(localStorage.getItem('auth_usuario') || '{}');
+        console.log('[GESTAO_USUARIOS] Perfil do usuário:', usuario.perfil);
+
+        if (usuario.perfil !== 'admin') {
+            console.error('[GESTAO_USUARIOS] Usuário não é admin:', usuario.perfil);
+            this.showNotification('Acesso negado. Apenas administradores.', 'error');
+            setTimeout(() => this.navigateTo('home'), 1500);
+            return;
+        }
+
+        console.log('[GESTAO_USUARIOS] Inicializando gestão de usuários...');
         this.usuariosFiltrados = [];
         this.usuarioEditando = null;
 
@@ -949,32 +972,43 @@ class App {
         document.getElementById('filtroUsuarioStatus')?.addEventListener('change', () => this.filtrarUsuarios());
 
         // Carregar usuários
+        console.log('[GESTAO_USUARIOS] Carregando lista de usuários...');
         await this.carregarUsuarios();
     }
 
     async carregarUsuarios() {
         try {
             const token = localStorage.getItem('auth_token');
+            console.log('[GESTAO_USUARIOS] Carregando usuários... Token:', token ? `${token.substring(0, 20)}...` : 'AUSENTE');
+
             if (!token) {
                 throw new Error('Token de autenticação não encontrado');
             }
 
-            const response = await fetch(`${API_BASE_URL}/api/usuarios`, {
+            const url = `${API_BASE_URL}/api/usuarios`;
+            console.log('[GESTAO_USUARIOS] URL da API:', url);
+
+            const response = await fetch(url, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
             });
 
+            console.log('[GESTAO_USUARIOS] Resposta da API:', response.status, response.statusText);
+
             if (!response.ok) {
-                throw new Error('Erro ao carregar usuários');
+                const errorData = await response.json().catch(() => ({}));
+                console.error('[GESTAO_USUARIOS] Erro na resposta:', errorData);
+                throw new Error(errorData.message || `Erro ${response.status}: ${response.statusText}`);
             }
 
             const data = await response.json();
+            console.log('[GESTAO_USUARIOS] Usuários carregados:', data.usuarios?.length || 0);
             this.usuariosFiltrados = data.usuarios || [];
             this.renderizarTabelaUsuarios();
         } catch (error) {
-            console.error('Erro ao carregar usuários:', error);
-            this.showNotification('Erro ao carregar usuários', 'error');
+            console.error('[GESTAO_USUARIOS] Erro ao carregar usuários:', error);
+            this.showNotification('Erro ao carregar usuários: ' + error.message, 'error');
         }
     }
 
@@ -1440,7 +1474,14 @@ class App {
     }
 
     closeModalRepositor() {
-        document.getElementById('modalRepositor').classList.remove('active');
+        const modal = document.getElementById('modalRepositor');
+        console.log('[MODAL_REPOSITOR] Tentando fechar modal...', modal ? 'Encontrado' : 'NÃO ENCONTRADO');
+        if (modal) {
+            const estaAtivo = modal.classList.contains('active');
+            console.log('[MODAL_REPOSITOR] Modal está ativo?', estaAtivo);
+            modal.classList.remove('active');
+            console.log('[MODAL_REPOSITOR] Modal fechado com sucesso');
+        }
     }
 
     async saveRepositor(event) {
@@ -1838,27 +1879,41 @@ class App {
 
     fecharDetalhesRepresentante() {
         const modal = document.getElementById('modalRepresentanteDetalhes');
+        console.log('[MODAL_REPRESENTANTE] Tentando fechar modal...', modal ? 'Encontrado' : 'NÃO ENCONTRADO');
         if (modal) {
+            const estaAtivo = modal.classList.contains('active');
+            console.log('[MODAL_REPRESENTANTE] Modal está ativo?', estaAtivo);
             modal.classList.remove('active');
+            console.log('[MODAL_REPRESENTANTE] Modal fechado com sucesso');
         }
     }
 
     // Adicionar listeners para fechar modais clicando no backdrop
     configurarFechamentoModais() {
+        console.log('[MODAIS] Configurando fechamento de modais...');
+
         // Modal de detalhes do representante
         const modalRep = document.getElementById('modalRepresentanteDetalhes');
-        if (modalRep && !modalRep.dataset.listenerAdded) {
-            modalRep.addEventListener('click', (e) => {
-                if (e.target === modalRep) {
-                    this.fecharDetalhesRepresentante();
-                }
-            });
-            modalRep.dataset.listenerAdded = 'true';
+        if (modalRep) {
+            if (!modalRep.dataset.listenerAdded) {
+                console.log('[MODAIS] Configurando modal de representante');
+                modalRep.addEventListener('click', (e) => {
+                    console.log('[MODAIS] Clique no modal de representante:', e.target.className);
+                    if (e.target === modalRep) {
+                        console.log('[MODAIS] Clique no backdrop - fechando modal');
+                        this.fecharDetalhesRepresentante();
+                    }
+                });
+                modalRep.dataset.listenerAdded = 'true';
+            }
+        } else {
+            console.warn('[MODAIS] Modal de representante NÃO encontrado');
         }
 
         // Modal de resumo do repositor
         const modalResumo = document.getElementById('modalResumoRepositor');
         if (modalResumo && !modalResumo.dataset.listenerAdded) {
+            console.log('[MODAIS] Configurando modal de resumo');
             modalResumo.addEventListener('click', (e) => {
                 if (e.target === modalResumo) {
                     this.fecharResumoRepositor();
@@ -1870,6 +1925,7 @@ class App {
         // Modal de usuário
         const modalUsuario = document.getElementById('modalUsuario');
         if (modalUsuario && !modalUsuario.dataset.listenerAdded) {
+            console.log('[MODAIS] Configurando modal de usuário');
             modalUsuario.addEventListener('click', (e) => {
                 if (e.target === modalUsuario) {
                     this.fecharModalUsuario();
@@ -1880,24 +1936,50 @@ class App {
 
         // Modal de repositor
         const modalRepositor = document.getElementById('modalRepositor');
-        if (modalRepositor && !modalRepositor.dataset.listenerAdded) {
-            modalRepositor.addEventListener('click', (e) => {
-                if (e.target === modalRepositor) {
-                    this.closeModalRepositor();
-                }
-            });
-            modalRepositor.dataset.listenerAdded = 'true';
+        if (modalRepositor) {
+            if (!modalRepositor.dataset.listenerAdded) {
+                console.log('[MODAIS] Configurando modal de repositor');
+                modalRepositor.addEventListener('click', (e) => {
+                    console.log('[MODAIS] Clique no modal de repositor:', e.target.className);
+                    if (e.target === modalRepositor) {
+                        console.log('[MODAIS] Clique no backdrop - fechando modal');
+                        this.closeModalRepositor();
+                    }
+                });
+                modalRepositor.dataset.listenerAdded = 'true';
+            }
+        } else {
+            console.warn('[MODAIS] Modal de repositor NÃO encontrado');
         }
 
-        // Adicionar evento ESC para fechar modais
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                if (modalRep?.classList.contains('active')) this.fecharDetalhesRepresentante();
-                if (modalResumo?.classList.contains('active')) this.fecharResumoRepositor();
-                if (modalUsuario?.style.display === 'flex') this.fecharModalUsuario();
-                if (modalRepositor?.classList.contains('active')) this.closeModalRepositor();
-            }
-        });
+        // Adicionar evento ESC para fechar modais (apenas uma vez)
+        if (!document.dataset.escListenerAdded) {
+            console.log('[MODAIS] Configurando tecla ESC');
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    console.log('[MODAIS] ESC pressionado - verificando modais ativos');
+                    if (modalRep?.classList.contains('active')) {
+                        console.log('[MODAIS] Fechando modal de representante via ESC');
+                        this.fecharDetalhesRepresentante();
+                    }
+                    if (modalResumo?.classList.contains('active')) {
+                        console.log('[MODAIS] Fechando modal de resumo via ESC');
+                        this.fecharResumoRepositor();
+                    }
+                    if (modalUsuario?.style.display === 'flex') {
+                        console.log('[MODAIS] Fechando modal de usuário via ESC');
+                        this.fecharModalUsuario();
+                    }
+                    if (modalRepositor?.classList.contains('active')) {
+                        console.log('[MODAIS] Fechando modal de repositor via ESC');
+                        this.closeModalRepositor();
+                    }
+                }
+            });
+            document.dataset.escListenerAdded = 'true';
+        }
+
+        console.log('[MODAIS] Configuração de modais concluída');
     }
 
     // ==================== ROTEIRO DO REPOSITOR ====================
