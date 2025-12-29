@@ -960,15 +960,35 @@ class App {
             const token = localStorage.getItem('auth_token');
             console.log('[GESTAO_USUARIOS] Carregando usuários... Token:', token ? `${token.substring(0, 20)}...` : 'AUSENTE');
 
+            // Se não houver token, mostra mensagem informativa em vez de erro
+            if (!token) {
+                console.warn('[GESTAO_USUARIOS] Sem token de autenticação. Mostrando mensagem informativa.');
+                const tbody = document.getElementById('usuariosTableBody');
+                if (tbody) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="7" style="text-align: center; padding: 40px;">
+                                <div style="color: #666; font-size: 16px; margin-bottom: 12px;">🔒 Autenticação necessária</div>
+                                <div style="color: #888; font-size: 14px; line-height: 1.6;">
+                                    Esta é uma funcionalidade administrativa para gerenciar usuários do PWA.<br>
+                                    Para acessar, é necessário autenticação com permissões administrativas.<br><br>
+                                    <strong>Opções:</strong><br>
+                                    • Use um token de autenticação válido<br>
+                                    • Ou acesse via backend com credenciais administrativas
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                }
+                return;
+            }
+
             const url = `${API_BASE_URL}/api/usuarios`;
             console.log('[GESTAO_USUARIOS] URL da API:', url);
 
-            const headers = {};
-            if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
-            }
-
-            const response = await fetch(url, { headers });
+            const response = await fetch(url, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
 
             console.log('[GESTAO_USUARIOS] Resposta da API:', response.status, response.statusText);
 
@@ -1152,6 +1172,13 @@ class App {
             return;
         }
 
+        // Verificar autenticação
+        const token = localStorage.getItem('auth_token');
+        if (!token) {
+            this.showNotification('Autenticação necessária para salvar usuários', 'error');
+            return;
+        }
+
         const usuarioId = document.getElementById('usuarioId').value;
         const isEdicao = !!usuarioId;
 
@@ -1178,7 +1205,6 @@ class App {
         }
 
         try {
-            const token = localStorage.getItem('auth_token');
             const url = isEdicao
                 ? `${API_BASE_URL}/api/usuarios/${usuarioId}`
                 : `${API_BASE_URL}/api/usuarios`;
