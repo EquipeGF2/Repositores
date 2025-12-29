@@ -169,7 +169,6 @@ class App {
         };
         this.mobileHeaderQuery = window.matchMedia('(max-width: 480px)');
         this.modalStateAtivo = null;
-        this.escListenerConfigured = false;
         this.init();
     }
 
@@ -191,7 +190,6 @@ class App {
 
         // Event Listeners
         this.setupEventListeners();
-        this.configurarFechamentoModais();
 
         // Dispara captura de localização em background (não bloqueia o boot)
         const geoPromise = this.exigirLocalizacaoInicial(false);
@@ -1343,9 +1341,6 @@ class App {
             this.currentPage = pageName;
             this.atualizarTituloPaginaAtual();
 
-            // Configurar fechamento de modais após carregar a página
-            this.configurarFechamentoModais();
-
             if (pageName === 'cadastro-repositor') {
                 await this.aplicarFiltrosCadastroRepositores();
             } else if (pageName === 'controle-acessos') {
@@ -1452,14 +1447,7 @@ class App {
     }
 
     closeModalRepositor() {
-        const modal = document.getElementById('modalRepositor');
-        console.log('[MODAL_REPOSITOR] Tentando fechar modal...', modal ? 'Encontrado' : 'NÃO ENCONTRADO');
-        if (modal) {
-            const estaAtivo = modal.classList.contains('active');
-            console.log('[MODAL_REPOSITOR] Modal está ativo?', estaAtivo);
-            modal.classList.remove('active');
-            console.log('[MODAL_REPOSITOR] Modal fechado com sucesso');
-        }
+        document.getElementById('modalRepositor').classList.remove('active');
     }
 
     async saveRepositor(event) {
@@ -1852,115 +1840,14 @@ class App {
         const supervisorModal = normalizarSupervisor(registro?.rep_supervisor || representante.rep_supervisor) || '-';
         modal.querySelector('#repSupervisor').textContent = supervisorModal;
 
-        modal.style.display = 'flex';
         modal.classList.add('active');
     }
 
     fecharDetalhesRepresentante() {
         const modal = document.getElementById('modalRepresentanteDetalhes');
-        console.log('[MODAL_REPRESENTANTE] Tentando fechar modal...', modal ? 'Encontrado' : 'NÃO ENCONTRADO');
         if (modal) {
-            const estaAtivo = modal.classList.contains('active');
-            console.log('[MODAL_REPRESENTANTE] Modal está ativo?', estaAtivo);
-            console.log('[MODAL_REPRESENTANTE] Display atual:', modal.style.display);
             modal.classList.remove('active');
-            modal.style.display = 'none';
-            console.log('[MODAL_REPRESENTANTE] Modal fechado - classe removida e display=none');
         }
-    }
-
-    // Adicionar listeners para fechar modais clicando no backdrop
-    configurarFechamentoModais() {
-        console.log('[MODAIS] Configurando fechamento de modais...');
-
-        // Modal de detalhes do representante
-        const modalRep = document.getElementById('modalRepresentanteDetalhes');
-        if (modalRep) {
-            if (!modalRep.dataset.listenerAdded) {
-                console.log('[MODAIS] Configurando modal de representante');
-                modalRep.addEventListener('click', (e) => {
-                    console.log('[MODAIS] Clique no modal de representante:', e.target.className);
-                    if (e.target === modalRep) {
-                        console.log('[MODAIS] Clique no backdrop - fechando modal');
-                        this.fecharDetalhesRepresentante();
-                    }
-                });
-                modalRep.dataset.listenerAdded = 'true';
-            }
-        } else {
-            console.warn('[MODAIS] Modal de representante NÃO encontrado');
-        }
-
-        // Modal de resumo do repositor
-        const modalResumo = document.getElementById('modalResumoRepositor');
-        if (modalResumo && !modalResumo.dataset.listenerAdded) {
-            console.log('[MODAIS] Configurando modal de resumo');
-            modalResumo.addEventListener('click', (e) => {
-                if (e.target === modalResumo) {
-                    this.fecharResumoRepositor();
-                }
-            });
-            modalResumo.dataset.listenerAdded = 'true';
-        }
-
-        // Modal de usuário
-        const modalUsuario = document.getElementById('modalUsuario');
-        if (modalUsuario && !modalUsuario.dataset.listenerAdded) {
-            console.log('[MODAIS] Configurando modal de usuário');
-            modalUsuario.addEventListener('click', (e) => {
-                if (e.target === modalUsuario) {
-                    this.fecharModalUsuario();
-                }
-            });
-            modalUsuario.dataset.listenerAdded = 'true';
-        }
-
-        // Modal de repositor
-        const modalRepositor = document.getElementById('modalRepositor');
-        if (modalRepositor) {
-            if (!modalRepositor.dataset.listenerAdded) {
-                console.log('[MODAIS] Configurando modal de repositor');
-                modalRepositor.addEventListener('click', (e) => {
-                    console.log('[MODAIS] Clique no modal de repositor:', e.target.className);
-                    if (e.target === modalRepositor) {
-                        console.log('[MODAIS] Clique no backdrop - fechando modal');
-                        this.closeModalRepositor();
-                    }
-                });
-                modalRepositor.dataset.listenerAdded = 'true';
-            }
-        } else {
-            console.warn('[MODAIS] Modal de repositor NÃO encontrado');
-        }
-
-        // Adicionar evento ESC para fechar modais (apenas uma vez)
-        if (!this.escListenerConfigured) {
-            console.log('[MODAIS] Configurando tecla ESC');
-            document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape') {
-                    console.log('[MODAIS] ESC pressionado - verificando modais ativos');
-                    if (modalRep?.classList.contains('active')) {
-                        console.log('[MODAIS] Fechando modal de representante via ESC');
-                        this.fecharDetalhesRepresentante();
-                    }
-                    if (modalResumo?.classList.contains('active')) {
-                        console.log('[MODAIS] Fechando modal de resumo via ESC');
-                        this.fecharResumoRepositor();
-                    }
-                    if (modalUsuario?.style.display === 'flex') {
-                        console.log('[MODAIS] Fechando modal de usuário via ESC');
-                        this.fecharModalUsuario();
-                    }
-                    if (modalRepositor?.classList.contains('active')) {
-                        console.log('[MODAIS] Fechando modal de repositor via ESC');
-                        this.closeModalRepositor();
-                    }
-                }
-            });
-            this.escListenerConfigured = true;
-        }
-
-        console.log('[MODAIS] Configuração de modais concluída');
     }
 
     // ==================== ROTEIRO DO REPOSITOR ====================
