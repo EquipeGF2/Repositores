@@ -204,14 +204,9 @@ class TursoService {
     }
 
     if (clienteId) {
-      filtros.push('(rat.rat_cliente_codigo LIKE ? OR cli.nome LIKE ? OR cli.fantasia LIKE ?)');
+      filtros.push('rat.rat_cliente_codigo LIKE ?');
       const termo = `%${clienteId}%`;
-      args.push(termo, termo, termo);
-    }
-
-    if (cidadeId) {
-      filtros.push('COALESCE(cli.cidade, "") LIKE ?');
-      args.push(`%${cidadeId}%`);
+      args.push(termo);
     }
 
     const whereClause = filtros.length ? `WHERE ${filtros.join(' AND ')}` : '';
@@ -226,20 +221,12 @@ class TursoService {
         rat.rat_vigencia_fim,
         rat.rat_criado_em,
         rat.rat_atualizado_em,
-        cli.cliente AS cliente_codigo,
-        cli.nome AS cliente_nome,
-        cli.fantasia AS cliente_fantasia,
-        cli.cidade AS cidade_nome,
-        cli.estado AS cliente_estado,
-        cli.cnpj_cpf AS cliente_documento,
         repo.repo_nome AS repositor_nome
       FROM rat_cliente_repositor rat
-      LEFT JOIN tab_cliente cli ON cli.cliente = rat.rat_cliente_codigo
       LEFT JOIN cad_repositor repo ON repo.repo_cod = rat.rat_repositor_id
       ${whereClause}
       ORDER BY
-        COALESCE(cli.cidade, ''),
-        COALESCE(cli.nome, cli.fantasia, rat.rat_cliente_codigo),
+        rat.rat_cliente_codigo,
         COALESCE(repo.repo_nome, rat.rat_repositor_id, '')
     `;
 
@@ -249,11 +236,11 @@ class TursoService {
     return linhas.map((row) => ({
       rat_id: row.rat_id,
       cliente_codigo: normalizeClienteId(row.rat_cliente_codigo),
-      cliente_nome: row.cliente_nome || row.cliente_fantasia || row.rat_cliente_codigo,
-      cliente_fantasia: row.cliente_fantasia || '',
-      cidade_nome: row.cidade_nome || '',
-      cliente_estado: row.cliente_estado || '',
-      cliente_documento: row.cliente_documento || '',
+      cliente_nome: row.rat_cliente_codigo, // Usa código do cliente como nome
+      cliente_fantasia: '',
+      cidade_nome: '',
+      cliente_estado: '',
+      cliente_documento: '',
       rat_repositor_id: row.rat_repositor_id,
       repositor_nome: row.repositor_nome || '',
       rat_percentual: row.rat_percentual,
