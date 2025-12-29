@@ -10083,6 +10083,10 @@ class App {
                 abastecimento: sessoesFinalizadas.filter(s => s.serv_abastecimento).length,
                 espaco_loja: sessoesFinalizadas.filter(s => s.serv_espaco_loja).length,
                 ruptura_loja: sessoesFinalizadas.filter(s => s.serv_ruptura_loja).length,
+                perc_abastecimento: '0.0',
+                perc_espaco_loja: '0.0',
+                perc_ruptura_loja: '0.0',
+                perc_pontos_extras: '0.0',
 
                 visitas_adiantadas: 0,
                 visitas_atrasadas: 0,
@@ -10094,16 +10098,12 @@ class App {
             const totaisPlanejamento = { adiantadas: 0, atrasadas: 0 };
 
             sessoesFinalizadas.forEach((sessao) => {
-                const prevista = normalizarData(
-                    sessao.data_prevista
-                    || sessao.data_planejada
-                    || sessao.rv_data_planejada
-                    || sessao.rv_data_roteiro
-                );
-                const checkoutData = normalizarData(sessao.data_checkout || sessao.checkout_at || sessao.checkout_data_hora);
-                if (prevista && checkoutData) {
-                    if (checkoutData > prevista) totaisPlanejamento.atrasadas += 1;
-                    else if (checkoutData < prevista) totaisPlanejamento.adiantadas += 1;
+                // Usar a função obterStatusPontualidadeVisita que já existe e é robusta
+                const status = this.obterStatusPontualidadeVisita(sessao);
+                if (status === 'ATRASADA') {
+                    totaisPlanejamento.atrasadas += 1;
+                } else if (status === 'ADIANTADA') {
+                    totaisPlanejamento.adiantadas += 1;
                 }
             });
 
@@ -10116,6 +10116,10 @@ class App {
 
             if (stats.total_visitas > 0) {
                 stats.perc_merchandising = ((stats.visitas_com_merchandising / stats.total_visitas) * 100).toFixed(1);
+                stats.perc_abastecimento = ((stats.abastecimento / stats.total_visitas) * 100).toFixed(1);
+                stats.perc_espaco_loja = ((stats.espaco_loja / stats.total_visitas) * 100).toFixed(1);
+                stats.perc_ruptura_loja = ((stats.ruptura_loja / stats.total_visitas) * 100).toFixed(1);
+                stats.perc_pontos_extras = ((stats.visitas_com_pontos_extras / stats.total_visitas) * 100).toFixed(1);
             }
 
             const visitasAdiantadas = resumoPontualidade?.qtde_adiantadas ?? totaisPlanejamento.adiantadas;
@@ -10237,19 +10241,19 @@ class App {
                     <h5 style="margin-bottom: 12px; color: #ef4444; font-size: 14px; font-weight: 700; text-transform: uppercase;">🔧 Tipos de Serviços</h5>
                     <div class="performance-stat">
                         <span class="performance-stat-label">Abastecimento</span>
-                        <span class="performance-stat-value break-any">${stats.abastecimento}</span>
+                        <span class="performance-stat-value break-any">${stats.abastecimento} <span style="color: #6b7280; font-size: 0.9em;">(${stats.perc_abastecimento}%)</span></span>
                     </div>
                     <div class="performance-stat">
                         <span class="performance-stat-label">Espaço Loja</span>
-                        <span class="performance-stat-value break-any">${stats.espaco_loja}</span>
+                        <span class="performance-stat-value break-any">${stats.espaco_loja} <span style="color: #6b7280; font-size: 0.9em;">(${stats.perc_espaco_loja}%)</span></span>
                     </div>
                     <div class="performance-stat">
                         <span class="performance-stat-label">Ruptura Loja</span>
-                        <span class="performance-stat-value break-any">${stats.ruptura_loja}</span>
+                        <span class="performance-stat-value break-any">${stats.ruptura_loja} <span style="color: #6b7280; font-size: 0.9em;">(${stats.perc_ruptura_loja}%)</span></span>
                     </div>
                     <div class="performance-stat">
                         <span class="performance-stat-label">Pontos Extras</span>
-                        <span class="performance-stat-value break-any">${stats.visitas_com_pontos_extras}</span>
+                        <span class="performance-stat-value break-any">${stats.visitas_com_pontos_extras} <span style="color: #6b7280; font-size: 0.9em;">(${stats.perc_pontos_extras}%)</span></span>
                     </div>
                 </div>
             </div>
