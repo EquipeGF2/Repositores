@@ -3053,6 +3053,18 @@ class App {
             });
         }
 
+        // Popular filtro de cidades
+        const selectCidade = document.getElementById('filtroCidade');
+        if (selectCidade && selectCidade.options.length === 1) {
+            const cidades = await db.getCidadesRateio();
+            cidades.forEach(cidade => {
+                const option = document.createElement('option');
+                option.value = cidade;
+                option.textContent = cidade;
+                selectCidade.appendChild(option);
+            });
+        }
+
         // Event listeners
         const btnRecarregar = document.getElementById('btnRecarregarRateio');
         if (btnRecarregar) {
@@ -3145,10 +3157,10 @@ class App {
         }
 
         try {
-            const linhas = await this.buscarRateiosManutencao(filtros);
+            // Usar db.listarRateiosDetalhados ao invés da API do backend
+            const linhas = await db.listarRateiosDetalhados(filtros);
             this.rateioLinhas = linhas;
             this.rateioEdicoesPendentes = {};
-            this.preencherFiltrosRateio();
             this.renderRateioManutencao();
 
             if (this.rateioLinhas.length > 0) {
@@ -3174,53 +3186,100 @@ class App {
             return;
         }
 
-        const linhasHtml = linhas.map(linha => `
-            <tr data-rateio-id="${linha.rat_id}">
-                <td data-label="Cidade">${linha.cidade_nome || '-'}</td>
-                <td data-label="Cliente">
-                    <div class="cliente-detalhe">
-                        <strong>${linha.cliente_codigo || '-'}</strong>
-                        <span>${linha.cliente_nome || ''}</span>
-                    </div>
-                </td>
-                <td data-label="Repositor">
-                    <div class="repositor-detalhe">
-                        <strong>${linha.rat_repositor_id || '-'}</strong>
-                        <span>${linha.repositor_nome || ''}</span>
-                    </div>
-                </td>
-                <td data-label="% e vigência" class="col-editavel">
-                    <div class="rateio-inputs">
-                        <input type="number" class="input-rateio-percentual" data-rateio-id="${linha.rat_id}" min="0" max="100" step="0.01" value="${linha.rat_percentual ?? ''}">
-                        <div class="vigencias">
-                            <input type="date" class="input-rateio-vigencia" data-tipo="inicio" data-rateio-id="${linha.rat_id}" value="${linha.rat_vigencia_inicio || ''}">
-                            <input type="date" class="input-rateio-vigencia" data-tipo="fim" data-rateio-id="${linha.rat_id}" value="${linha.rat_vigencia_fim || ''}">
+        // Agrupar dados em cascata: Cidade >> Cliente >> Repositor
+        const estruturaCascata = {};
+
+        linhas.forEach(linha => {
+            const cidade = linha.cliente_cidade || 'Sem cidade';
+            const clienteCodigo = linha.cliente_codigo || 'Sem código';
+
+            // Criar estrutura de cidade se não existir
+            if (!estruturaCascata[cidade]) {
+                estruturaCascata[cidade] = {};
+            }
+
+            // Criar estrutura de cliente se não existir
+            if (!estruturaCascata[cidade][clienteCodigo]) {
+                estruturaCascata[cidade][clienteCodigo] = {
+                    nome: linha.cliente_nome || linha.cliente_fantasia || 'Sem nome',
+                    repositores: []
+                };
+            }
+
+            // Adicionar repositor à lista do cliente
+            estruturaCascata[cidade][clienteCodigo].repositores.push(linha);
+        });
+
+        // Gerar HTML em formato de lista cascata
+        const cidadesOrdenadas = Object.keys(estruturaCascata).sort();
+
+        const htmlCascata = cidadesOrdenadas.map(cidade => {
+            const clientes = estruturaCascata[cidade];
+            const clientesOrdenados = Object.keys(clientes).sort();
+
+            const clientesHtml = clientesOrdenados.map(clienteCodigo => {
+                const clienteInfo = clientes[clienteCodigo];
+                const repositoresHtml = clienteInfo.repositores.map(linha => `
+                    <div class="rateio-linha" data-rateio-id="${linha.rat_id || ''}">
+                        <div class="rateio-repositor-info">
+                            <span class="repositor-codigo">${linha.rat_repositor_id || '-'}</span>
+                            <span class="repositor-nome">${linha.repo_nome || 'Sem nome'}</span>
                         </div>
-                        <small class="texto-menor">Atualizado em: ${linha.rat_atualizado_em ? normalizarDataISO(linha.rat_atualizado_em) : 'N/D'}</small>
+                        <div class="rateio-campos">
+                            <div class="campo-percentual">
+                                <label>%</label>
+                                <input type="number" class="input-rateio-percentual" data-rateio-id="${linha.rat_id || ''}"
+                                       min="0" max="100" step="0.01" value="${linha.rat_percentual ?? ''}">
+                            </div>
+                            <div class="campo-vigencia">
+                                <label>Início</label>
+                                <input type="date" class="input-rateio-vigencia" data-tipo="inicio"
+                                       data-rateio-id="${linha.rat_id || ''}" value="${linha.rat_vigencia_inicio || ''}">
+                            </div>
+                            <div class="campo-vigencia">
+                                <label>Fim</label>
+                                <input type="date" class="input-rateio-vigencia" data-tipo="fim"
+                                       data-rateio-id="${linha.rat_id || ''}" value="${linha.rat_vigencia_fim || ''}">
+                            </div>
+                            <button class="btn btn-primary btn-sm" data-salvar-rateio="${linha.rat_id || ''}">Salvar</button>
+                        </div>
+                        <small class="texto-atualizado">Atualizado em: ${linha.rat_atualizado_em ? normalizarDataISO(linha.rat_atualizado_em) : 'N/D'}</small>
                     </div>
-                </td>
-                <td data-label="Ações" class="col-acoes">
-                    <button class="btn btn-primary btn-sm" data-salvar-rateio="${linha.rat_id}">Salvar</button>
-                </td>
-            </tr>
-        `).join('');
+                `).join('');
+
+                // Calcular total de percentual para este cliente
+                const totalPercentual = clienteInfo.repositores.reduce((sum, r) => sum + (parseFloat(r.rat_percentual) || 0), 0);
+                const corTotal = totalPercentual === 100 ? '#22c55e' : (totalPercentual < 100 ? '#f59e0b' : '#ef4444');
+
+                return `
+                    <div class="rateio-cliente">
+                        <div class="cliente-header">
+                            <div class="cliente-info">
+                                <span class="cliente-codigo">${clienteCodigo}</span>
+                                <span class="cliente-nome">${clienteInfo.nome}</span>
+                            </div>
+                            <span class="total-percentual" style="color: ${corTotal}; font-weight: 600;">
+                                Total: ${totalPercentual.toFixed(1)}%
+                            </span>
+                        </div>
+                        <div class="repositores-lista">
+                            ${repositoresHtml}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            return `
+                <div class="rateio-cidade">
+                    <h4 class="cidade-titulo">📍 ${cidade}</h4>
+                    ${clientesHtml}
+                </div>
+            `;
+        }).join('');
 
         container.innerHTML = `
-            <div class="table-container rateio-table-container">
-                <table class="rateio-table rateio-manutencao-tabela">
-                    <thead>
-                        <tr>
-                            <th>Cidade</th>
-                            <th>Cliente</th>
-                            <th>Repositor</th>
-                            <th>%</th>
-                            <th>Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${linhasHtml}
-                    </tbody>
-                </table>
+            <div class="rateio-cascata-container">
+                ${htmlCascata}
             </div>
         `;
 

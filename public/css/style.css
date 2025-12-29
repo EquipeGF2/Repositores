@@ -4208,3 +4208,174 @@ body.modal-open {
         padding: 1.5rem;
     }
 }
+
+/* ==================== RATEIO EM CASCATA ==================== */
+.rateio-cascata-container {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.rateio-cidade {
+    background: #fff;
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.cidade-titulo {
+    background: var(--gray-100);
+    padding: 12px 16px;
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--gray-700);
+    border-bottom: 2px solid var(--gray-300);
+}
+
+.rateio-cliente {
+    border-bottom: 1px solid var(--gray-200);
+}
+
+.rateio-cliente:last-child {
+    border-bottom: none;
+}
+
+.cliente-header {
+    background: #f8f9fa;
+    padding: 12px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--gray-200);
+}
+
+.cliente-info {
+    display: flex;
+    gap: 12px;
+    align-items: baseline;
+}
+
+.cliente-codigo {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--gray-800);
+}
+
+.cliente-nome {
+    color: var(--gray-600);
+    font-size: 0.9rem;
+}
+
+.total-percentual {
+    font-size: 0.95rem;
+    padding: 4px 12px;
+    background: white;
+    border-radius: 4px;
+}
+
+.repositores-lista {
+    display: flex;
+    flex-direction: column;
+}
+
+.rateio-linha {
+    padding: 16px;
+    border-bottom: 1px solid var(--gray-100);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.rateio-linha:last-child {
+    border-bottom: none;
+}
+
+.rateio-repositor-info {
+    display: flex;
+    gap: 12px;
+    align-items: baseline;
+}
+
+.repositor-codigo {
+    font-weight: 600;
+    color: var(--gray-700);
+    font-size: 0.9rem;
+}
+
+.repositor-nome {
+    color: var(--gray-600);
+    font-size: 0.85rem;
+}
+
+.rateio-campos {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+
+.campo-percentual,
+.campo-vigencia {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.campo-percentual {
+    flex: 0 0 100px;
+}
+
+.campo-vigencia {
+    flex: 0 0 140px;
+}
+
+.campo-percentual label,
+.campo-vigencia label {
+    font-size: 0.75rem;
+    color: var(--gray-600);
+    font-weight: 500;
+}
+
+.campo-percentual input,
+.campo-vigencia input {
+    padding: 6px 8px;
+    border: 1px solid var(--gray-300);
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.campo-percentual input:focus,
+.campo-vigencia input:focus {
+    outline: none;
+    border-color: var(--primary-red);
+    box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.1);
+}
+
+.texto-atualizado {
+    font-size: 0.75rem;
+    color: var(--gray-500);
+    margin-top: 4px;
+}
+
+@media (max-width: 768px) {
+    .rateio-campos {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .campo-percentual,
+    .campo-vigencia {
+        flex: 1 1 auto;
+    }
+
+    .cliente-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    .total-percentual {
+        align-self: flex-start;
+    }
+}
