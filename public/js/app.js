@@ -169,6 +169,7 @@ class App {
         };
         this.mobileHeaderQuery = window.matchMedia('(max-width: 480px)');
         this.modalStateAtivo = null;
+        this.escListenerConfigured = false;
         this.init();
     }
 
@@ -1953,7 +1954,7 @@ class App {
         }
 
         // Adicionar evento ESC para fechar modais (apenas uma vez)
-        if (!document.dataset.escListenerAdded) {
+        if (!this.escListenerConfigured) {
             console.log('[MODAIS] Configurando tecla ESC');
             document.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape') {
@@ -1976,7 +1977,7 @@ class App {
                     }
                 }
             });
-            document.dataset.escListenerAdded = 'true';
+            this.escListenerConfigured = true;
         }
 
         console.log('[MODAIS] Configuração de modais concluída');
