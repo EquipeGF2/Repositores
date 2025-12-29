@@ -1433,7 +1433,7 @@ class TursoService {
         criado_em TEXT DEFAULT (datetime('now')),
         atualizado_em TEXT DEFAULT (datetime('now')),
         ultimo_login TEXT,
-        FOREIGN KEY (rep_id) REFERENCES cc_repositor(rep_id)
+        FOREIGN KEY (rep_id) REFERENCES cad_repositor(repo_cod)
       )
     `;
 

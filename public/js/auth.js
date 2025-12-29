@@ -116,6 +116,29 @@ class AuthManager {
   }
 
   /**
+   * Obter o rep_id do usuário logado (isolamento de dados no PWA)
+   */
+  getRepId() {
+    return this.usuario?.rep_id || null;
+  }
+
+  /**
+   * Verificar se deve aplicar filtro de repositor
+   * Retorna true se estiver no PWA e o usuário for um repositor (não admin)
+   */
+  deveAplicarFiltroRepositor() {
+    return this.isPWA && this.usuario?.perfil === 'repositor' && this.getRepId();
+  }
+
+  /**
+   * Obter filtro de repositor para consultas
+   * Se for PWA e repositor, retorna o rep_id; senão retorna null
+   */
+  getFiltroRepositor() {
+    return this.deveAplicarFiltroRepositor() ? this.getRepId() : null;
+  }
+
+  /**
    * Login
    */
   async login(username, password) {

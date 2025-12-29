@@ -178,6 +178,17 @@ export const pages = {
                                                 <input type="email" id="repo_email" placeholder="nome@exemplo.com">
                                             </div>
 
+                                            <div class="form-group span-2-cols criar-usuario-group">
+                                                <label class="checkbox-inline" style="display: flex; align-items: center; gap: 8px; padding: 12px; background: #f9fafb; border-radius: 6px; border: 1px solid #e5e7eb;">
+                                                    <input type="checkbox" id="repo_criar_usuario" style="width: auto; margin: 0;">
+                                                    <span style="font-weight: 600; color: #374151;">Criar usuário automaticamente para acesso ao PWA</span>
+                                                </label>
+                                                <small class="text-muted" style="display: block; margin-top: 4px;">
+                                                    Ao marcar esta opção, um usuário será criado automaticamente com base nos dados do repositor.
+                                                    O username será o código do repositor (repo_cod) e uma senha aleatória será gerada.
+                                                </small>
+                                            </div>
+
                                             <div class="form-group">
                                                 <label for="repo_data_inicio" class="label-nowrap">Data Início</label>
                                                 <input type="date" id="repo_data_inicio" required>
@@ -2516,6 +2527,216 @@ export const pages = {
         `;
     },
 
+    'gestao-usuarios': async () => {
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">Gestão de Usuários</h3>
+                        <p class="text-muted" style="margin: 4px 0 0;">Gerencie os usuários que têm acesso ao sistema PWA</p>
+                    </div>
+                    <button class="btn btn-primary" id="btnNovoUsuario">
+                        <span>➕ Novo Usuário</span>
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="filtros-usuarios" style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;">
+                        <div class="filter-group" style="flex: 1; min-width: 200px;">
+                            <label for="filtroUsuarioNome">Buscar por nome ou username</label>
+                            <input type="text" id="filtroUsuarioNome" placeholder="Digite para filtrar...">
+                        </div>
+                        <div class="filter-group" style="min-width: 150px;">
+                            <label for="filtroUsuarioPerfil">Perfil</label>
+                            <select id="filtroUsuarioPerfil">
+                                <option value="">Todos</option>
+                                <option value="admin">Admin</option>
+                                <option value="repositor">Repositor</option>
+                            </select>
+                        </div>
+                        <div class="filter-group" style="min-width: 150px;">
+                            <label for="filtroUsuarioStatus">Status</label>
+                            <select id="filtroUsuarioStatus">
+                                <option value="">Todos</option>
+                                <option value="1">Ativos</option>
+                                <option value="0">Inativos</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="data-table" id="tabelaUsuarios">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Username</th>
+                                    <th>Nome Completo</th>
+                                    <th>Email</th>
+                                    <th>Repositor</th>
+                                    <th>Perfil</th>
+                                    <th>Status</th>
+                                    <th>Último Login</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usuariosTableBody">
+                                <tr>
+                                    <td colspan="9" style="text-align: center; padding: 20px;">
+                                        Carregando usuários...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Novo/Editar Usuário -->
+            <div id="modalUsuario" class="modal" style="display: none;">
+                <div class="modal-content" style="max-width: 600px;">
+                    <div class="modal-header">
+                        <h3 id="modalUsuarioTitulo">Novo Usuário</h3>
+                        <button class="modal-close" id="btnFecharModalUsuario">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="formUsuario">
+                            <input type="hidden" id="usuarioId">
+
+                            <div class="form-group">
+                                <label for="usuarioUsername">Username *</label>
+                                <input type="text" id="usuarioUsername" required>
+                                <small class="text-muted">Usado para login no sistema</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="usuarioNomeCompleto">Nome Completo *</label>
+                                <input type="text" id="usuarioNomeCompleto" required>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="usuarioEmail">Email</label>
+                                <input type="email" id="usuarioEmail">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="usuarioRepositor">Repositor Vinculado</label>
+                                <select id="usuarioRepositor">
+                                    <option value="">Nenhum (usuário administrativo)</option>
+                                </select>
+                                <small class="text-muted">Vincule a um repositor para acesso no PWA</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="usuarioPerfil">Perfil *</label>
+                                <select id="usuarioPerfil" required>
+                                    <option value="repositor">Repositor</option>
+                                    <option value="admin">Admin</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="usuarioSenha">Senha <span id="labelSenhaOpcional">(opcional para edição)</span></label>
+                                <input type="password" id="usuarioSenha" minlength="6">
+                                <small class="text-muted">Mínimo 6 caracteres</small>
+                            </div>
+
+                            <div class="form-group" style="display: none;" id="grupoUsuarioAtivo">
+                                <label>
+                                    <input type="checkbox" id="usuarioAtivo" checked>
+                                    Usuário Ativo
+                                </label>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" id="btnCancelarUsuario">Cancelar</button>
+                        <button type="button" class="btn btn-primary" id="btnSalvarUsuario">Salvar</button>
+                    </div>
+                </div>
+            </div>
+
+            <style>
+                .filtros-usuarios {
+                    background: #f9fafb;
+                    padding: 16px;
+                    border-radius: 8px;
+                    border: 1px solid #e5e7eb;
+                }
+
+                .table-responsive {
+                    overflow-x: auto;
+                }
+
+                .data-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-top: 12px;
+                }
+
+                .data-table th {
+                    background: #f9fafb;
+                    padding: 12px;
+                    text-align: left;
+                    font-weight: 600;
+                    color: #374151;
+                    border-bottom: 2px solid #e5e7eb;
+                    white-space: nowrap;
+                }
+
+                .data-table td {
+                    padding: 12px;
+                    border-bottom: 1px solid #e5e7eb;
+                }
+
+                .data-table tbody tr:hover {
+                    background: #f9fafb;
+                }
+
+                .badge {
+                    display: inline-block;
+                    padding: 4px 12px;
+                    border-radius: 12px;
+                    font-size: 12px;
+                    font-weight: 600;
+                }
+
+                .badge-success {
+                    background: #d1fae5;
+                    color: #065f46;
+                }
+
+                .badge-danger {
+                    background: #fee2e2;
+                    color: #991b1b;
+                }
+
+                .badge-primary {
+                    background: #dbeafe;
+                    color: #1e40af;
+                }
+
+                .badge-secondary {
+                    background: #f3f4f6;
+                    color: #374151;
+                }
+
+                .btn-sm {
+                    padding: 6px 12px;
+                    font-size: 13px;
+                }
+
+                .btn-icon {
+                    padding: 4px 8px;
+                    font-size: 16px;
+                    line-height: 1;
+                }
+
+                .web-only {
+                    display: inherit !important;
+                }
+            </style>
+        `;
+    },
+
     'documentos': async () => {
         const repositores = await db.getAllRepositors();
         const repositorOptions = repositores
@@ -3584,6 +3805,7 @@ export const pageTitles = {
     'custos-repositor': 'Custos por Repositor',
     'estrutura-banco-comercial': 'Estrutura do Banco Comercial',
     'controle-acessos': 'Controle de Acessos',
+    'gestao-usuarios': 'Gestão de Usuários',
     'roteiro-repositor': 'Roteiro do Repositor',
     'registro-rota': 'Registro de Rota',
     'consulta-visitas': 'Consulta de Visitas',

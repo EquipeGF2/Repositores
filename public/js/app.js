@@ -787,14 +787,18 @@ class App {
 
     configurarVisibilidadeConfiguracoes() {
         const linkControle = document.querySelector('[data-page="controle-acessos"]');
-        if (!linkControle) return;
+        const linkGestaoUsuarios = document.querySelector('[data-page="gestao-usuarios"]');
 
         if (this.usuarioTemPermissao('mod_configuracoes')) {
-            linkControle.classList.remove('hidden');
-            linkControle.parentElement?.classList.remove('hidden');
+            linkControle?.classList.remove('hidden');
+            linkControle?.parentElement?.classList.remove('hidden');
+            linkGestaoUsuarios?.classList.remove('hidden');
+            linkGestaoUsuarios?.parentElement?.classList.remove('hidden');
         } else {
-            linkControle.classList.add('hidden');
-            linkControle.parentElement?.classList.add('hidden');
+            linkControle?.classList.add('hidden');
+            linkControle?.parentElement?.classList.add('hidden');
+            linkGestaoUsuarios?.classList.add('hidden');
+            linkGestaoUsuarios?.parentElement?.classList.add('hidden');
         }
     }
 
@@ -918,6 +922,329 @@ class App {
         }
     }
 
+    // ==================== GESTÃO DE USUÁRIOS ====================
+
+    async inicializarGestaoUsuarios() {
+        this.usuariosFiltrados = [];
+        this.usuarioEditando = null;
+
+        // Carregar repositores para o select
+        const repositores = await db.getAllRepositors();
+        const selectRepositor = document.getElementById('usuarioRepositor');
+        if (selectRepositor) {
+            selectRepositor.innerHTML = '<option value="">Nenhum (usuário administrativo)</option>' +
+                repositores.map(repo => `<option value="${repo.repo_cod}">${repo.repo_cod} - ${repo.repo_nome}</option>`).join('');
+        }
+
+        // Event Listeners
+        document.getElementById('btnNovoUsuario')?.addEventListener('click', () => this.abrirModalUsuario());
+        document.getElementById('btnFecharModalUsuario')?.addEventListener('click', () => this.fecharModalUsuario());
+        document.getElementById('btnCancelarUsuario')?.addEventListener('click', () => this.fecharModalUsuario());
+        document.getElementById('btnSalvarUsuario')?.addEventListener('click', () => this.salvarUsuario());
+
+        // Filtros
+        document.getElementById('filtroUsuarioNome')?.addEventListener('input', () => this.filtrarUsuarios());
+        document.getElementById('filtroUsuarioPerfil')?.addEventListener('change', () => this.filtrarUsuarios());
+        document.getElementById('filtroUsuarioStatus')?.addEventListener('change', () => this.filtrarUsuarios());
+
+        // Carregar usuários
+        await this.carregarUsuarios();
+    }
+
+    async carregarUsuarios() {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/usuarios`, {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem(AUTH_STORAGE_KEY)}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Erro ao carregar usuários');
+            }
+
+            const data = await response.json();
+            this.usuariosFiltrados = data.usuarios || [];
+            this.renderizarTabelaUsuarios();
+        } catch (error) {
+            console.error('Erro ao carregar usuários:', error);
+            this.showNotification('Erro ao carregar usuários', 'error');
+        }
+    }
+
+    filtrarUsuarios() {
+        const filtroNome = document.getElementById('filtroUsuarioNome')?.value.toLowerCase() || '';
+        const filtroPerfil = document.getElementById('filtroUsuarioPerfil')?.value || '';
+        const filtroStatus = document.getElementById('filtroUsuarioStatus')?.value || '';
+
+        this.renderizarTabelaUsuarios(filtroNome, filtroPerfil, filtroStatus);
+    }
+
+    renderizarTabelaUsuarios(filtroNome = '', filtroPerfil = '', filtroStatus = '') {
+        const tbody = document.getElementById('usuariosTableBody');
+        if (!tbody) return;
+
+        let usuarios = [...this.usuariosFiltrados];
+
+        // Aplicar filtros
+        if (filtroNome) {
+            usuarios = usuarios.filter(u =>
+                u.nome_completo?.toLowerCase().includes(filtroNome) ||
+                u.username?.toLowerCase().includes(filtroNome)
+            );
+        }
+        if (filtroPerfil) {
+            usuarios = usuarios.filter(u => u.perfil === filtroPerfil);
+        }
+        if (filtroStatus !== '') {
+            usuarios = usuarios.filter(u => u.ativo === Number(filtroStatus));
+        }
+
+        if (usuarios.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="9" style="text-align: center; padding: 20px; color: #6b7280;">
+                        Nenhum usuário encontrado
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = usuarios.map(usuario => {
+            const statusBadge = usuario.ativo
+                ? '<span class="badge badge-success">Ativo</span>'
+                : '<span class="badge badge-danger">Inativo</span>';
+
+            const perfilBadge = usuario.perfil === 'admin'
+                ? '<span class="badge badge-primary">Admin</span>'
+                : '<span class="badge badge-secondary">Repositor</span>';
+
+            const ultimoLogin = usuario.ultimo_login
+                ? new Date(usuario.ultimo_login).toLocaleString('pt-BR')
+                : '-';
+
+            return `
+                <tr>
+                    <td>${usuario.usuario_id}</td>
+                    <td><strong>${usuario.username}</strong></td>
+                    <td>${usuario.nome_completo || '-'}</td>
+                    <td>${usuario.email || '-'}</td>
+                    <td>${usuario.rep_id ? `${usuario.rep_id} - ${usuario.repo_nome || ''}` : '-'}</td>
+                    <td>${perfilBadge}</td>
+                    <td>${statusBadge}</td>
+                    <td style="font-size: 13px;">${ultimoLogin}</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" onclick="app.editarUsuario(${usuario.usuario_id})" title="Editar">
+                            ✏️
+                        </button>
+                        <button class="btn btn-sm ${usuario.ativo ? 'btn-danger' : 'btn-success'}"
+                                onclick="app.toggleStatusUsuario(${usuario.usuario_id}, ${usuario.ativo})"
+                                title="${usuario.ativo ? 'Desativar' : 'Ativar'}">
+                            ${usuario.ativo ? '🚫' : '✅'}
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    abrirModalUsuario(usuario = null) {
+        this.usuarioEditando = usuario;
+        const modal = document.getElementById('modalUsuario');
+        const titulo = document.getElementById('modalUsuarioTitulo');
+        const form = document.getElementById('formUsuario');
+
+        if (!modal || !titulo || !form) return;
+
+        titulo.textContent = usuario ? 'Editar Usuário' : 'Novo Usuário';
+
+        // Resetar form
+        form.reset();
+        document.getElementById('usuarioId').value = '';
+        document.getElementById('labelSenhaOpcional').style.display = usuario ? 'inline' : 'none';
+        document.getElementById('usuarioSenha').required = !usuario;
+        document.getElementById('grupoUsuarioAtivo').style.display = usuario ? 'block' : 'none';
+
+        // Preencher dados se for edição
+        if (usuario) {
+            document.getElementById('usuarioId').value = usuario.usuario_id;
+            document.getElementById('usuarioUsername').value = usuario.username;
+            document.getElementById('usuarioUsername').disabled = true; // Não permitir alterar username
+            document.getElementById('usuarioNomeCompleto').value = usuario.nome_completo || '';
+            document.getElementById('usuarioEmail').value = usuario.email || '';
+            document.getElementById('usuarioRepositor').value = usuario.rep_id || '';
+            document.getElementById('usuarioPerfil').value = usuario.perfil || 'repositor';
+            document.getElementById('usuarioAtivo').checked = usuario.ativo === 1;
+        } else {
+            document.getElementById('usuarioUsername').disabled = false;
+        }
+
+        modal.style.display = 'flex';
+    }
+
+    fecharModalUsuario() {
+        const modal = document.getElementById('modalUsuario');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+        this.usuarioEditando = null;
+    }
+
+    async editarUsuario(usuarioId) {
+        const usuario = this.usuariosFiltrados.find(u => u.usuario_id === usuarioId);
+        if (usuario) {
+            this.abrirModalUsuario(usuario);
+        }
+    }
+
+    async toggleStatusUsuario(usuarioId, statusAtual) {
+        const novoStatus = statusAtual ? 0 : 1;
+        const acao = novoStatus ? 'ativar' : 'desativar';
+
+        if (!confirm(`Deseja realmente ${acao} este usuário?`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/usuarios/${usuarioId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem(AUTH_STORAGE_KEY)}`
+                },
+                body: JSON.stringify({ ativo: novoStatus })
+            });
+
+            if (!response.ok) {
+                throw new Error('Erro ao atualizar status');
+            }
+
+            this.showNotification(`Usuário ${novoStatus ? 'ativado' : 'desativado'} com sucesso!`, 'success');
+            await this.carregarUsuarios();
+        } catch (error) {
+            console.error('Erro ao atualizar status:', error);
+            this.showNotification('Erro ao atualizar status do usuário', 'error');
+        }
+    }
+
+    async salvarUsuario() {
+        const form = document.getElementById('formUsuario');
+        if (!form.checkValidity()) {
+            form.reportValidity();
+            return;
+        }
+
+        const usuarioId = document.getElementById('usuarioId').value;
+        const isEdicao = !!usuarioId;
+
+        const dados = {
+            username: document.getElementById('usuarioUsername').value.trim(),
+            nome_completo: document.getElementById('usuarioNomeCompleto').value.trim(),
+            email: document.getElementById('usuarioEmail').value.trim() || null,
+            rep_id: document.getElementById('usuarioRepositor').value || null,
+            perfil: document.getElementById('usuarioPerfil').value
+        };
+
+        const senha = document.getElementById('usuarioSenha').value;
+        if (senha) {
+            dados.password = senha;
+        } else if (!isEdicao) {
+            this.showNotification('Senha é obrigatória para novos usuários', 'warning');
+            return;
+        }
+
+        if (isEdicao) {
+            dados.ativo = document.getElementById('usuarioAtivo').checked ? 1 : 0;
+            dados.nova_senha = senha || undefined;
+            delete dados.password;
+        }
+
+        try {
+            const url = isEdicao
+                ? `${API_BASE_URL}/api/usuarios/${usuarioId}`
+                : `${API_BASE_URL}/api/usuarios`;
+
+            const response = await fetch(url, {
+                method: isEdicao ? 'PUT' : 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem(AUTH_STORAGE_KEY)}`
+                },
+                body: JSON.stringify(dados)
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.message || 'Erro ao salvar usuário');
+            }
+
+            this.showNotification(
+                isEdicao ? 'Usuário atualizado com sucesso!' : 'Usuário criado com sucesso!',
+                'success'
+            );
+
+            this.fecharModalUsuario();
+            await this.carregarUsuarios();
+        } catch (error) {
+            console.error('Erro ao salvar usuário:', error);
+            this.showNotification(error.message || 'Erro ao salvar usuário', 'error');
+        }
+    }
+
+    // Gerar senha aleatória segura
+    gerarSenhaAleatoria(tamanho = 12) {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%&*';
+        let senha = '';
+        for (let i = 0; i < tamanho; i++) {
+            senha += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return senha;
+    }
+
+    // Criar usuário automaticamente para um repositor
+    async criarUsuarioParaRepositor(repoCod, nomeRepositor, emailRepositor) {
+        try {
+            const senhaAleatoria = this.gerarSenhaAleatoria();
+
+            const dados = {
+                username: String(repoCod), // username = repo_cod
+                password: senhaAleatoria,
+                nome_completo: nomeRepositor,
+                email: emailRepositor || null,
+                rep_id: repoCod,
+                perfil: 'repositor'
+            };
+
+            const response = await fetch(`${API_BASE_URL}/api/usuarios`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem(AUTH_STORAGE_KEY)}`
+                },
+                body: JSON.stringify(dados)
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                // Se o usuário já existe, não é um erro crítico
+                if (result.code === 'USERNAME_EXISTS') {
+                    console.log('Usuário já existe para este repositor');
+                    return;
+                }
+                throw new Error(result.message || 'Erro ao criar usuário');
+            }
+
+            console.log('Usuário criado automaticamente para repositor', repoCod);
+            this.showNotification(`Usuário criado! Username: ${repoCod}, Senha: ${senhaAleatoria}`, 'success', 8000);
+        } catch (error) {
+            console.error('Erro ao criar usuário automaticamente:', error);
+            throw error;
+        }
+    }
+
     estaNoModoMobile() {
         return this.mobileHeaderQuery?.matches;
     }
@@ -999,6 +1326,8 @@ class App {
                 await this.aplicarFiltrosCadastroRepositores();
             } else if (pageName === 'controle-acessos') {
                 await this.inicializarControleAcessos();
+            } else if (pageName === 'gestao-usuarios') {
+                await this.inicializarGestaoUsuarios();
             } else if (pageName === 'roteiro-repositor') {
                 await this.inicializarRoteiroRepositor();
             } else if (pageName === 'consulta-alteracoes') {
@@ -1134,12 +1463,25 @@ class App {
         }
 
         try {
+            let repoCodCriado = cod;
             if (cod) {
                 await db.updateRepositor(cod, nome, dataInicio, dataFim, cidadeRef, repCodigo, repNome, vinculo, supervisor, diasTrabalhados, jornada, telefone || null, email || null);
                 this.showNotification(`${vinculo === 'agencia' ? 'Agência' : 'Repositor'} atualizado com sucesso!`, 'success');
             } else {
-                await db.createRepositor(nome, dataInicio, dataFim, cidadeRef, repCodigo, repNome, vinculo, supervisor, diasTrabalhados, jornada, telefone || null, email || null);
+                const resultado = await db.createRepositor(nome, dataInicio, dataFim, cidadeRef, repCodigo, repNome, vinculo, supervisor, diasTrabalhados, jornada, telefone || null, email || null);
+                repoCodCriado = resultado?.repo_cod || resultado?.id;
                 this.showNotification(`${vinculo === 'agencia' ? 'Agência' : 'Repositor'} cadastrado com sucesso!`, 'success');
+            }
+
+            // Criar usuário automaticamente se checkbox estiver marcado
+            const criarUsuario = document.getElementById('repo_criar_usuario')?.checked;
+            if (criarUsuario && repoCodCriado && !cod) { // Apenas para novos repositores
+                try {
+                    await this.criarUsuarioParaRepositor(repoCodCriado, nome, email);
+                } catch (userError) {
+                    console.warn('Erro ao criar usuário para repositor:', userError);
+                    this.showNotification('Repositor criado, mas houve erro ao criar o usuário. Crie manualmente na tela de Gestão de Usuários.', 'warning');
+                }
             }
 
             this.closeModalRepositor();
