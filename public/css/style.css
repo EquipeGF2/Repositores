@@ -729,9 +729,9 @@ tbody td {
 }
 
 .modal-repositor .modal-content {
-    max-width: 1200px;
+    max-width: 1300px;
     width: 98%;
-    max-height: calc(100vh - 80px);
+    max-height: calc(100vh - 40px);
     height: auto;
     display: flex;
     flex-direction: column;

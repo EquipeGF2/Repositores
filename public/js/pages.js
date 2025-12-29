@@ -1791,7 +1791,7 @@ export const pages = {
 
             <!-- Modal de Atividades -->
             <div class="modal" id="modalAtividades">
-                <div class="modal-content" style="max-width: 600px;">
+                <div class="modal-content" style="max-width: 900px; max-height: calc(100vh - 40px);">
                     <div class="modal-header">
                         <div>
                             <h3 id="modalAtividadesTitulo">Atividades</h3>
@@ -1800,55 +1800,61 @@ export const pages = {
                         <button class="modal-close" onclick="window.app.fecharModalAtividades()">&times;</button>
                     </div>
                     <div class="modal-body">
-                        <div style="display: flex; flex-direction: column; gap: 20px;">
-                            <!-- Quantidade de Frentes -->
-                            <div class="form-group">
-                                <label for="atv_qtd_frentes">Quantidade de Frentes *</label>
-                                <input type="number" id="atv_qtd_frentes" min="1" placeholder="Ex: 3" required>
-                            </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+                            <!-- Coluna 1 -->
+                            <div style="display: flex; flex-direction: column; gap: 20px;">
+                                <!-- Quantidade de Frentes -->
+                                <div class="form-group">
+                                    <label for="atv_qtd_frentes">Quantidade de Frentes *</label>
+                                    <input type="number" id="atv_qtd_frentes" min="1" placeholder="Ex: 3" required>
+                                </div>
 
-                            <!-- Merchandising -->
-                            <div class="form-group">
-                                <label style="margin-bottom: 12px; display: block; font-weight: 600;">Usou Merchandising? *</label>
-                                <div style="display: flex; gap: 16px;">
-                                    <label class="checkbox-label" style="flex: 0;">
-                                        <input type="radio" name="atv_merchandising" id="atv_merchandising_sim" value="1" required>
-                                        <span>Sim</span>
-                                    </label>
-                                    <label class="checkbox-label" style="flex: 0;">
-                                        <input type="radio" name="atv_merchandising" id="atv_merchandising_nao" value="0" required>
-                                        <span>Não</span>
-                                    </label>
+                                <!-- Merchandising -->
+                                <div class="form-group">
+                                    <label style="margin-bottom: 12px; display: block; font-weight: 600;">Usou Merchandising? *</label>
+                                    <div style="display: flex; gap: 16px;">
+                                        <label class="checkbox-label" style="flex: 0;">
+                                            <input type="radio" name="atv_merchandising" id="atv_merchandising_sim" value="1" required>
+                                            <span>Sim</span>
+                                        </label>
+                                        <label class="checkbox-label" style="flex: 0;">
+                                            <input type="radio" name="atv_merchandising" id="atv_merchandising_nao" value="0" required>
+                                            <span>Não</span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <!-- Quantidade Pontos Extras (condicional) -->
+                                <div class="form-group" id="grupo_qtd_pontos_extras" style="display: none;">
+                                    <label for="atv_qtd_pontos_extras">Quantidade de Pontos Extras *</label>
+                                    <input type="number" id="atv_qtd_pontos_extras" min="1" placeholder="Ex: 5">
                                 </div>
                             </div>
 
-                            <!-- Checklist de Serviços -->
-                            <div class="form-group">
-                                <label style="margin-bottom: 12px; display: block; font-weight: 600;">Atividades Realizadas * (marque ao menos uma)</label>
-                                <div style="display: flex; flex-direction: column; gap: 8px;">
-                                    <label class="checkbox-label">
-                                        <input type="checkbox" id="atv_abastecimento">
-                                        <span>Abastecimento</span>
-                                    </label>
-                                    <label class="checkbox-label">
-                                        <input type="checkbox" id="atv_espaco_loja">
-                                        <span>Espaço Loja</span>
-                                    </label>
-                                    <label class="checkbox-label">
-                                        <input type="checkbox" id="atv_ruptura_loja">
-                                        <span>Ruptura Loja</span>
-                                    </label>
-                                    <label class="checkbox-label">
-                                        <input type="checkbox" id="atv_pontos_extras">
-                                        <span>Pontos Extras</span>
-                                    </label>
+                            <!-- Coluna 2 -->
+                            <div style="display: flex; flex-direction: column; gap: 20px;">
+                                <!-- Checklist de Serviços -->
+                                <div class="form-group">
+                                    <label style="margin-bottom: 12px; display: block; font-weight: 600;">Atividades Realizadas * (marque ao menos uma)</label>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" id="atv_abastecimento">
+                                            <span>Abastecimento</span>
+                                        </label>
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" id="atv_espaco_loja">
+                                            <span>Espaço Loja</span>
+                                        </label>
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" id="atv_ruptura_loja">
+                                            <span>Ruptura Loja</span>
+                                        </label>
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" id="atv_pontos_extras">
+                                            <span>Pontos Extras</span>
+                                        </label>
+                                    </div>
                                 </div>
-                            </div>
-
-                            <!-- Quantidade Pontos Extras (condicional) -->
-                            <div class="form-group" id="grupo_qtd_pontos_extras" style="display: none;">
-                                <label for="atv_qtd_pontos_extras">Quantidade de Pontos Extras *</label>
-                                <input type="number" id="atv_qtd_pontos_extras" min="1" placeholder="Ex: 5">
                             </div>
                         </div>
                     </div>
