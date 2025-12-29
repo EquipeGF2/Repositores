@@ -927,29 +927,9 @@ class App {
     // ==================== GESTÃO DE USUÁRIOS ====================
 
     async inicializarGestaoUsuarios() {
-        // Verificar se está autenticado
-        const token = localStorage.getItem('auth_token');
-        console.log('[GESTAO_USUARIOS] Verificando autenticação... Token:', token ? 'Presente' : 'AUSENTE');
-
-        if (!token) {
-            console.error('[GESTAO_USUARIOS] Token não encontrado. Usuário não está autenticado.');
-            this.showNotification('Você precisa fazer login para acessar esta página', 'error');
-            setTimeout(() => this.navigateTo('home'), 1500);
-            return;
-        }
-
-        // Verificar se é admin
-        const usuario = JSON.parse(localStorage.getItem('auth_usuario') || '{}');
-        console.log('[GESTAO_USUARIOS] Perfil do usuário:', usuario.perfil);
-
-        if (usuario.perfil !== 'admin') {
-            console.error('[GESTAO_USUARIOS] Usuário não é admin:', usuario.perfil);
-            this.showNotification('Acesso negado. Apenas administradores.', 'error');
-            setTimeout(() => this.navigateTo('home'), 1500);
-            return;
-        }
-
         console.log('[GESTAO_USUARIOS] Inicializando gestão de usuários...');
+        console.log('[GESTAO_USUARIOS] IMPORTANTE: Esta página é para gerenciar usuários do PWA, não controle de acessos do portal web');
+
         this.usuariosFiltrados = [];
         this.usuarioEditando = null;
 
@@ -982,18 +962,15 @@ class App {
             const token = localStorage.getItem('auth_token');
             console.log('[GESTAO_USUARIOS] Carregando usuários... Token:', token ? `${token.substring(0, 20)}...` : 'AUSENTE');
 
-            if (!token) {
-                throw new Error('Token de autenticação não encontrado');
-            }
-
             const url = `${API_BASE_URL}/api/usuarios`;
             console.log('[GESTAO_USUARIOS] URL da API:', url);
 
-            const response = await fetch(url, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
+            const headers = {};
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const response = await fetch(url, { headers });
 
             console.log('[GESTAO_USUARIOS] Resposta da API:', response.status, response.statusText);
 
@@ -1875,6 +1852,7 @@ class App {
         const supervisorModal = normalizarSupervisor(registro?.rep_supervisor || representante.rep_supervisor) || '-';
         modal.querySelector('#repSupervisor').textContent = supervisorModal;
 
+        modal.style.display = 'flex';
         modal.classList.add('active');
     }
 
@@ -1884,8 +1862,10 @@ class App {
         if (modal) {
             const estaAtivo = modal.classList.contains('active');
             console.log('[MODAL_REPRESENTANTE] Modal está ativo?', estaAtivo);
+            console.log('[MODAL_REPRESENTANTE] Display atual:', modal.style.display);
             modal.classList.remove('active');
-            console.log('[MODAL_REPRESENTANTE] Modal fechado com sucesso');
+            modal.style.display = 'none';
+            console.log('[MODAL_REPRESENTANTE] Modal fechado - classe removida e display=none');
         }
     }
 
