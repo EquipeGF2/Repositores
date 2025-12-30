@@ -198,7 +198,36 @@ class Autocomplete {
         }
 
         this.renderDropdown();
+        this.positionDropdown();
         this.dropdown.classList.add('active');
+    }
+
+    positionDropdown() {
+        if (!this.input || !this.dropdown) return;
+
+        const rect = this.input.getBoundingClientRect();
+        const dropdownHeight = Math.min(300, this.filteredItems.length * 42);
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const spaceAbove = rect.top;
+
+        // Posicionar dropdown
+        this.dropdown.style.left = `${rect.left}px`;
+        this.dropdown.style.width = `${rect.width}px`;
+
+        // Verificar se há espaço abaixo ou se deve abrir para cima
+        if (spaceBelow >= dropdownHeight + 10) {
+            // Abrir para baixo
+            this.dropdown.style.top = `${rect.bottom + 4}px`;
+            this.dropdown.style.bottom = 'auto';
+        } else if (spaceAbove >= dropdownHeight + 10) {
+            // Abrir para cima
+            this.dropdown.style.bottom = `${window.innerHeight - rect.top + 4}px`;
+            this.dropdown.style.top = 'auto';
+        } else {
+            // Abrir para baixo mesmo sem espaço suficiente
+            this.dropdown.style.top = `${rect.bottom + 4}px`;
+            this.dropdown.style.bottom = 'auto';
+        }
     }
 
     hideDropdown() {
@@ -227,6 +256,7 @@ class Autocomplete {
 
         // Mostrar dropdown apenas se não estiver disabled
         if (!this.disabled) {
+            this.positionDropdown();
             this.dropdown.classList.add('active');
         }
 
@@ -3960,25 +3990,7 @@ class App {
                 }
             });
 
-            // Inicializar autocomplete para cidade comprador
-            this.autocompleteCidadeComprador = new Autocomplete({
-                inputId: 'inputCidadeComprador',
-                hiddenInputId: 'hiddenCidadeComprador',
-                formatDisplay: (cidade) => cidade,
-                formatValue: (cidade) => cidade,
-                extractKey: (cidade) => cidade,
-                onSelect: async (cidade) => {
-                    // Quando selecionar cidade, carregar clientes
-                    await this.carregarClientesCompradores();
-                    // Habilitar campo de cliente comprador
-                    if (this.autocompleteClienteComprador) {
-                        this.autocompleteClienteComprador.setDisabled(false);
-                    }
-                }
-            });
-            this.autocompleteCidadeComprador.setItems(cidades);
-
-            // Inicializar autocomplete para cliente comprador
+            // Inicializar autocomplete para cliente comprador PRIMEIRO (antes da cidade)
             this.autocompleteClienteComprador = new Autocomplete({
                 inputId: 'inputClienteComprador',
                 hiddenInputId: 'hiddenClienteCompradorCodigo',
@@ -3988,8 +4000,29 @@ class App {
                 extractKey: (cliente) => cliente.cliente,
                 onSelect: (cliente) => {
                     // Cliente selecionado
+                    console.log('[MODAL] Cliente comprador selecionado:', cliente.cliente);
                 }
             });
+
+            // Inicializar autocomplete para cidade comprador DEPOIS
+            this.autocompleteCidadeComprador = new Autocomplete({
+                inputId: 'inputCidadeComprador',
+                hiddenInputId: 'hiddenCidadeComprador',
+                formatDisplay: (cidade) => cidade,
+                formatValue: (cidade) => cidade,
+                extractKey: (cidade) => cidade,
+                onSelect: async (cidade) => {
+                    console.log('[MODAL] Cidade comprador selecionada:', cidade);
+                    // Quando selecionar cidade, carregar clientes
+                    await this.carregarClientesCompradores();
+                    // Habilitar campo de cliente comprador
+                    if (this.autocompleteClienteComprador) {
+                        this.autocompleteClienteComprador.setDisabled(false);
+                        console.log('[MODAL] Campo cliente comprador habilitado');
+                    }
+                }
+            });
+            this.autocompleteCidadeComprador.setItems(cidades);
 
             // Event listener para checkbox de CNPJ
             const checkMesmoCnpj = document.getElementById('checkMesmoCnpjRaiz');
@@ -4340,25 +4373,7 @@ class App {
         const cidades = await db.getCidadesPotencial();
         console.log('Cidades potenciais carregadas:', cidades.length, cidades);
 
-        // Inicializar autocomplete para cidade comprador
-        this.autocompleteCidadeComprador = new Autocomplete({
-            inputId: 'inputCidadeComprador',
-            hiddenInputId: 'hiddenCidadeComprador',
-            formatDisplay: (cidade) => cidade,
-            formatValue: (cidade) => cidade,
-            extractKey: (cidade) => cidade,
-            onSelect: async (cidade) => {
-                // Quando selecionar cidade, carregar clientes
-                await this.carregarClientesCompradores();
-                // Habilitar campo de cliente comprador
-                if (this.autocompleteClienteComprador) {
-                    this.autocompleteClienteComprador.setDisabled(false);
-                }
-            }
-        });
-        this.autocompleteCidadeComprador.setItems(cidades);
-
-        // Inicializar autocomplete para cliente comprador
+        // Inicializar autocomplete para cliente comprador PRIMEIRO
         this.autocompleteClienteComprador = new Autocomplete({
             inputId: 'inputClienteComprador',
             hiddenInputId: 'hiddenClienteCompradorCodigo',
@@ -4368,8 +4383,29 @@ class App {
             extractKey: (cliente) => cliente.cliente,
             onSelect: (cliente) => {
                 // Cliente selecionado
+                console.log('[MODAL VINCULAR] Cliente comprador selecionado:', cliente.cliente);
             }
         });
+
+        // Inicializar autocomplete para cidade comprador DEPOIS
+        this.autocompleteCidadeComprador = new Autocomplete({
+            inputId: 'inputCidadeComprador',
+            hiddenInputId: 'hiddenCidadeComprador',
+            formatDisplay: (cidade) => cidade,
+            formatValue: (cidade) => cidade,
+            extractKey: (cidade) => cidade,
+            onSelect: async (cidade) => {
+                console.log('[MODAL VINCULAR] Cidade comprador selecionada:', cidade);
+                // Quando selecionar cidade, carregar clientes
+                await this.carregarClientesCompradores();
+                // Habilitar campo de cliente comprador
+                if (this.autocompleteClienteComprador) {
+                    this.autocompleteClienteComprador.setDisabled(false);
+                    console.log('[MODAL VINCULAR] Campo cliente comprador habilitado');
+                }
+            }
+        });
+        this.autocompleteCidadeComprador.setItems(cidades);
 
         // Limpar checkbox
         const checkCnpj = document.getElementById('checkMesmoCnpjRaiz');
