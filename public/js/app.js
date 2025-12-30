@@ -3155,42 +3155,59 @@ class App {
 
     // ==================== CADASTRO DE RATEIO ====================
     async inicializarCadastroRateio() {
-        // Popular filtro de cidades (buscar de potencial_cidade)
-        const selectCidade = document.getElementById('filtroCidade');
-        if (selectCidade && selectCidade.options.length === 1) {
-            const cidades = await db.getCidadesPotencial();
-            cidades.forEach(cidade => {
-                const option = document.createElement('option');
-                option.value = cidade;
-                option.textContent = cidade;
-                selectCidade.appendChild(option);
-            });
-        }
+        try {
+            // Popular filtro de cidades (buscar de potencial_cidade)
+            const selectCidade = document.getElementById('filtroCidade');
+            if (selectCidade && selectCidade.options.length === 1) {
+                try {
+                    const cidades = await db.getCidadesPotencial();
+                    if (cidades && Array.isArray(cidades)) {
+                        cidades.forEach(cidade => {
+                            const option = document.createElement('option');
+                            option.value = cidade;
+                            option.textContent = cidade;
+                            selectCidade.appendChild(option);
+                        });
+                    }
+                } catch (error) {
+                    console.error('Erro ao carregar cidades:', error);
+                }
+            }
 
-        // Popular filtro de clientes com rateio
-        const selectCliente = document.getElementById('filtroCliente');
-        if (selectCliente && selectCliente.options.length === 1) {
-            const clientes = await db.getClientesComRateio();
-            clientes.forEach(cliente => {
-                const option = document.createElement('option');
-                option.value = cliente.cliente;
-                option.textContent = `${cliente.cliente} - ${cliente.nome || cliente.fantasia}`;
-                selectCliente.appendChild(option);
-            });
-        }
+            // Popular filtro de clientes com rateio
+            const selectCliente = document.getElementById('filtroCliente');
+            if (selectCliente && selectCliente.options.length === 1) {
+                try {
+                    const clientes = await db.getClientesComRateio();
+                    if (clientes && Array.isArray(clientes)) {
+                        clientes.forEach(cliente => {
+                            const option = document.createElement('option');
+                            option.value = cliente.cliente;
+                            option.textContent = `${cliente.cliente} - ${cliente.nome || cliente.fantasia}`;
+                            selectCliente.appendChild(option);
+                        });
+                    }
+                } catch (error) {
+                    console.error('Erro ao carregar clientes com rateio:', error);
+                }
+            }
 
-        // Event listeners
-        const btnRecarregar = document.getElementById('btnRecarregarRateio');
-        if (btnRecarregar) {
-            btnRecarregar.addEventListener('click', () => this.aplicarFiltrosRateio());
-        }
+            // Event listeners
+            const btnRecarregar = document.getElementById('btnRecarregarRateio');
+            if (btnRecarregar) {
+                btnRecarregar.addEventListener('click', () => this.aplicarFiltrosRateio());
+            }
 
-        const btnAplicarFiltros = document.getElementById('btnAplicarFiltrosRateio');
-        if (btnAplicarFiltros) {
-            btnAplicarFiltros.addEventListener('click', () => this.aplicarFiltrosRateio());
-        }
+            const btnAplicarFiltros = document.getElementById('btnAplicarFiltrosRateio');
+            if (btnAplicarFiltros) {
+                btnAplicarFiltros.addEventListener('click', () => this.aplicarFiltrosRateio());
+            }
 
-        await this.carregarListaRateioManutencao();
+            await this.carregarListaRateioManutencao();
+        } catch (error) {
+            console.error('Erro ao inicializar cadastro de rateio:', error);
+            this.showNotification('Erro ao inicializar tela de rateio. Tente recarregar a página.', 'error');
+        }
     }
 
     obterFiltrosRateio() {
@@ -3575,34 +3592,53 @@ class App {
 
         // Definir modo de adição manual
         this.contextoVinculoCentralizacao = { modo: 'adicionar_manual' };
+        this.clienteOrigemCnpj = null;
 
         // Modificar o modal para modo de seleção manual
-        const clienteOrigemContainer = modal.querySelector('.form-group');
-        if (clienteOrigemContainer) {
-            clienteOrigemContainer.innerHTML = `
-                <label style="font-weight: 600;">Cliente Origem</label>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px;">
-                    <div>
-                        <label for="selectCidadeOrigem" style="font-size: 0.9rem; margin-bottom: 4px; display: block;">Cidade</label>
-                        <select id="selectCidadeOrigem" class="form-control full-width">
+        const modalBody = modal.querySelector('.modal-body');
+        if (modalBody) {
+            modalBody.innerHTML = `
+                <div class="form-group" style="margin-bottom: 24px;">
+                    <label style="font-weight: 600; margin-bottom: 8px; display: block;">Cliente Origem (Venda Centralizada)</label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px;">
+                        <div>
+                            <label for="selectCidadeOrigem" style="font-size: 0.9rem; margin-bottom: 4px; display: block;">Cidade *</label>
+                            <select id="selectCidadeOrigem" class="form-control full-width">
+                                <option value="">Selecione a cidade...</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="selectClienteOrigem" style="font-size: 0.9rem; margin-bottom: 4px; display: block;">Cliente *</label>
+                            <select id="selectClienteOrigem" class="form-control full-width" disabled>
+                                <option value="">Primeiro selecione a cidade...</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 20px; padding: 12px; background: #fef3c7; border-radius: 6px; border-left: 4px solid #f59e0b;">
+                    <label style="display: inline-flex; align-items: center; cursor: pointer; user-select: none; margin: 0;">
+                        <input type="checkbox" id="checkMesmoCnpjRaiz" style="margin-right: 10px; width: 18px; height: 18px; cursor: pointer;">
+                        <span style="font-size: 0.95rem; font-weight: 500;">Filtrar cliente comprador pela mesma raiz CNPJ</span>
+                    </label>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 0;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="selectCidadeComprador" style="font-weight: 600; margin-bottom: 8px; display: block;">Cidade do Cliente Comprador *</label>
+                        <select id="selectCidadeComprador" class="form-control full-width" required style="padding: 10px;">
                             <option value="">Selecione a cidade...</option>
                         </select>
                     </div>
-                    <div>
-                        <label for="selectClienteOrigem" style="font-size: 0.9rem; margin-bottom: 4px; display: block;">Cliente *</label>
-                        <select id="selectClienteOrigem" class="form-control full-width" disabled>
+
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="selectClienteComprador" style="font-weight: 600; margin-bottom: 8px; display: block;">Cliente Comprador *</label>
+                        <select id="selectClienteComprador" class="form-control full-width" required disabled style="padding: 10px;">
                             <option value="">Primeiro selecione a cidade...</option>
                         </select>
                     </div>
                 </div>
             `;
-        }
-
-        // Esconder checkbox de CNPJ
-        const checkMesmoCnpj = document.getElementById('checkMesmoCnpjRaiz');
-        if (checkMesmoCnpj) {
-            const checkGroup = checkMesmoCnpj.closest('.form-group');
-            if (checkGroup) checkGroup.style.display = 'none';
         }
 
         // Limpar seletores de comprador
@@ -3665,6 +3701,43 @@ class App {
                     option.value = cidade;
                     option.textContent = cidade;
                     selectCidadeComprador.appendChild(option);
+                });
+            }
+
+            // Event listener para quando selecionar cliente origem
+            const selectClienteOrigem = document.getElementById('selectClienteOrigem');
+            if (selectClienteOrigem) {
+                selectClienteOrigem.addEventListener('change', async (e) => {
+                    const clienteSelecionado = e.target.value;
+                    if (!clienteSelecionado) {
+                        this.clienteOrigemCnpj = null;
+                        return;
+                    }
+
+                    // Buscar CNPJ do cliente origem
+                    try {
+                        const clienteDados = await db.getClientesPorCodigo([clienteSelecionado]);
+                        const cliente = clienteDados[clienteSelecionado];
+                        if (cliente && cliente.cnpj_cpf) {
+                            this.clienteOrigemCnpj = cliente.cnpj_cpf.replace(/\D/g, '');
+                        }
+                    } catch (error) {
+                        console.error('Erro ao buscar CNPJ do cliente:', error);
+                    }
+                });
+            }
+
+            // Event listeners para carregar clientes compradores
+            if (selectCidadeComprador) {
+                selectCidadeComprador.addEventListener('change', () => {
+                    this.carregarClientesCompradores();
+                });
+            }
+
+            const checkMesmoCnpj = document.getElementById('checkMesmoCnpjRaiz');
+            if (checkMesmoCnpj) {
+                checkMesmoCnpj.addEventListener('change', () => {
+                    this.carregarClientesCompradores();
                 });
             }
         } catch (error) {
@@ -3898,6 +3971,59 @@ class App {
         `;
     }
 
+    restaurarEstruturModalVincular() {
+        const modal = document.getElementById('modalVincularComprador');
+        if (!modal) return;
+
+        const modalBody = modal.querySelector('.modal-body');
+        if (!modalBody) return;
+
+        // Verificar se precisa restaurar (se não existe modalClienteOrigem)
+        if (!document.getElementById('modalClienteOrigem')) {
+            modalBody.innerHTML = `
+                <div class="form-group" style="margin-bottom: 24px;">
+                    <label style="font-weight: 600; margin-bottom: 8px; display: block;">Cliente Origem (Venda Centralizada)</label>
+                    <div style="padding: 16px; background: #f8f9fa; border-radius: 6px; border-left: 4px solid #3b82f6;">
+                        <div style="font-size: 1.1rem; font-weight: 600; color: #1f2937;" id="modalClienteOrigem">-</div>
+                        <div id="modalClienteOrigemCnpj" style="font-size: 0.95rem; color: #6b7280; margin-top: 6px;"></div>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 20px; padding: 12px; background: #fef3c7; border-radius: 6px; border-left: 4px solid #f59e0b;">
+                    <label style="display: inline-flex; align-items: center; cursor: pointer; user-select: none; margin: 0;">
+                        <input type="checkbox" id="checkMesmoCnpjRaiz" style="margin-right: 10px; width: 18px; height: 18px; cursor: pointer;">
+                        <span style="font-size: 0.95rem; font-weight: 500;">Filtrar apenas clientes com mesma raiz CNPJ <small class="text-muted">(8 primeiros dígitos - mesmo grupo empresarial)</small></span>
+                    </label>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 0;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="selectCidadeComprador" style="font-weight: 600; margin-bottom: 8px; display: block;">Cidade do Cliente Comprador *</label>
+                        <select id="selectCidadeComprador" class="form-control full-width" required style="padding: 10px;">
+                            <option value="">Selecione a cidade...</option>
+                        </select>
+                        <small class="text-muted" style="display: block; margin-top: 6px;">Pode ser diferente da cidade do roteiro</small>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="selectClienteComprador" style="font-weight: 600; margin-bottom: 8px; display: block;">Cliente Comprador *</label>
+                        <select id="selectClienteComprador" class="form-control full-width" required disabled style="padding: 10px;">
+                            <option value="">Primeiro selecione a cidade...</option>
+                        </select>
+                        <small class="text-muted" style="display: block; margin-top: 6px;">Cliente que efetua a compra centralizada</small>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Mostrar checkbox de CNPJ
+        const checkMesmoCnpj = document.getElementById('checkMesmoCnpjRaiz');
+        if (checkMesmoCnpj) {
+            const checkGroup = checkMesmoCnpj.closest('.form-group');
+            if (checkGroup) checkGroup.style.display = '';
+        }
+    }
+
     async abrirModalVincularComprador(clienteOrigem, clienteNome, jaTemVinculo) {
         this.clienteOrigemAtual = clienteOrigem;
         this.clienteOrigemNome = clienteNome;
@@ -3909,11 +4035,17 @@ class App {
             return;
         }
 
+        // Restaurar estrutura original do modal se foi modificada
+        this.restaurarEstruturModalVincular();
+
         // Atualizar título
         document.getElementById('modalVincularTitulo').textContent =
             jaTemVinculo ? 'Editar Cliente Comprador' : 'Vincular Cliente Comprador';
 
-        document.getElementById('modalClienteOrigem').textContent = `${clienteOrigem} - ${clienteNome}`;
+        const modalClienteOrigem = document.getElementById('modalClienteOrigem');
+        if (modalClienteOrigem) {
+            modalClienteOrigem.textContent = `${clienteOrigem} - ${clienteNome}`;
+        }
 
         // Buscar dados do cliente origem (incluindo CNPJ)
         try {
