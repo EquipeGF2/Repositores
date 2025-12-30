@@ -2217,6 +2217,11 @@ class TursoDatabase {
         }
     }
 
+    // Alias para compatibilidade
+    async getCidadesRateio() {
+        return this.obterCidadesComRateio();
+    }
+
     async listarClientesRateioIncompleto() {
         try {
             await this.connect();

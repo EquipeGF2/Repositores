@@ -150,14 +150,14 @@ router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Não permitir desativar o próprio usuário
-    if (Number(id) === req.user.usuario_id) {
-      return res.status(400).json({
-        ok: false,
-        code: 'CANNOT_DELETE_SELF',
-        message: 'Você não pode desativar seu próprio usuário'
-      });
-    }
+    // TEMPORÁRIO: Sem validação de usuário até implementar autenticação web
+    // if (req.user && Number(id) === req.user.usuario_id) {
+    //   return res.status(400).json({
+    //     ok: false,
+    //     code: 'CANNOT_DELETE_SELF',
+    //     message: 'Você não pode desativar seu próprio usuário'
+    //   });
+    // }
 
     const usuario = await tursoService.buscarUsuarioPorId(id);
     if (!usuario) {
