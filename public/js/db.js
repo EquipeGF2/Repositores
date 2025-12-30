@@ -1895,6 +1895,79 @@ class TursoDatabase {
         try {
             const cidade = await this.getRoteiroCidadePorId(rotCidId);
 
+            // Verificar se o cliente tem rateio ativo para este repositor
+            if (cidade) {
+                const rateiosAtivos = await this.mainClient.execute({
+                    sql: `
+                        SELECT rat_id FROM cc_rateio
+                        WHERE rat_cliente_codigo = ?
+                        AND rat_repositor_id = ?
+                        AND rat_vigencia_fim IS NULL
+                    `,
+                    args: [String(clienteCodigo), Number(cidade.rot_repositor_id)]
+                });
+
+                // Se tem rateio ativo, encerrar com data atual ao invés de deletar
+                if (rateiosAtivos.rows && rateiosAtivos.rows.length > 0) {
+                    const dataHoje = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+                    for (const rateio of rateiosAtivos.rows) {
+                        await this.mainClient.execute({
+                            sql: `
+                                UPDATE cc_rateio
+                                SET rat_vigencia_fim = ?,
+                                    rat_atualizado_em = datetime('now')
+                                WHERE rat_id = ?
+                            `,
+                            args: [dataHoje, rateio.rat_id]
+                        });
+                        console.log(`[RATEIO] Rateio ${rateio.rat_id} encerrado automaticamente em ${dataHoje} ao remover cliente do roteiro`);
+                    }
+
+                    // Verificar se sobrou apenas 1 repositor ativo para o cliente
+                    const rateiosRestantes = await this.mainClient.execute({
+                        sql: `
+                            SELECT rat_id, rat_repositor_id, rat_percentual
+                            FROM cc_rateio
+                            WHERE rat_cliente_codigo = ?
+                            AND rat_vigencia_fim IS NULL
+                        `,
+                        args: [String(clienteCodigo)]
+                    });
+
+                    if (rateiosRestantes.rows && rateiosRestantes.rows.length === 1) {
+                        // Se sobrou apenas 1 repositor, ajustar para 100% e desabilitar flag de rateio
+                        const rateioUnico = rateiosRestantes.rows[0];
+
+                        await this.mainClient.execute({
+                            sql: `
+                                UPDATE cc_rateio
+                                SET rat_percentual = 100,
+                                    rat_atualizado_em = datetime('now')
+                                WHERE rat_id = ?
+                            `,
+                            args: [rateioUnico.rat_id]
+                        });
+
+                        await this.mainClient.execute({
+                            sql: `UPDATE cad_clientes SET cliente_rateio = 0 WHERE cliente = ?`,
+                            args: [String(clienteCodigo)]
+                        });
+
+                        console.log(`[RATEIO] Cliente ${clienteCodigo} possui apenas 1 repositor ativo (${rateioUnico.rat_repositor_id}). Percentual ajustado para 100% e flag de rateio desabilitada.`);
+                    } else if (rateiosRestantes.rows && rateiosRestantes.rows.length === 0) {
+                        // Se não sobrou nenhum repositor, desabilitar flag de rateio
+                        await this.mainClient.execute({
+                            sql: `UPDATE cad_clientes SET cliente_rateio = 0 WHERE cliente = ?`,
+                            args: [String(clienteCodigo)]
+                        });
+
+                        console.log(`[RATEIO] Cliente ${clienteCodigo} não possui mais repositores ativos. Flag de rateio desabilitada.`);
+                    }
+                }
+            }
+
+            // Remover cliente do roteiro
             await this.mainClient.execute({
                 sql: `
                     DELETE FROM rot_roteiro_cliente
@@ -1911,7 +1984,7 @@ class TursoDatabase {
                     cidade: cidade.rot_cidade,
                     clienteCodigo,
                     acao: 'EXCLUIR_CLIENTE',
-                    detalhes: 'Cliente removido do roteiro'
+                    detalhes: 'Cliente removido do roteiro (rateio encerrado automaticamente se existia)'
                 });
             }
         } catch (error) {

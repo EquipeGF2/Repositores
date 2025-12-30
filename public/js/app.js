@@ -3766,6 +3766,7 @@ class App {
         container.querySelectorAll('.input-rateio-vigencia').forEach(input => {
             input.addEventListener('change', () => {
                 const tipo = input.dataset.tipo === 'fim' ? 'rat_vigencia_fim' : 'rat_vigencia_inicio';
+                console.log(`[RATEIO] Campo de data alterado: ${tipo} = ${input.value}, rateioId = ${input.dataset.rateioId}`);
                 this.registrarEdicaoRateio(input.dataset.rateioId, tipo, input.value || null);
             });
         });
@@ -3780,11 +3781,15 @@ class App {
         const linha = (this.rateioLinhas || []).find(l => String(l.rat_id) === String(rateioId));
         if (!linha) return;
 
+        console.log(`[RATEIO] Registrando edição: rateioId=${rateioId}, campo=${campo}, valor=${valor}`);
+
         linha[campo] = valor;
         this.rateioEdicoesPendentes[rateioId] = {
             ...(this.rateioEdicoesPendentes[rateioId] || {}),
             [campo]: valor
         };
+
+        console.log('[RATEIO] Edições pendentes:', this.rateioEdicoesPendentes[rateioId]);
 
         const linhaTabela = document.querySelector(`tr[data-rateio-id="${rateioId}"]`);
         if (linhaTabela) {
@@ -3795,8 +3800,13 @@ class App {
     async salvarEdicaoRateio(rateioId) {
         if (!rateioId) return;
 
+        console.log(`[RATEIO] Salvando rateio ${rateioId}...`);
+
         const pendente = this.rateioEdicoesPendentes[rateioId] || {};
         const linha = (this.rateioLinhas || []).find(l => String(l.rat_id) === String(rateioId));
+
+        console.log('[RATEIO] Edições pendentes para este rateio:', pendente);
+        console.log('[RATEIO] Linha atual:', linha);
 
         if (!linha) {
             this.showNotification('Registro de rateio não encontrado.', 'warning');
@@ -3808,6 +3818,8 @@ class App {
             rat_vigencia_inicio: pendente.rat_vigencia_inicio ?? linha.rat_vigencia_inicio,
             rat_vigencia_fim: pendente.rat_vigencia_fim ?? linha.rat_vigencia_fim
         };
+
+        console.log('[RATEIO] Payload a ser enviado:', payload);
 
         if (payload.rat_percentual === '' || payload.rat_percentual === null || Number.isNaN(Number(payload.rat_percentual))) {
             this.showNotification('Informe um percentual válido para salvar.', 'warning');
