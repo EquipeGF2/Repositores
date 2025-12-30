@@ -114,8 +114,15 @@ class Autocomplete {
         this.wrapper.appendChild(existingInput);
 
         this.input = existingInput;
+
+        // Remover classes que podem interferir
+        this.input.className = '';
         this.input.classList.add('autocomplete-input');
         this.input.autocomplete = 'off';
+
+        // Remover atributos que podem causar conflito
+        this.input.removeAttribute('list');
+        this.input.removeAttribute('style');
 
         if (this.disabled) {
             this.input.disabled = true;
@@ -178,16 +185,7 @@ class Autocomplete {
     showDropdown() {
         if (this.disabled || !this.items.length) return;
 
-        this.filteredItems = this.items;
-        this.renderDropdown();
-        this.dropdown.classList.add('active');
-    }
-
-    hideDropdown() {
-        this.dropdown.classList.remove('active');
-    }
-
-    handleInput() {
+        // Aplicar filtro se houver texto no input
         const searchText = this.input.value.toLowerCase().trim();
 
         if (!searchText) {
@@ -200,7 +198,37 @@ class Autocomplete {
         }
 
         this.renderDropdown();
-        this.showDropdown();
+        this.dropdown.classList.add('active');
+    }
+
+    hideDropdown() {
+        this.dropdown.classList.remove('active');
+    }
+
+    handleInput() {
+        const searchText = this.input.value.toLowerCase().trim();
+
+        console.log('[AUTOCOMPLETE] Filtrando com texto:', searchText);
+        console.log('[AUTOCOMPLETE] Total de itens:', this.items.length);
+
+        if (!searchText) {
+            this.filteredItems = this.items;
+        } else {
+            this.filteredItems = this.items.filter(item => {
+                const displayText = this.formatDisplay(item).toLowerCase();
+                const matches = displayText.includes(searchText);
+                return matches;
+            });
+        }
+
+        console.log('[AUTOCOMPLETE] Itens filtrados:', this.filteredItems.length);
+
+        this.renderDropdown();
+
+        // Mostrar dropdown apenas se não estiver disabled
+        if (!this.disabled) {
+            this.dropdown.classList.add('active');
+        }
 
         // Chamar onChange callback
         this.onChange(this.input.value);
