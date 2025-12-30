@@ -3820,6 +3820,38 @@ class App {
             return;
         }
 
+        // Validar duplicidade: verificar se já existe outro repositor ativo para o mesmo cliente
+        const clienteCodigo = linha.cliente_codigo;
+        const repositorId = linha.rat_repositor_id;
+        const duplicado = this.rateioLinhas.find(r =>
+            String(r.rat_id) !== String(rateioId) &&
+            String(r.cliente_codigo) === String(clienteCodigo) &&
+            String(r.rat_repositor_id) === String(repositorId) &&
+            !r.rat_vigencia_fim  // Só considera duplicado se o outro também estiver ativo
+        );
+
+        if (duplicado) {
+            const clienteNome = linha.cliente_nome || linha.cliente_fantasia || 'Cliente';
+            const repositorNome = linha.repo_nome || 'Repositor';
+            this.showNotification(
+                `❌ ERRO: Cliente ${clienteNome} (${clienteCodigo}) já possui o repositor ${repositorNome} (${repositorId}) ativo. Não é permitido duplicidade de repositor para o mesmo cliente.`,
+                'error',
+                8000
+            );
+            return;
+        }
+
+        // Se informou data fim, mostrar modal de confirmação
+        if (payload.rat_vigencia_fim && !linha.rat_vigencia_fim) {
+            const clienteNome = linha.cliente_nome || linha.cliente_fantasia || 'Cliente';
+            const repositorNome = linha.repo_nome || 'Repositor';
+
+            const confirmar = await this.confirmarDataFimRateio(clienteNome, clienteCodigo, repositorNome, repositorId);
+            if (!confirmar) {
+                return;
+            }
+        }
+
         try {
             const resposta = await fetch(`${API_BASE_URL}/api/rateio/${rateioId}`, {
                 method: 'PUT',
@@ -3839,10 +3871,193 @@ class App {
             }
 
             delete this.rateioEdicoesPendentes[rateioId];
+
+            // Se informou data fim, desabilitar cliente do roteiro do repositor
+            if (payload.rat_vigencia_fim) {
+                await this.desabilitarClienteDoRoteiro(clienteCodigo, repositorId);
+
+                // Verificar se sobra apenas 1 repositor ativo para o cliente
+                await this.verificarEAjustarRateioUnicoRepositor(clienteCodigo);
+            }
+
             this.showNotification('Rateio atualizado com sucesso.', 'success');
             await this.carregarListaRateioManutencao(this.obterFiltrosRateio());
         } catch (error) {
             this.showNotification(error.message || 'Erro ao salvar rateio.', 'error');
+        }
+    }
+
+    async confirmarDataFimRateio(clienteNome, clienteCodigo, repositorNome, repositorId) {
+        return new Promise((resolve) => {
+            const modal = document.createElement('div');
+            modal.className = 'modal-overlay';
+            modal.innerHTML = `
+                <div class="modal-container" style="max-width: 600px;">
+                    <div class="modal-header" style="background-color: #dc2626; color: white;">
+                        <h3 style="margin: 0; display: flex; align-items: center; gap: 10px;">
+                            <span style="font-size: 1.5rem;">⚠️</span>
+                            <span>ATENÇÃO: Encerramento de Rateio</span>
+                        </h3>
+                    </div>
+                    <div class="modal-body">
+                        <div style="background-color: #fef2f2; border-left: 4px solid #dc2626; padding: 15px; margin-bottom: 20px;">
+                            <p style="margin: 0 0 10px 0; font-weight: 600;">
+                                Você está encerrando o rateio:
+                            </p>
+                            <ul style="margin: 0; padding-left: 20px;">
+                                <li><strong>Cliente:</strong> ${clienteNome} (${clienteCodigo})</li>
+                                <li><strong>Repositor:</strong> ${repositorNome} (${repositorId})</li>
+                            </ul>
+                        </div>
+                        <div style="background-color: #fff7ed; border-left: 4px solid #f59e0b; padding: 15px; margin-bottom: 20px;">
+                            <p style="margin: 0 0 10px 0; font-weight: 600; color: #92400e;">
+                                📌 Importante:
+                            </p>
+                            <ul style="margin: 0; padding-left: 20px; color: #92400e;">
+                                <li>Este cliente será <strong>desabilitado do roteiro</strong> deste repositor</li>
+                                <li>O histórico será <strong>preservado</strong> com a data fim informada</li>
+                                <li>Se voltar a atender este cliente, será criado um <strong>novo registro</strong> com nova vigência</li>
+                                <li>Se sobrar apenas 1 repositor ativo, ele receberá <strong>100% automaticamente</strong> e a flag de rateio será desabilitada</li>
+                            </ul>
+                        </div>
+                        <p style="font-weight: 600; color: #991b1b;">
+                            Deseja realmente continuar?
+                        </p>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" data-action="cancelar">Cancelar</button>
+                        <button class="btn btn-danger" data-action="confirmar" style="background-color: #dc2626;">Confirmar Encerramento</button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+
+            const btnCancelar = modal.querySelector('[data-action="cancelar"]');
+            const btnConfirmar = modal.querySelector('[data-action="confirmar"]');
+
+            btnCancelar.addEventListener('click', () => {
+                document.body.removeChild(modal);
+                resolve(false);
+            });
+
+            btnConfirmar.addEventListener('click', () => {
+                document.body.removeChild(modal);
+                resolve(true);
+            });
+
+            // Fechar ao clicar fora do modal
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    document.body.removeChild(modal);
+                    resolve(false);
+                }
+            });
+        });
+    }
+
+    async desabilitarClienteDoRoteiro(clienteCodigo, repositorId) {
+        try {
+            console.log(`Desabilitando cliente ${clienteCodigo} do roteiro do repositor ${repositorId}`);
+
+            // Buscar todos os registros de roteiro para este cliente e repositor
+            const query = `
+                SELECT cli.rot_cli_id, cli.rot_cliente_codigo, cid.rot_repositor_id, cid.rot_dia_semana, cid.rot_cidade
+                FROM rot_roteiro_cliente cli
+                JOIN rot_roteiro_cidade cid ON cid.rot_cid_id = cli.rot_cid_id
+                WHERE cli.rot_cliente_codigo = ? AND cid.rot_repositor_id = ?
+            `;
+
+            const result = await db.mainClient.execute({
+                sql: query,
+                args: [String(clienteCodigo), Number(repositorId)]
+            });
+
+            const roteiros = result.rows || [];
+
+            if (roteiros.length === 0) {
+                console.log('Nenhum registro de roteiro encontrado para desabilitar');
+                return;
+            }
+
+            // Remover cada registro de roteiro_cliente
+            for (const roteiro of roteiros) {
+                await db.mainClient.execute({
+                    sql: `DELETE FROM rot_roteiro_cliente WHERE rot_cli_id = ?`,
+                    args: [roteiro.rot_cli_id]
+                });
+                console.log(`Cliente ${clienteCodigo} removido do roteiro: ${roteiro.rot_dia_semana} - ${roteiro.rot_cidade}`);
+            }
+
+            this.showNotification(
+                `Cliente ${clienteCodigo} removido do roteiro do repositor ${repositorId} (${roteiros.length} registro(s))`,
+                'success'
+            );
+        } catch (error) {
+            console.error('Erro ao desabilitar cliente do roteiro:', error);
+            this.showNotification('Erro ao desabilitar cliente do roteiro: ' + error.message, 'error');
+        }
+    }
+
+    async verificarEAjustarRateioUnicoRepositor(clienteCodigo) {
+        try {
+            console.log(`Verificando se cliente ${clienteCodigo} tem apenas 1 repositor ativo`);
+
+            // Buscar todos os rateios ativos para este cliente (sem data fim)
+            const rateiosAtivos = this.rateioLinhas.filter(r =>
+                String(r.cliente_codigo) === String(clienteCodigo) &&
+                !r.rat_vigencia_fim
+            );
+
+            console.log(`Cliente ${clienteCodigo} possui ${rateiosAtivos.length} rateio(s) ativo(s)`);
+
+            if (rateiosAtivos.length === 1) {
+                const rateioUnico = rateiosAtivos[0];
+                const clienteNome = rateioUnico.cliente_nome || rateioUnico.cliente_fantasia;
+                const repositorNome = rateioUnico.repo_nome;
+
+                console.log(`Cliente ${clienteNome} (${clienteCodigo}) possui apenas 1 repositor ativo: ${repositorNome} (${rateioUnico.rat_repositor_id})`);
+
+                // Atualizar o rateio para 100%
+                await fetch(`${API_BASE_URL}/api/rateio/${rateioUnico.rat_id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        rat_percentual: 100,
+                        rat_vigencia_inicio: rateioUnico.rat_vigencia_inicio,
+                        rat_vigencia_fim: rateioUnico.rat_vigencia_fim
+                    })
+                });
+
+                console.log(`Rateio atualizado para 100%`);
+
+                // Desabilitar flag de rateio do cliente
+                await db.mainClient.execute({
+                    sql: `UPDATE cad_clientes SET cliente_rateio = 0 WHERE cliente = ?`,
+                    args: [String(clienteCodigo)]
+                });
+
+                console.log(`Flag de rateio desabilitada para cliente ${clienteCodigo}`);
+
+                this.showNotification(
+                    `✅ Cliente ${clienteNome} (${clienteCodigo}) possui apenas 1 repositor ativo. Rateio ajustado para 100% e flag de rateio desabilitada.`,
+                    'success',
+                    8000
+                );
+            } else if (rateiosAtivos.length === 0) {
+                console.log(`Cliente ${clienteCodigo} não possui mais rateios ativos`);
+
+                // Se não sobrou nenhum repositor, desabilitar flag de rateio
+                await db.mainClient.execute({
+                    sql: `UPDATE cad_clientes SET cliente_rateio = 0 WHERE cliente = ?`,
+                    args: [String(clienteCodigo)]
+                });
+
+                console.log(`Flag de rateio desabilitada para cliente ${clienteCodigo} (sem repositores ativos)`);
+            }
+        } catch (error) {
+            console.error('Erro ao verificar e ajustar rateio único:', error);
+            this.showNotification('Erro ao ajustar rateio: ' + error.message, 'error');
         }
     }
 
