@@ -1209,6 +1209,11 @@ class TursoDatabase {
                 `
             });
 
+            if (!resultado || !resultado.rows) {
+                console.warn('Resultado de cidades vazio ou inválido:', resultado);
+                return [];
+            }
+
             return resultado.rows.map(row => row.cidade);
         } catch (error) {
             console.error('Erro ao buscar cidades do comercial:', error);
