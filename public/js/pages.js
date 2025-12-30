@@ -443,12 +443,6 @@ export const pages = {
                         <h4 style="margin: 0 0 15px; font-size: 1rem; font-weight: 600;">Filtros</h4>
                         <div class="row" style="display: flex; gap: 15px; flex-wrap: wrap;">
                             <div class="col" style="flex: 1; min-width: 200px;">
-                                <label for="filtroRepositor" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Repositor</label>
-                                <select id="filtroRepositor" class="form-control" style="width: 100%;">
-                                    <option value="">Todos os repositores</option>
-                                </select>
-                            </div>
-                            <div class="col" style="flex: 1; min-width: 200px;">
                                 <label for="filtroCidade" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Cidade</label>
                                 <select id="filtroCidade" class="form-control" style="width: 100%;">
                                     <option value="">Todas as cidades</option>

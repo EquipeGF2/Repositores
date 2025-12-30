@@ -2610,6 +2610,13 @@ class App {
                 const cliente = clientesPorId.get(String(toggle.dataset.cliId));
                 if (!cliente) return;
 
+                // Adicionar indicação visual de pendente
+                const wrapper = toggle.closest('.rateio-toggle-wrapper');
+                if (wrapper) {
+                    wrapper.classList.add('toggle-pendente');
+                    wrapper.setAttribute('title', 'Alteração pendente - clique em "Salvar Roteiro" para confirmar');
+                }
+
                 if (toggle.checked) {
                     this.abrirModalRateioRapido(cliente);
                 } else {
@@ -2629,6 +2636,13 @@ class App {
             toggle.addEventListener('change', () => {
                 const cliente = clientesPorId.get(String(toggle.dataset.cliId));
                 if (!cliente) return;
+
+                // Adicionar indicação visual de pendente
+                const wrapper = toggle.closest('.rateio-toggle-wrapper');
+                if (wrapper) {
+                    wrapper.classList.add('toggle-pendente');
+                    wrapper.setAttribute('title', 'Alteração pendente - clique em "Salvar Roteiro" para confirmar');
+                }
 
                 this.definirVendaCentralizadaPendente({
                     rotCliId: cliente.rot_cli_id,
@@ -3071,19 +3085,6 @@ class App {
 
     // ==================== CADASTRO DE RATEIO ====================
     async inicializarCadastroRateio() {
-        this.rateioRepositores = await db.getRepositoresDetalhados({ status: 'ativos' });
-
-        // Popular filtro de repositores
-        const selectRepositor = document.getElementById('filtroRepositor');
-        if (selectRepositor && selectRepositor.options.length === 1) {
-            this.rateioRepositores.forEach(repo => {
-                const option = document.createElement('option');
-                option.value = repo.repo_cod;
-                option.textContent = `${repo.repo_cod} - ${repo.repo_nome}`;
-                selectRepositor.appendChild(option);
-            });
-        }
-
         // Popular filtro de cidades
         const selectCidade = document.getElementById('filtroCidade');
         if (selectCidade && selectCidade.options.length === 1) {
@@ -3123,12 +3124,10 @@ class App {
     }
 
     obterFiltrosRateio() {
-        const repositorId = document.getElementById('filtroRepositor')?.value || '';
         const cidade = document.getElementById('filtroCidade')?.value || '';
         const cliente = document.getElementById('filtroCliente')?.value?.trim() || '';
 
         return {
-            repositorId: repositorId ? parseInt(repositorId) : null,
             cidade,
             cliente
         };
@@ -3632,20 +3631,25 @@ class App {
 
         // Carregar cidades
         const cidades = await db.getCidadesComercial();
+        console.log('Cidades carregadas:', cidades.length, cidades);
         const selectCidade = document.getElementById('selectCidadeComprador');
         selectCidade.innerHTML = '<option value="">Selecione a cidade...</option>';
-        cidades.forEach(cidade => {
-            const option = document.createElement('option');
-            option.value = cidade;
-            option.textContent = cidade;
-            selectCidade.appendChild(option);
-        });
+
+        if (cidades && cidades.length > 0) {
+            cidades.forEach(cidade => {
+                const option = document.createElement('option');
+                option.value = cidade;
+                option.textContent = cidade;
+                selectCidade.appendChild(option);
+            });
+        } else {
+            console.warn('Nenhuma cidade encontrada no banco comercial');
+        }
 
         // Limpar campos
         document.getElementById('selectClienteComprador').innerHTML = '<option value="">Primeiro selecione a cidade...</option>';
         document.getElementById('selectClienteComprador').disabled = true;
         document.getElementById('checkMesmoCnpjRaiz').checked = false;
-        document.getElementById('inputObservacaoCentralizacao').value = '';
 
         // Configurar event listeners
         this.configurarEventListenersVincularComprador();
@@ -3668,8 +3672,6 @@ class App {
                     // Selecionar cliente comprador
                     document.getElementById('selectClienteComprador').value = vinculo.vc_cliente_comprador;
                 }
-
-                document.getElementById('inputObservacaoCentralizacao').value = vinculo.vc_observacao || '';
             }
         }
 
@@ -3786,7 +3788,6 @@ class App {
 
     async salvarVinculoComprador() {
         const clienteComprador = document.getElementById('selectClienteComprador')?.value?.trim();
-        const observacao = document.getElementById('inputObservacaoCentralizacao')?.value?.trim();
 
         if (!clienteComprador) {
             this.showNotification('Selecione o cliente comprador', 'warning');
@@ -3808,7 +3809,7 @@ class App {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         cliente_comprador: clienteComprador,
-                        observacao: observacao || null
+                        observacao: null
                     })
                 });
 
@@ -3825,7 +3826,7 @@ class App {
                     body: JSON.stringify({
                         cliente_origem: this.clienteOrigemAtual,
                         cliente_comprador: clienteComprador,
-                        observacao: observacao || null
+                        observacao: null
                     })
                 });
 

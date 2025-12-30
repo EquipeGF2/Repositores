@@ -2796,6 +2796,39 @@ tbody td {
     transform: translateX(18px);
 }
 
+/* Estilo para toggles com alteração pendente */
+.toggle-pendente {
+    position: relative;
+}
+
+.toggle-pendente::after {
+    content: '';
+    position: absolute;
+    top: -4px;
+    left: -4px;
+    right: -4px;
+    bottom: -4px;
+    border: 2px solid #f59e0b;
+    border-radius: 999px;
+    animation: pulse-pending 2s ease-in-out infinite;
+    pointer-events: none;
+}
+
+@keyframes pulse-pending {
+    0%, 100% {
+        opacity: 1;
+        box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4);
+    }
+    50% {
+        opacity: 0.7;
+        box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.2);
+    }
+}
+
+.toggle-pendente .rateio-toggle-slider {
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3);
+}
+
 .rateio-layout {
     display: flex;
     flex-direction: column;
