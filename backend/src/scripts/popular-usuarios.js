@@ -20,7 +20,7 @@ async function popularUsuarios() {
 
     // Buscar todos os repositores
     const repositores = await tursoService.execute(
-      'SELECT rep_id, repo_nome FROM cc_repositor WHERE repo_ativo = 1 ORDER BY repo_nome'
+      'SELECT repo_cod, repo_nome FROM cad_repositor WHERE repo_data_fim IS NULL ORDER BY repo_nome'
     );
 
     if (!repositores.rows || repositores.rows.length === 0) {
@@ -36,7 +36,7 @@ async function popularUsuarios() {
 
     // Criar usuário para cada repositor
     for (const rep of repositores.rows) {
-      const { rep_id, repo_nome } = rep;
+      const { repo_cod, repo_nome } = rep;
 
       // Gerar username a partir do nome do repositor
       // Remove acentos, espaços e caracteres especiais
@@ -71,7 +71,7 @@ async function popularUsuarios() {
           passwordHash,
           nomeCompleto: repo_nome,
           email: null,
-          repId: rep_id,
+          repId: repo_cod,
           perfil: 'repositor'
         });
 
