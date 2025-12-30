@@ -3652,9 +3652,9 @@ class App {
             document.getElementById('modalClienteOrigemCnpj').textContent = '';
         }
 
-        // Carregar cidades
-        const cidades = await db.getCidadesComercial();
-        console.log('Cidades carregadas:', cidades.length, cidades);
+        // Carregar cidades (de potencial_cidade)
+        const cidades = await db.getCidadesPotencial();
+        console.log('Cidades potenciais carregadas:', cidades.length, cidades);
         const selectCidade = document.getElementById('selectCidadeComprador');
         selectCidade.innerHTML = '<option value="">Selecione a cidade...</option>';
 
@@ -3666,7 +3666,7 @@ class App {
                 selectCidade.appendChild(option);
             });
         } else {
-            console.warn('Nenhuma cidade encontrada no banco comercial');
+            console.warn('Nenhuma cidade potencial encontrada');
         }
 
         // Limpar campos

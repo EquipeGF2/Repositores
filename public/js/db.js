@@ -1223,7 +1223,10 @@ class TursoDatabase {
 
     async getCidadesPotencial() {
         await this.connectComercial();
-        if (!this.comercialClient) return [];
+        if (!this.comercialClient) {
+            console.warn('Cliente comercial não conectado');
+            return [];
+        }
 
         try {
             const resultado = await this.comercialClient.execute({
@@ -1232,15 +1235,29 @@ class TursoDatabase {
                     FROM potencial_cidade
                     WHERE cidade IS NOT NULL AND cidade != ''
                     ORDER BY cidade
-                `
+                `,
+                args: []
             });
 
-            if (!resultado || !resultado.rows) {
-                console.warn('Resultado de cidades potenciais vazio ou inválido:', resultado);
+            console.log('Resultado getCidadesPotencial:', resultado);
+
+            if (!resultado) {
+                console.warn('Resultado nulo');
                 return [];
             }
 
-            return resultado.rows.map(row => row.cidade);
+            // Verificar diferentes formatos de resposta
+            let rows = [];
+            if (Array.isArray(resultado)) {
+                rows = resultado;
+            } else if (resultado.rows && Array.isArray(resultado.rows)) {
+                rows = resultado.rows;
+            } else {
+                console.warn('Formato de resultado inesperado:', resultado);
+                return [];
+            }
+
+            return rows.map(row => row.cidade).filter(Boolean);
         } catch (error) {
             console.error('Erro ao buscar cidades potenciais:', error);
             return [];
