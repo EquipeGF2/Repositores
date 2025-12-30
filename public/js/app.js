@@ -76,6 +76,180 @@ function registrarTratamentoErrosGlobais() {
     };
 }
 
+/**
+ * Componente de autocomplete customizado
+ * Mostra lista completa mas permite filtrar digitando
+ */
+class Autocomplete {
+    constructor(config) {
+        this.inputId = config.inputId;
+        this.hiddenInputId = config.hiddenInputId;
+        this.items = [];
+        this.filteredItems = [];
+        this.onSelect = config.onSelect || (() => {});
+        this.onChange = config.onChange || (() => {});
+        this.formatDisplay = config.formatDisplay || ((item) => item);
+        this.formatValue = config.formatValue || ((item) => item);
+        this.extractKey = config.extractKey || ((item) => item);
+        this.disabled = config.disabled || false;
+
+        this.wrapper = null;
+        this.input = null;
+        this.hiddenInput = null;
+        this.dropdown = null;
+
+        this.init();
+    }
+
+    init() {
+        const existingInput = document.getElementById(this.inputId);
+        if (!existingInput) return;
+
+        // Criar wrapper
+        this.wrapper = document.createElement('div');
+        this.wrapper.className = 'autocomplete-wrapper';
+
+        // Substituir input existente
+        existingInput.parentNode.insertBefore(this.wrapper, existingInput);
+        this.wrapper.appendChild(existingInput);
+
+        this.input = existingInput;
+        this.input.classList.add('autocomplete-input');
+        this.input.autocomplete = 'off';
+
+        if (this.disabled) {
+            this.input.disabled = true;
+        }
+
+        // Criar hidden input se especificado
+        if (this.hiddenInputId) {
+            let hidden = document.getElementById(this.hiddenInputId);
+            if (!hidden) {
+                hidden = document.createElement('input');
+                hidden.type = 'hidden';
+                hidden.id = this.hiddenInputId;
+                this.wrapper.appendChild(hidden);
+            }
+            this.hiddenInput = hidden;
+        }
+
+        // Criar dropdown
+        this.dropdown = document.createElement('div');
+        this.dropdown.className = 'autocomplete-dropdown';
+        this.wrapper.appendChild(this.dropdown);
+
+        // Event listeners
+        this.input.addEventListener('focus', () => this.showDropdown());
+        this.input.addEventListener('input', () => this.handleInput());
+
+        // Fechar dropdown ao clicar fora
+        document.addEventListener('click', (e) => {
+            if (!this.wrapper.contains(e.target)) {
+                this.hideDropdown();
+            }
+        });
+    }
+
+    setItems(items) {
+        this.items = items;
+        this.filteredItems = items;
+    }
+
+    setDisabled(disabled) {
+        this.disabled = disabled;
+        if (this.input) {
+            this.input.disabled = disabled;
+        }
+        if (disabled) {
+            this.hideDropdown();
+        }
+    }
+
+    clear() {
+        if (this.input) this.input.value = '';
+        if (this.hiddenInput) this.hiddenInput.value = '';
+        this.filteredItems = this.items;
+    }
+
+    setValue(value) {
+        if (this.input) this.input.value = value;
+    }
+
+    showDropdown() {
+        if (this.disabled || !this.items.length) return;
+
+        this.filteredItems = this.items;
+        this.renderDropdown();
+        this.dropdown.classList.add('active');
+    }
+
+    hideDropdown() {
+        this.dropdown.classList.remove('active');
+    }
+
+    handleInput() {
+        const searchText = this.input.value.toLowerCase().trim();
+
+        if (!searchText) {
+            this.filteredItems = this.items;
+        } else {
+            this.filteredItems = this.items.filter(item => {
+                const displayText = this.formatDisplay(item).toLowerCase();
+                return displayText.includes(searchText);
+            });
+        }
+
+        this.renderDropdown();
+        this.showDropdown();
+
+        // Chamar onChange callback
+        this.onChange(this.input.value);
+    }
+
+    renderDropdown() {
+        if (!this.filteredItems.length) {
+            this.dropdown.innerHTML = '<div class="autocomplete-no-results">Nenhum resultado encontrado</div>';
+            return;
+        }
+
+        this.dropdown.innerHTML = '';
+
+        this.filteredItems.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'autocomplete-item';
+            div.textContent = this.formatDisplay(item);
+            div.dataset.value = this.formatValue(item);
+            div.dataset.key = this.extractKey(item);
+
+            div.addEventListener('click', () => {
+                this.selectItem(item);
+            });
+
+            this.dropdown.appendChild(div);
+        });
+    }
+
+    selectItem(item) {
+        const displayText = this.formatDisplay(item);
+        const value = this.formatValue(item);
+        const key = this.extractKey(item);
+
+        this.input.value = displayText;
+
+        if (this.hiddenInput) {
+            this.hiddenInput.value = key;
+        }
+
+        this.hideDropdown();
+        this.onSelect(item, key, value);
+    }
+
+    showLoading() {
+        this.dropdown.innerHTML = '<div class="autocomplete-loading">Carregando...</div>';
+        this.dropdown.classList.add('active');
+    }
+}
+
 class App {
     constructor() {
         this.currentPage = 'home';
@@ -3396,10 +3570,77 @@ class App {
             `;
         }).join('');
 
+        // Verificar rateios com total > 100%
+        const clientesAcima100 = {};
+        const estruturaPorCliente = {};
+
+        linhas.forEach(linha => {
+            const clienteCodigo = linha.cliente_codigo || 'Sem código';
+            if (!estruturaPorCliente[clienteCodigo]) {
+                estruturaPorCliente[clienteCodigo] = {
+                    cliente_nome: linha.cliente_nome || linha.cliente_fantasia || 'Sem nome',
+                    total: 0,
+                    repositores: []
+                };
+            }
+            estruturaPorCliente[clienteCodigo].total += parseFloat(linha.rat_percentual) || 0;
+            estruturaPorCliente[clienteCodigo].repositores.push({
+                repositor_id: linha.rat_repositor_id,
+                repositor_nome: linha.repo_nome || 'Sem nome',
+                percentual: linha.rat_percentual
+            });
+        });
+
+        // Filtrar clientes com total > 100%
+        Object.keys(estruturaPorCliente).forEach(clienteCodigo => {
+            const cliente = estruturaPorCliente[clienteCodigo];
+            if (cliente.total > 100) {
+                clientesAcima100[clienteCodigo] = cliente;
+            }
+        });
+
+        let cardAviso100Html = '';
+        if (Object.keys(clientesAcima100).length > 0) {
+            const itemsHtml = Object.keys(clientesAcima100).map(clienteCodigo => {
+                const cliente = clientesAcima100[clienteCodigo];
+                const repositoresHtml = cliente.repositores.map(r =>
+                    `<li style="margin-left: 20px;">Repositor: ${r.repositor_nome} (${r.repositor_id}) - ${r.percentual}%</li>`
+                ).join('');
+
+                return `
+                    <li>
+                        <strong>${cliente.cliente_nome}</strong> (${clienteCodigo})
+                        <strong style="color: #dc2626;"> - Total: ${cliente.total.toFixed(1)}%</strong>
+                        <ul style="margin-top: 4px; margin-bottom: 8px;">
+                            ${repositoresHtml}
+                        </ul>
+                    </li>
+                `;
+            }).join('');
+
+            cardAviso100Html = `
+                <div class="card-aviso-rateio-100" style="background-color: #fee2e2; border-left: 4px solid #dc2626; padding: 16px; margin-bottom: 20px; border-radius: 6px;">
+                    <div class="card-aviso-header" style="display: flex; align-items: center; margin-bottom: 12px;">
+                        <span class="card-aviso-icon" style="font-size: 1.5rem; margin-right: 10px;">🚨</span>
+                        <span class="card-aviso-titulo" style="font-weight: 700; font-size: 1.1rem; color: #991b1b;">ATENÇÃO: Total de Rateio Acima de 100%</span>
+                    </div>
+                    <div class="card-aviso-body">
+                        <p style="margin-bottom: 10px;">Os seguintes clientes possuem <strong>total de rateio maior que 100%</strong>:</p>
+                        <ul class="lista-rateios-100" style="list-style-type: none; padding-left: 0;">
+                            ${itemsHtml}
+                        </ul>
+                        <p class="card-aviso-dica" style="margin-top: 12px; font-style: italic; color: #7f1d1d;">
+                            <strong>⚠️ Ajuste imediatamente os percentuais para que o total seja igual a 100%.</strong>
+                        </p>
+                    </div>
+                </div>
+            `;
+        }
+
         // Verificar rateios com 0%
         const rateiosZero = linhas.filter(linha => parseFloat(linha.rat_percentual) === 0);
 
-        let cardAvisoHtml = '';
+        let cardAvisoZeroHtml = '';
         if (rateiosZero.length > 0) {
             // Agrupar por cliente e repositor
             const gruposZero = {};
@@ -3422,7 +3663,7 @@ class App {
                 </li>
             `).join('');
 
-            cardAvisoHtml = `
+            cardAvisoZeroHtml = `
                 <div class="card-aviso-rateio-zero">
                     <div class="card-aviso-header">
                         <span class="card-aviso-icon">⚠️</span>
@@ -3440,6 +3681,8 @@ class App {
                 </div>
             `;
         }
+
+        const cardAvisoHtml = cardAviso100Html + cardAvisoZeroHtml;
 
         container.innerHTML = `
             ${cardAvisoHtml}
@@ -3610,16 +3853,14 @@ class App {
                     <label style="font-weight: 600; margin-bottom: 8px; display: block;">Cliente Origem (Venda Centralizada)</label>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px;">
                         <div>
-                            <label for="selectCidadeOrigem" style="font-size: 0.9rem; margin-bottom: 4px; display: block;">Cidade *</label>
-                            <select id="selectCidadeOrigem" class="form-control full-width">
-                                <option value="">Selecione a cidade...</option>
-                            </select>
+                            <label for="inputCidadeOrigem" style="font-size: 0.9rem; margin-bottom: 4px; display: block;">Cidade *</label>
+                            <input type="text" id="inputCidadeOrigem" class="form-control full-width" required
+                                   placeholder="Digite para buscar a cidade...">
                         </div>
                         <div>
-                            <label for="selectClienteOrigem" style="font-size: 0.9rem; margin-bottom: 4px; display: block;">Cliente *</label>
-                            <select id="selectClienteOrigem" class="form-control full-width" disabled>
-                                <option value="">Primeiro selecione a cidade...</option>
-                            </select>
+                            <label for="inputClienteOrigem" style="font-size: 0.9rem; margin-bottom: 4px; display: block;">Cliente *</label>
+                            <input type="text" id="inputClienteOrigem" class="form-control full-width" required disabled
+                                   placeholder="Primeiro selecione a cidade...">
                         </div>
                     </div>
                 </div>
@@ -3635,116 +3876,94 @@ class App {
                     <div class="form-group" style="margin-bottom: 0;">
                         <label for="inputCidadeComprador" style="font-weight: 600; margin-bottom: 8px; display: block;">Cidade do Cliente Comprador *</label>
                         <input type="text" id="inputCidadeComprador" class="form-control full-width" required
-                               style="padding: 10px;" placeholder="Digite para buscar a cidade..."
-                               list="listCidadesComprador" autocomplete="off">
-                        <datalist id="listCidadesComprador"></datalist>
+                               placeholder="Digite para buscar a cidade...">
                     </div>
 
                     <div class="form-group" style="margin-bottom: 0;">
                         <label for="inputClienteComprador" style="font-weight: 600; margin-bottom: 8px; display: block;">Cliente Comprador *</label>
                         <input type="text" id="inputClienteComprador" class="form-control full-width" required disabled
-                               style="padding: 10px;" placeholder="Digite código ou nome do cliente..."
-                               list="listClientesComprador" autocomplete="off">
-                        <datalist id="listClientesComprador"></datalist>
-                        <input type="hidden" id="hiddenClienteCompradorCodigo">
+                               placeholder="Digite código ou nome do cliente...">
                     </div>
                 </div>
             `;
-        }
-
-        // Limpar seletores de comprador
-        const selectCidadeComprador = document.getElementById('selectCidadeComprador');
-        const selectClienteComprador = document.getElementById('selectClienteComprador');
-
-        if (selectCidadeComprador) selectCidadeComprador.value = '';
-        if (selectClienteComprador) {
-            selectClienteComprador.innerHTML = '<option value="">Primeiro selecione a cidade...</option>';
-            selectClienteComprador.disabled = true;
         }
 
         // Carregar cidades para origem
         try {
             const cidades = await db.getCidadesPotencial();
 
-            const selectCidadeOrigem = document.getElementById('selectCidadeOrigem');
-            if (selectCidadeOrigem) {
-                selectCidadeOrigem.innerHTML = '<option value="">Selecione a cidade...</option>';
-                cidades.forEach(cidade => {
-                    const option = document.createElement('option');
-                    option.value = cidade;
-                    option.textContent = cidade;
-                    selectCidadeOrigem.appendChild(option);
-                });
-
-                // Event listener para carregar clientes da cidade origem
-                selectCidadeOrigem.addEventListener('change', async (e) => {
-                    const cidadeSelecionada = e.target.value;
-                    const selectClienteOrigem = document.getElementById('selectClienteOrigem');
-
-                    if (!cidadeSelecionada) {
-                        selectClienteOrigem.innerHTML = '<option value="">Primeiro selecione a cidade...</option>';
-                        selectClienteOrigem.disabled = true;
-                        return;
+            // Inicializar autocomplete para cidade origem
+            this.autocompleteCidadeOrigem = new Autocomplete({
+                inputId: 'inputCidadeOrigem',
+                hiddenInputId: 'hiddenCidadeOrigem',
+                formatDisplay: (cidade) => cidade,
+                formatValue: (cidade) => cidade,
+                extractKey: (cidade) => cidade,
+                onSelect: async (cidade) => {
+                    // Quando selecionar cidade, carregar clientes
+                    await this.carregarClientesOrigem();
+                    // Habilitar campo de cliente origem
+                    if (this.autocompleteClienteOrigem) {
+                        this.autocompleteClienteOrigem.setDisabled(false);
                     }
+                }
+            });
+            this.autocompleteCidadeOrigem.setItems(cidades);
 
-                    try {
-                        const clientes = await db.getClientesPorCidade(cidadeSelecionada);
-                        selectClienteOrigem.innerHTML = '<option value="">Selecione o cliente...</option>';
-                        clientes.forEach(cliente => {
-                            const option = document.createElement('option');
-                            option.value = cliente.cliente;
-                            option.textContent = `${cliente.cliente} - ${cliente.nome || cliente.fantasia}`;
-                            selectClienteOrigem.appendChild(option);
-                        });
-                        selectClienteOrigem.disabled = false;
-                    } catch (error) {
-                        console.error('Erro ao carregar clientes:', error);
-                        this.showNotification('Erro ao carregar clientes da cidade.', 'error');
-                    }
-                });
-            }
-
-            // Carregar cidades para comprador
-            if (selectCidadeComprador) {
-                selectCidadeComprador.innerHTML = '<option value="">Selecione a cidade...</option>';
-                cidades.forEach(cidade => {
-                    const option = document.createElement('option');
-                    option.value = cidade;
-                    option.textContent = cidade;
-                    selectCidadeComprador.appendChild(option);
-                });
-            }
-
-            // Event listener para quando selecionar cliente origem
-            const selectClienteOrigem = document.getElementById('selectClienteOrigem');
-            if (selectClienteOrigem) {
-                selectClienteOrigem.addEventListener('change', async (e) => {
-                    const clienteSelecionado = e.target.value;
-                    if (!clienteSelecionado) {
-                        this.clienteOrigemCnpj = null;
-                        return;
-                    }
-
+            // Inicializar autocomplete para cliente origem
+            this.autocompleteClienteOrigem = new Autocomplete({
+                inputId: 'inputClienteOrigem',
+                hiddenInputId: 'hiddenClienteOrigemCodigo',
+                disabled: true,
+                formatDisplay: (cliente) => `${cliente.cliente} - ${cliente.nome || cliente.fantasia}`,
+                formatValue: (cliente) => `${cliente.cliente} - ${cliente.nome || cliente.fantasia}`,
+                extractKey: (cliente) => cliente.cliente,
+                onSelect: async (cliente) => {
                     // Buscar CNPJ do cliente origem
                     try {
-                        const clienteDados = await db.getClientesPorCodigo([clienteSelecionado]);
-                        const cliente = clienteDados[clienteSelecionado];
-                        if (cliente && cliente.cnpj_cpf) {
-                            this.clienteOrigemCnpj = cliente.cnpj_cpf.replace(/\D/g, '');
+                        const clienteDados = await db.getClientesPorCodigo([cliente.cliente]);
+                        const clienteInfo = clienteDados[cliente.cliente];
+                        if (clienteInfo && clienteInfo.cnpj_cpf) {
+                            this.clienteOrigemCnpj = clienteInfo.cnpj_cpf.replace(/\D/g, '');
                         }
                     } catch (error) {
                         console.error('Erro ao buscar CNPJ do cliente:', error);
                     }
-                });
-            }
+                }
+            });
 
-            // Event listeners para carregar clientes compradores
-            if (selectCidadeComprador) {
-                selectCidadeComprador.addEventListener('change', () => {
-                    this.carregarClientesCompradores();
-                });
-            }
+            // Inicializar autocomplete para cidade comprador
+            this.autocompleteCidadeComprador = new Autocomplete({
+                inputId: 'inputCidadeComprador',
+                hiddenInputId: 'hiddenCidadeComprador',
+                formatDisplay: (cidade) => cidade,
+                formatValue: (cidade) => cidade,
+                extractKey: (cidade) => cidade,
+                onSelect: async (cidade) => {
+                    // Quando selecionar cidade, carregar clientes
+                    await this.carregarClientesCompradores();
+                    // Habilitar campo de cliente comprador
+                    if (this.autocompleteClienteComprador) {
+                        this.autocompleteClienteComprador.setDisabled(false);
+                    }
+                }
+            });
+            this.autocompleteCidadeComprador.setItems(cidades);
 
+            // Inicializar autocomplete para cliente comprador
+            this.autocompleteClienteComprador = new Autocomplete({
+                inputId: 'inputClienteComprador',
+                hiddenInputId: 'hiddenClienteCompradorCodigo',
+                disabled: true,
+                formatDisplay: (cliente) => `${cliente.cliente} - ${cliente.nome || cliente.fantasia}`,
+                formatValue: (cliente) => `${cliente.cliente} - ${cliente.nome || cliente.fantasia}`,
+                extractKey: (cliente) => cliente.cliente,
+                onSelect: (cliente) => {
+                    // Cliente selecionado
+                }
+            });
+
+            // Event listener para checkbox de CNPJ
             const checkMesmoCnpj = document.getElementById('checkMesmoCnpjRaiz');
             if (checkMesmoCnpj) {
                 checkMesmoCnpj.addEventListener('change', () => {
@@ -3760,11 +3979,11 @@ class App {
     }
 
     async salvarVinculoManualCentralizacao() {
-        const selectClienteOrigem = document.getElementById('selectClienteOrigem');
-        const selectClienteComprador = document.getElementById('selectClienteComprador');
+        const hiddenClienteOrigem = document.getElementById('hiddenClienteOrigemCodigo');
+        const hiddenClienteComprador = document.getElementById('hiddenClienteCompradorCodigo');
 
-        const clienteOrigemCodigo = selectClienteOrigem?.value;
-        const clienteCompradorCodigo = selectClienteComprador?.value;
+        const clienteOrigemCodigo = hiddenClienteOrigem?.value;
+        const clienteCompradorCodigo = hiddenClienteComprador?.value;
 
         if (!clienteOrigemCodigo || !clienteCompradorCodigo) {
             this.showNotification('Selecione o cliente origem e o cliente comprador.', 'warning');
@@ -4093,36 +4312,46 @@ class App {
         const cidades = await db.getCidadesPotencial();
         console.log('Cidades potenciais carregadas:', cidades.length, cidades);
 
-        // Popular datalist de cidades
-        const datalistCidades = document.getElementById('listCidadesComprador');
-        if (datalistCidades && cidades && cidades.length > 0) {
-            datalistCidades.innerHTML = '';
-            cidades.forEach(cidade => {
-                const option = document.createElement('option');
-                option.value = cidade;
-                datalistCidades.appendChild(option);
-            });
-        }
+        // Inicializar autocomplete para cidade comprador
+        this.autocompleteCidadeComprador = new Autocomplete({
+            inputId: 'inputCidadeComprador',
+            hiddenInputId: 'hiddenCidadeComprador',
+            formatDisplay: (cidade) => cidade,
+            formatValue: (cidade) => cidade,
+            extractKey: (cidade) => cidade,
+            onSelect: async (cidade) => {
+                // Quando selecionar cidade, carregar clientes
+                await this.carregarClientesCompradores();
+                // Habilitar campo de cliente comprador
+                if (this.autocompleteClienteComprador) {
+                    this.autocompleteClienteComprador.setDisabled(false);
+                }
+            }
+        });
+        this.autocompleteCidadeComprador.setItems(cidades);
 
-        // Limpar campos
-        const inputCidade = document.getElementById('inputCidadeComprador');
-        const inputCliente = document.getElementById('inputClienteComprador');
-        const hiddenCodigo = document.getElementById('hiddenClienteCompradorCodigo');
+        // Inicializar autocomplete para cliente comprador
+        this.autocompleteClienteComprador = new Autocomplete({
+            inputId: 'inputClienteComprador',
+            hiddenInputId: 'hiddenClienteCompradorCodigo',
+            disabled: true,
+            formatDisplay: (cliente) => `${cliente.cliente} - ${cliente.nome || cliente.fantasia}`,
+            formatValue: (cliente) => `${cliente.cliente} - ${cliente.nome || cliente.fantasia}`,
+            extractKey: (cliente) => cliente.cliente,
+            onSelect: (cliente) => {
+                // Cliente selecionado
+            }
+        });
 
-        if (inputCidade) inputCidade.value = '';
-        if (inputCliente) {
-            inputCliente.value = '';
-            inputCliente.disabled = true;
-        }
-        if (hiddenCodigo) hiddenCodigo.value = '';
-
+        // Limpar checkbox
         const checkCnpj = document.getElementById('checkMesmoCnpjRaiz');
         if (checkCnpj) {
             checkCnpj.checked = false;
+            // Event listener para checkbox
+            checkCnpj.addEventListener('change', () => {
+                this.carregarClientesCompradores();
+            });
         }
-
-        // Configurar event listeners
-        this.configurarEventListenersVincularComprador();
 
         // Se já tem vínculo, carregar dados
         if (jaTemVinculo) {
@@ -4133,14 +4362,18 @@ class App {
                 const clienteCompradorDados = clientesComprador[vinculo.vc_cliente_comprador];
 
                 if (clienteCompradorDados && clienteCompradorDados.cidade) {
-                    // Selecionar cidade
-                    selectCidade.value = clienteCompradorDados.cidade;
+                    // Selecionar cidade no autocomplete
+                    this.autocompleteCidadeComprador.setValue(clienteCompradorDados.cidade);
 
                     // Carregar clientes da cidade
                     await this.carregarClientesCompradores();
 
-                    // Selecionar cliente comprador
-                    document.getElementById('selectClienteComprador').value = vinculo.vc_cliente_comprador;
+                    // Selecionar cliente comprador no autocomplete
+                    const clienteDisplay = `${vinculo.vc_cliente_comprador} - ${clienteCompradorDados.nome || clienteCompradorDados.fantasia}`;
+                    this.autocompleteClienteComprador.setValue(clienteDisplay);
+                    if (this.autocompleteClienteComprador.hiddenInput) {
+                        this.autocompleteClienteComprador.hiddenInput.value = vinculo.vc_cliente_comprador;
+                    }
                 }
             }
         }
@@ -4148,86 +4381,82 @@ class App {
         modal.classList.add('active');
     }
 
-    configurarEventListenersVincularComprador() {
-        const inputCidade = document.getElementById('inputCidadeComprador');
-        const inputCliente = document.getElementById('inputClienteComprador');
-        const checkCnpj = document.getElementById('checkMesmoCnpjRaiz');
-
-        // Event listener para cidade
-        if (inputCidade) {
-            inputCidade.addEventListener('input', () => {
-                this.carregarClientesCompradores();
-            });
+    async carregarClientesOrigem() {
+        if (!this.autocompleteCidadeOrigem || !this.autocompleteClienteOrigem) {
+            console.warn('[AUTOCOMPLETE] Componentes origem não inicializados ainda');
+            return;
         }
 
-        // Event listener para checkbox
-        if (checkCnpj) {
-            checkCnpj.addEventListener('change', () => {
-                this.carregarClientesCompradores();
-            });
-        }
-
-        // Event listener para cliente - extrair código ao selecionar
-        if (inputCliente) {
-            inputCliente.addEventListener('change', () => {
-                const valorSelecionado = inputCliente.value;
-                const match = valorSelecionado.match(/^(\d+)/);
-                const hiddenCodigo = document.getElementById('hiddenClienteCompradorCodigo');
-                if (match && hiddenCodigo) {
-                    hiddenCodigo.value = match[1];
-                }
-            });
-        }
-    }
-
-    async carregarClientesCompradores() {
-        const inputCidade = document.getElementById('inputCidadeComprador');
-        const inputCliente = document.getElementById('inputClienteComprador');
-        const datalistClientes = document.getElementById('listClientesComprador');
-        const checkCnpj = document.getElementById('checkMesmoCnpjRaiz');
-
-        const cidadeSelecionada = inputCidade?.value?.trim();
+        const cidadeSelecionada = this.autocompleteCidadeOrigem.input?.value?.trim();
 
         if (!cidadeSelecionada) {
-            if (inputCliente) inputCliente.disabled = true;
-            if (datalistClientes) datalistClientes.innerHTML = '';
+            this.autocompleteClienteOrigem.setDisabled(true);
+            this.autocompleteClienteOrigem.clear();
             return;
         }
 
         try {
+            this.autocompleteClienteOrigem.showLoading();
+
+            const clientes = await db.getClientesPorCidade(cidadeSelecionada);
+
+            if (clientes.length > 0) {
+                this.autocompleteClienteOrigem.setItems(clientes);
+                this.autocompleteClienteOrigem.setDisabled(false);
+            } else {
+                this.autocompleteClienteOrigem.setItems([]);
+                this.autocompleteClienteOrigem.setDisabled(true);
+                this.showNotification('Nenhum cliente encontrado nesta cidade.', 'info');
+            }
+
+            this.autocompleteClienteOrigem.hideDropdown();
+        } catch (error) {
+            console.error('Erro ao carregar clientes origem:', error);
+            this.autocompleteClienteOrigem.setDisabled(true);
+            this.autocompleteClienteOrigem.hideDropdown();
+            this.showNotification('Erro ao carregar clientes.', 'error');
+        }
+    }
+
+    async carregarClientesCompradores() {
+        if (!this.autocompleteCidadeComprador || !this.autocompleteClienteComprador) {
+            console.warn('[AUTOCOMPLETE] Componentes não inicializados ainda');
+            return;
+        }
+
+        const checkCnpj = document.getElementById('checkMesmoCnpjRaiz');
+        const cidadeSelecionada = this.autocompleteCidadeComprador.input?.value?.trim();
+
+        if (!cidadeSelecionada) {
+            this.autocompleteClienteComprador.setDisabled(true);
+            this.autocompleteClienteComprador.clear();
+            return;
+        }
+
+        try {
+            this.autocompleteClienteComprador.showLoading();
+
             const cnpjRaiz = (checkCnpj?.checked && this.clienteOrigemCnpj)
                 ? this.clienteOrigemCnpj.substring(0, 8)
                 : null;
 
             const clientes = await db.getClientesPorCidadeComFiltro(cidadeSelecionada, cnpjRaiz);
 
-            if (datalistClientes) {
-                datalistClientes.innerHTML = '';
-
-                if (clientes.length > 0) {
-                    clientes.forEach(cliente => {
-                        const option = document.createElement('option');
-                        option.value = `${cliente.cliente} - ${cliente.nome || cliente.fantasia}`;
-                        option.setAttribute('data-codigo', cliente.cliente);
-                        datalistClientes.appendChild(option);
-                    });
-                }
+            if (clientes.length > 0) {
+                this.autocompleteClienteComprador.setItems(clientes);
+                this.autocompleteClienteComprador.setDisabled(false);
+            } else {
+                this.autocompleteClienteComprador.setItems([]);
+                this.autocompleteClienteComprador.setDisabled(true);
+                this.showNotification('Nenhum cliente encontrado nesta cidade.', 'info');
             }
 
-            if (inputCliente) {
-                inputCliente.disabled = clientes.length === 0;
-                if (clientes.length === 0) {
-                    inputCliente.placeholder = 'Nenhum cliente encontrado nesta cidade';
-                } else {
-                    inputCliente.placeholder = 'Digite código ou nome do cliente...';
-                }
-            }
+            this.autocompleteClienteComprador.hideDropdown();
         } catch (error) {
             console.error('Erro ao carregar clientes:', error);
-            if (inputCliente) {
-                inputCliente.disabled = true;
-                inputCliente.placeholder = 'Erro ao carregar clientes';
-            }
+            this.autocompleteClienteComprador.setDisabled(true);
+            this.autocompleteClienteComprador.hideDropdown();
+            this.showNotification('Erro ao carregar clientes.', 'error');
         }
     }
 
