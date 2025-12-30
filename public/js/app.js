@@ -3220,30 +3220,22 @@ class App {
             const clientesHtml = clientesOrdenados.map(clienteCodigo => {
                 const clienteInfo = clientes[clienteCodigo];
                 const repositoresHtml = clienteInfo.repositores.map(linha => `
-                    <div class="rateio-linha" data-rateio-id="${linha.rat_id || ''}">
-                        <div class="rateio-repositor-info">
+                    <div class="rateio-linha-compacta" data-rateio-id="${linha.rat_id || ''}">
+                        <div class="repositor-info-inline">
                             <span class="repositor-codigo">${linha.rat_repositor_id || '-'}</span>
                             <span class="repositor-nome">${linha.repo_nome || 'Sem nome'}</span>
                         </div>
-                        <div class="rateio-campos">
-                            <div class="campo-percentual">
-                                <label>%</label>
-                                <input type="number" class="input-rateio-percentual" data-rateio-id="${linha.rat_id || ''}"
-                                       min="0" max="100" step="0.01" value="${linha.rat_percentual ?? ''}">
-                            </div>
-                            <div class="campo-vigencia">
-                                <label>Início</label>
-                                <input type="date" class="input-rateio-vigencia" data-tipo="inicio"
-                                       data-rateio-id="${linha.rat_id || ''}" value="${linha.rat_vigencia_inicio || ''}">
-                            </div>
-                            <div class="campo-vigencia">
-                                <label>Fim</label>
-                                <input type="date" class="input-rateio-vigencia" data-tipo="fim"
-                                       data-rateio-id="${linha.rat_id || ''}" value="${linha.rat_vigencia_fim || ''}">
-                            </div>
-                            <button class="btn btn-primary btn-sm" data-salvar-rateio="${linha.rat_id || ''}">Salvar</button>
-                        </div>
-                        <small class="texto-atualizado">Atualizado em: ${linha.rat_atualizado_em ? normalizarDataISO(linha.rat_atualizado_em) : 'N/D'}</small>
+                        <input type="number" class="input-rateio-percentual campo-inline" data-rateio-id="${linha.rat_id || ''}"
+                               min="0" max="100" step="0.01" value="${linha.rat_percentual ?? ''}"
+                               placeholder="%" title="Percentual">
+                        <input type="date" class="input-rateio-vigencia campo-inline" data-tipo="inicio"
+                               data-rateio-id="${linha.rat_id || ''}" value="${linha.rat_vigencia_inicio || ''}"
+                               title="Data início">
+                        <input type="date" class="input-rateio-vigencia campo-inline" data-tipo="fim"
+                               data-rateio-id="${linha.rat_id || ''}" value="${linha.rat_vigencia_fim || ''}"
+                               title="Data fim">
+                        <button class="btn btn-primary btn-sm" data-salvar-rateio="${linha.rat_id || ''}">Salvar</button>
+                        <span class="texto-atualizado-inline">${linha.rat_atualizado_em ? normalizarDataISO(linha.rat_atualizado_em) : 'N/D'}</span>
                     </div>
                 `).join('');
 
