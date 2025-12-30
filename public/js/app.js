@@ -3096,6 +3096,18 @@ class App {
             });
         }
 
+        // Popular filtro de clientes com rateio
+        const selectCliente = document.getElementById('filtroCliente');
+        if (selectCliente && selectCliente.options.length === 1) {
+            const clientes = await db.getClientesComRateio();
+            clientes.forEach(cliente => {
+                const option = document.createElement('option');
+                option.value = cliente.cliente;
+                option.textContent = `${cliente.cliente} - ${cliente.nome || cliente.fantasia}`;
+                selectCliente.appendChild(option);
+            });
+        }
+
         // Event listeners
         const btnRecarregar = document.getElementById('btnRecarregarRateio');
         if (btnRecarregar) {
@@ -3105,16 +3117,6 @@ class App {
         const btnAplicarFiltros = document.getElementById('btnAplicarFiltrosRateio');
         if (btnAplicarFiltros) {
             btnAplicarFiltros.addEventListener('click', () => this.aplicarFiltrosRateio());
-        }
-
-        // Permitir filtrar ao pressionar Enter no campo de cliente
-        const inputCliente = document.getElementById('filtroCliente');
-        if (inputCliente) {
-            inputCliente.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    this.aplicarFiltrosRateio();
-                }
-            });
         }
 
         await this.carregarListaRateioManutencao();
@@ -3596,9 +3598,10 @@ class App {
         `;
     }
 
-    abrirModalVincularComprador(clienteOrigem, clienteNome, jaTemVinculo) {
+    async abrirModalVincularComprador(clienteOrigem, clienteNome, jaTemVinculo) {
         this.clienteOrigemAtual = clienteOrigem;
         this.clienteOrigemNome = clienteNome;
+        this.clienteOrigemCnpj = null;
 
         const modal = document.getElementById('modalVincularComprador');
         if (!modal) {
@@ -3612,20 +3615,130 @@ class App {
 
         document.getElementById('modalClienteOrigem').textContent = `${clienteOrigem} - ${clienteNome}`;
 
-        // Limpar campo
-        document.getElementById('inputClienteComprador').value = '';
+        // Buscar dados do cliente origem (incluindo CNPJ)
+        try {
+            const clientesOrigem = await db.getClientesPorCodigo([clienteOrigem]);
+            const clienteDados = clientesOrigem[clienteOrigem];
+            if (clienteDados && clienteDados.cnpj_cpf) {
+                this.clienteOrigemCnpj = clienteDados.cnpj_cpf.replace(/\D/g, ''); // Apenas números
+                document.getElementById('modalClienteOrigemCnpj').textContent = `CNPJ: ${clienteDados.cnpj_cpf}`;
+            } else {
+                document.getElementById('modalClienteOrigemCnpj').textContent = '';
+            }
+        } catch (error) {
+            console.error('Erro ao buscar dados do cliente origem:', error);
+            document.getElementById('modalClienteOrigemCnpj').textContent = '';
+        }
+
+        // Carregar cidades
+        const cidades = await db.getCidadesComercial();
+        const selectCidade = document.getElementById('selectCidadeComprador');
+        selectCidade.innerHTML = '<option value="">Selecione a cidade...</option>';
+        cidades.forEach(cidade => {
+            const option = document.createElement('option');
+            option.value = cidade;
+            option.textContent = cidade;
+            selectCidade.appendChild(option);
+        });
+
+        // Limpar campos
+        document.getElementById('selectClienteComprador').innerHTML = '<option value="">Primeiro selecione a cidade...</option>';
+        document.getElementById('selectClienteComprador').disabled = true;
+        document.getElementById('checkMesmoCnpjRaiz').checked = false;
         document.getElementById('inputObservacaoCentralizacao').value = '';
+
+        // Configurar event listeners
+        this.configurarEventListenersVincularComprador();
 
         // Se já tem vínculo, carregar dados
         if (jaTemVinculo) {
             const vinculo = this.vinculosCentralizacao[clienteOrigem];
             if (vinculo) {
-                document.getElementById('inputClienteComprador').value = vinculo.vc_cliente_comprador || '';
+                // Buscar dados do cliente comprador para pegar a cidade
+                const clientesComprador = await db.getClientesPorCodigo([vinculo.vc_cliente_comprador]);
+                const clienteCompradorDados = clientesComprador[vinculo.vc_cliente_comprador];
+
+                if (clienteCompradorDados && clienteCompradorDados.cidade) {
+                    // Selecionar cidade
+                    selectCidade.value = clienteCompradorDados.cidade;
+
+                    // Carregar clientes da cidade
+                    await this.carregarClientesCompradores();
+
+                    // Selecionar cliente comprador
+                    document.getElementById('selectClienteComprador').value = vinculo.vc_cliente_comprador;
+                }
+
                 document.getElementById('inputObservacaoCentralizacao').value = vinculo.vc_observacao || '';
             }
         }
 
         modal.classList.add('active');
+    }
+
+    configurarEventListenersVincularComprador() {
+        const selectCidade = document.getElementById('selectCidadeComprador');
+        const checkCnpj = document.getElementById('checkMesmoCnpjRaiz');
+
+        // Remover listeners antigos (se existirem)
+        const novoSelectCidade = selectCidade.cloneNode(true);
+        selectCidade.parentNode.replaceChild(novoSelectCidade, selectCidade);
+
+        const novoCheckCnpj = checkCnpj.cloneNode(true);
+        checkCnpj.parentNode.replaceChild(novoCheckCnpj, checkCnpj);
+
+        // Adicionar novos listeners
+        document.getElementById('selectCidadeComprador').addEventListener('change', () => {
+            this.carregarClientesCompradores();
+        });
+
+        document.getElementById('checkMesmoCnpjRaiz').addEventListener('change', () => {
+            this.carregarClientesCompradores();
+        });
+    }
+
+    async carregarClientesCompradores() {
+        const selectCidade = document.getElementById('selectCidadeComprador');
+        const checkCnpj = document.getElementById('checkMesmoCnpjRaiz');
+        const selectCliente = document.getElementById('selectClienteComprador');
+
+        const cidadeSelecionada = selectCidade.value;
+
+        if (!cidadeSelecionada) {
+            selectCliente.innerHTML = '<option value="">Primeiro selecione a cidade...</option>';
+            selectCliente.disabled = true;
+            return;
+        }
+
+        selectCliente.innerHTML = '<option value="">Carregando...</option>';
+        selectCliente.disabled = true;
+
+        try {
+            const cnpjRaiz = (checkCnpj.checked && this.clienteOrigemCnpj)
+                ? this.clienteOrigemCnpj.substring(0, 8)
+                : null;
+
+            const clientes = await db.getClientesPorCidadeComFiltro(cidadeSelecionada, cnpjRaiz);
+
+            selectCliente.innerHTML = '<option value="">Selecione o cliente comprador...</option>';
+
+            if (clientes.length === 0) {
+                selectCliente.innerHTML = '<option value="">Nenhum cliente encontrado</option>';
+                return;
+            }
+
+            clientes.forEach(cliente => {
+                const option = document.createElement('option');
+                option.value = cliente.cliente;
+                option.textContent = `${cliente.cliente} - ${cliente.nome || cliente.fantasia}`;
+                selectCliente.appendChild(option);
+            });
+
+            selectCliente.disabled = false;
+        } catch (error) {
+            console.error('Erro ao carregar clientes:', error);
+            selectCliente.innerHTML = '<option value="">Erro ao carregar clientes</option>';
+        }
     }
 
     fecharModalVincularComprador() {
@@ -3672,11 +3785,11 @@ class App {
     }
 
     async salvarVinculoComprador() {
-        const clienteComprador = document.getElementById('inputClienteComprador')?.value?.trim();
+        const clienteComprador = document.getElementById('selectClienteComprador')?.value?.trim();
         const observacao = document.getElementById('inputObservacaoCentralizacao')?.value?.trim();
 
         if (!clienteComprador) {
-            this.showNotification('Informe o código do cliente comprador', 'warning');
+            this.showNotification('Selecione o cliente comprador', 'warning');
             return;
         }
 

@@ -456,7 +456,9 @@ export const pages = {
                             </div>
                             <div class="col" style="flex: 1; min-width: 200px;">
                                 <label for="filtroCliente" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Cliente</label>
-                                <input type="text" id="filtroCliente" class="form-control" placeholder="Buscar por código ou nome..." style="width: 100%;">
+                                <select id="filtroCliente" class="form-control" style="width: 100%;">
+                                    <option value="">Todos os clientes com rateio</option>
+                                </select>
                             </div>
                             <div class="col" style="flex: 0; min-width: 120px; display: flex; align-items: flex-end;">
                                 <button class="btn btn-primary" id="btnAplicarFiltrosRateio" style="width: 100%;">Filtrar</button>

@@ -1195,6 +1195,63 @@ class TursoDatabase {
         }
     }
 
+    async getCidadesComercial() {
+        await this.connectComercial();
+        if (!this.comercialClient) return [];
+
+        try {
+            const resultado = await this.comercialClient.execute({
+                sql: `
+                    SELECT DISTINCT cidade
+                    FROM tab_cliente
+                    WHERE cidade IS NOT NULL AND cidade != ''
+                    ORDER BY cidade
+                `
+            });
+
+            return resultado.rows.map(row => row.cidade);
+        } catch (error) {
+            console.error('Erro ao buscar cidades do comercial:', error);
+            return [];
+        }
+    }
+
+    async getClientesPorCidadeComFiltro(cidade, cnpjRaiz = null, busca = '') {
+        await this.connectComercial();
+        if (!this.comercialClient || !cidade) return [];
+
+        let sql = `
+            SELECT cliente, nome, fantasia, CAST(cnpj_cpf AS TEXT) AS cnpj_cpf, endereco, num_endereco, bairro, cidade, estado, grupo_desc
+            FROM tab_cliente
+            WHERE cidade = ?
+        `;
+        const args = [cidade];
+
+        // Filtrar por raiz CNPJ (primeiros 8 dígitos)
+        if (cnpjRaiz) {
+            sql += ` AND SUBSTR(REPLACE(REPLACE(REPLACE(cnpj_cpf, '.', ''), '/', ''), '-', ''), 1, 8) = ?`;
+            args.push(cnpjRaiz.substring(0, 8));
+        }
+
+        if (busca) {
+            sql += ` AND (nome LIKE ? OR fantasia LIKE ? OR CAST(cliente AS TEXT) LIKE ?)`;
+            args.push(`%${busca}%`, `%${busca}%`, `%${busca}%`);
+        }
+
+        sql += ' ORDER BY nome';
+
+        try {
+            const result = await this.comercialClient.execute({ sql, args });
+            return result.rows.map(row => ({
+                ...row,
+                cnpj_cpf: documentoParaExibicao(row.cnpj_cpf)
+            }));
+        } catch (error) {
+            console.error('Erro ao buscar clientes por cidade com filtro:', error);
+            return [];
+        }
+    }
+
     async getClientesPorCodigo(codigos = []) {
         await this.connectComercial();
         if (!this.comercialClient || codigos.length === 0) return {};
@@ -2220,6 +2277,60 @@ class TursoDatabase {
     // Alias para compatibilidade
     async getCidadesRateio() {
         return this.obterCidadesComRateio();
+    }
+
+    async getClientesComRateio() {
+        try {
+            await this.connect();
+
+            if (!this.mainClient) {
+                console.error('mainClient não inicializado');
+                return [];
+            }
+
+            // Garantir que as tabelas existem
+            await this.ensureRateioTables();
+
+            // Buscar todos os códigos de clientes que têm rateio
+            const resultado = await this.mainClient.execute(`
+                SELECT DISTINCT rat_cliente_codigo
+                FROM rat_cliente_repositor
+                ORDER BY rat_cliente_codigo
+            `);
+
+            const linhasBrutas = Array.isArray(resultado)
+                ? resultado
+                : Array.isArray(resultado?.rows)
+                    ? resultado.rows
+                    : [];
+
+            const codigosClientes = linhasBrutas.map(row => row.rat_cliente_codigo).filter(Boolean);
+
+            if (codigosClientes.length === 0) {
+                return [];
+            }
+
+            // Buscar dados dos clientes do banco comercial
+            const clientesMap = await this.getClientesPorCodigo(codigosClientes);
+
+            // Retornar lista de clientes com dados completos
+            return codigosClientes
+                .map(codigo => {
+                    const dados = clientesMap[codigo];
+                    return {
+                        cliente: codigo,
+                        nome: dados?.nome || 'Sem nome',
+                        fantasia: dados?.fantasia || '',
+                        cidade: dados?.cidade || '',
+                        estado: dados?.estado || ''
+                    };
+                })
+                .filter(c => c.nome !== 'Sem nome')
+                .sort((a, b) => (a.nome || a.fantasia || '').localeCompare(b.nome || b.fantasia || ''));
+        } catch (error) {
+            console.error('Erro ao buscar clientes com rateio:', error);
+            return [];
+        }
     }
 
     async getCidadesClientesCentralizados() {
