@@ -428,7 +428,6 @@ export const pages = {
             <div class="card">
                 <div class="card-header">
                     <div>
-                        <p class="text-muted" style="margin: 0;">Ajuste percentuais de clientes que já possuem rateio.</p>
                         <h3 class="card-title">Manutenção de Rateio</h3>
                         <p class="text-muted" style="margin: 4px 0 0; font-size: 0.9rem;">
                             Revise os percentuais cadastrados no roteiro e garanta que cada cliente some exatamente 100%.
@@ -480,7 +479,8 @@ export const pages = {
                             Vincule clientes com venda centralizada ao cliente que realiza a compra.
                         </p>
                     </div>
-                    <div class="card-actions">
+                    <div class="card-actions" style="display: flex; gap: 10px;">
+                        <button class="btn btn-primary btn-sm" id="btnAdicionarClienteCentralizacao">+ Adicionar Cliente</button>
                         <button class="btn btn-secondary btn-sm" id="btnRecarregarCentralizacao">Recarregar</button>
                     </div>
                 </div>

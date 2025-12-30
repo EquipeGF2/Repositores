@@ -2692,6 +2692,9 @@ class App {
             const usuario = this.usuarioLogado?.username || 'desconhecido';
             if (selecionado) {
                 await db.adicionarClienteRoteiro(rotCidId, clienteCodigo, usuario, opcoes);
+
+                // Auto-incluir rateio com 0% se cliente já tem rateio em outros repositores
+                await this.autoIncluirRateioSeNecessario(clienteCodigo);
             } else {
                 await db.removerClienteRoteiro(rotCidId, clienteCodigo, usuario);
             }
@@ -2701,6 +2704,50 @@ class App {
         } catch (error) {
             this.showNotification(error.message || 'Erro ao atualizar cliente no roteiro.', 'error');
             await this.carregarClientesRoteiro();
+        }
+    }
+
+    async autoIncluirRateioSeNecessario(clienteCodigo) {
+        try {
+            // Verificar se o cliente já tem rateio cadastrado
+            const rateiosExistentes = await db.buscarRateiosPorCliente(clienteCodigo);
+
+            if (rateiosExistentes && rateiosExistentes.length > 0) {
+                // Cliente já tem rateio em outros repositores
+                // Buscar todos os repositores que atendem esse cliente
+                const clientesRoteiro = await db.buscarClienteNoRoteiro(clienteCodigo);
+
+                if (clientesRoteiro && clientesRoteiro.length > 0) {
+                    const usuario = this.usuarioLogado?.username || 'desconhecido';
+
+                    for (const clienteRot of clientesRoteiro) {
+                        // Verificar se já tem rateio cadastrado para este repositor
+                        const jaTemRateio = rateiosExistentes.some(r =>
+                            r.rat_repositor_id === clienteRot.repositor_id
+                        );
+
+                        if (!jaTemRateio) {
+                            // Criar rateio com 0% para o novo repositor
+                            await db.criarRateioAutomatico(
+                                clienteCodigo,
+                                clienteRot.repositor_id,
+                                0, // percentual 0%
+                                usuario
+                            );
+
+                            // Ativar flag de rateio no roteiro
+                            if (clienteRot.rot_cli_id) {
+                                await db.atualizarRateioClienteRoteiro(clienteRot.rot_cli_id, true, usuario);
+                            }
+
+                            console.log(`Rateio 0% criado automaticamente para cliente ${clienteCodigo}, repositor ${clienteRot.repositor_id}`);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao auto-incluir rateio:', error);
+            // Não bloquear a operação principal se houver erro
         }
     }
 
@@ -3324,7 +3371,53 @@ class App {
             `;
         }).join('');
 
+        // Verificar rateios com 0%
+        const rateiosZero = linhas.filter(linha => parseFloat(linha.rat_percentual) === 0);
+
+        let cardAvisoHtml = '';
+        if (rateiosZero.length > 0) {
+            // Agrupar por cliente e repositor
+            const gruposZero = {};
+            rateiosZero.forEach(linha => {
+                const key = `${linha.cliente_codigo}|${linha.rat_repositor_id}`;
+                if (!gruposZero[key]) {
+                    gruposZero[key] = {
+                        cliente_codigo: linha.cliente_codigo,
+                        cliente_nome: linha.cliente_nome || linha.cliente_fantasia || 'Sem nome',
+                        repositor_id: linha.rat_repositor_id,
+                        repositor_nome: linha.repo_nome || 'Sem nome'
+                    };
+                }
+            });
+
+            const itemsHtml = Object.values(gruposZero).map(item => `
+                <li>
+                    <strong>${item.cliente_nome}</strong> (${item.cliente_codigo})
+                    - Repositor: ${item.repositor_nome} (${item.repositor_id})
+                </li>
+            `).join('');
+
+            cardAvisoHtml = `
+                <div class="card-aviso-rateio-zero">
+                    <div class="card-aviso-header">
+                        <span class="card-aviso-icon">⚠️</span>
+                        <span class="card-aviso-titulo">Atenção: Rateios com 0%</span>
+                    </div>
+                    <div class="card-aviso-body">
+                        <p>Os seguintes repositores possuem rateio configurado com <strong>0%</strong>:</p>
+                        <ul class="lista-rateios-zero">
+                            ${itemsHtml}
+                        </ul>
+                        <p class="card-aviso-dica">
+                            <em>Ajuste os percentuais para garantir distribuição correta das vendas.</em>
+                        </p>
+                    </div>
+                </div>
+            `;
+        }
+
         container.innerHTML = `
+            ${cardAvisoHtml}
             <div class="rateio-cascata-container">
                 ${htmlCascata}
             </div>
@@ -3457,6 +3550,11 @@ class App {
             btnAplicarFiltros.addEventListener('click', () => this.aplicarFiltrosCentralizacao());
         }
 
+        const btnAdicionarCliente = document.getElementById('btnAdicionarClienteCentralizacao');
+        if (btnAdicionarCliente) {
+            btnAdicionarCliente.addEventListener('click', () => this.abrirModalAdicionarCentralizacao());
+        }
+
         // Permitir filtrar ao pressionar Enter
         const inputCliente = document.getElementById('filtroClienteCentralizacao');
         if (inputCliente) {
@@ -3465,6 +3563,186 @@ class App {
                     this.aplicarFiltrosCentralizacao();
                 }
             });
+        }
+    }
+
+    async abrirModalAdicionarCentralizacao() {
+        const modal = document.getElementById('modalVincularComprador');
+        if (!modal) {
+            this.showNotification('Modal não encontrado.', 'error');
+            return;
+        }
+
+        // Definir modo de adição manual
+        this.contextoVinculoCentralizacao = { modo: 'adicionar_manual' };
+
+        // Modificar o modal para modo de seleção manual
+        const clienteOrigemContainer = modal.querySelector('.form-group');
+        if (clienteOrigemContainer) {
+            clienteOrigemContainer.innerHTML = `
+                <label style="font-weight: 600;">Cliente Origem</label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px;">
+                    <div>
+                        <label for="selectCidadeOrigem" style="font-size: 0.9rem; margin-bottom: 4px; display: block;">Cidade</label>
+                        <select id="selectCidadeOrigem" class="form-control full-width">
+                            <option value="">Selecione a cidade...</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="selectClienteOrigem" style="font-size: 0.9rem; margin-bottom: 4px; display: block;">Cliente *</label>
+                        <select id="selectClienteOrigem" class="form-control full-width" disabled>
+                            <option value="">Primeiro selecione a cidade...</option>
+                        </select>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Esconder checkbox de CNPJ
+        const checkMesmoCnpj = document.getElementById('checkMesmoCnpjRaiz');
+        if (checkMesmoCnpj) {
+            const checkGroup = checkMesmoCnpj.closest('.form-group');
+            if (checkGroup) checkGroup.style.display = 'none';
+        }
+
+        // Limpar seletores de comprador
+        const selectCidadeComprador = document.getElementById('selectCidadeComprador');
+        const selectClienteComprador = document.getElementById('selectClienteComprador');
+
+        if (selectCidadeComprador) selectCidadeComprador.value = '';
+        if (selectClienteComprador) {
+            selectClienteComprador.innerHTML = '<option value="">Primeiro selecione a cidade...</option>';
+            selectClienteComprador.disabled = true;
+        }
+
+        // Carregar cidades para origem
+        try {
+            const cidades = await db.getCidadesPotencial();
+
+            const selectCidadeOrigem = document.getElementById('selectCidadeOrigem');
+            if (selectCidadeOrigem) {
+                selectCidadeOrigem.innerHTML = '<option value="">Selecione a cidade...</option>';
+                cidades.forEach(cidade => {
+                    const option = document.createElement('option');
+                    option.value = cidade;
+                    option.textContent = cidade;
+                    selectCidadeOrigem.appendChild(option);
+                });
+
+                // Event listener para carregar clientes da cidade origem
+                selectCidadeOrigem.addEventListener('change', async (e) => {
+                    const cidadeSelecionada = e.target.value;
+                    const selectClienteOrigem = document.getElementById('selectClienteOrigem');
+
+                    if (!cidadeSelecionada) {
+                        selectClienteOrigem.innerHTML = '<option value="">Primeiro selecione a cidade...</option>';
+                        selectClienteOrigem.disabled = true;
+                        return;
+                    }
+
+                    try {
+                        const clientes = await db.getClientesPorCidade(cidadeSelecionada);
+                        selectClienteOrigem.innerHTML = '<option value="">Selecione o cliente...</option>';
+                        clientes.forEach(cliente => {
+                            const option = document.createElement('option');
+                            option.value = cliente.cliente;
+                            option.textContent = `${cliente.cliente} - ${cliente.nome || cliente.fantasia}`;
+                            selectClienteOrigem.appendChild(option);
+                        });
+                        selectClienteOrigem.disabled = false;
+                    } catch (error) {
+                        console.error('Erro ao carregar clientes:', error);
+                        this.showNotification('Erro ao carregar clientes da cidade.', 'error');
+                    }
+                });
+            }
+
+            // Carregar cidades para comprador
+            if (selectCidadeComprador) {
+                selectCidadeComprador.innerHTML = '<option value="">Selecione a cidade...</option>';
+                cidades.forEach(cidade => {
+                    const option = document.createElement('option');
+                    option.value = cidade;
+                    option.textContent = cidade;
+                    selectCidadeComprador.appendChild(option);
+                });
+            }
+        } catch (error) {
+            console.error('Erro ao carregar cidades:', error);
+            this.showNotification('Erro ao carregar cidades.', 'error');
+        }
+
+        modal.classList.add('active');
+    }
+
+    async salvarVinculoManualCentralizacao() {
+        const selectClienteOrigem = document.getElementById('selectClienteOrigem');
+        const selectClienteComprador = document.getElementById('selectClienteComprador');
+
+        const clienteOrigemCodigo = selectClienteOrigem?.value;
+        const clienteCompradorCodigo = selectClienteComprador?.value;
+
+        if (!clienteOrigemCodigo || !clienteCompradorCodigo) {
+            this.showNotification('Selecione o cliente origem e o cliente comprador.', 'warning');
+            return;
+        }
+
+        if (clienteOrigemCodigo === clienteCompradorCodigo) {
+            this.showNotification('O cliente origem e comprador não podem ser o mesmo.', 'warning');
+            return;
+        }
+
+        try {
+            // Criar vínculo de venda centralizada
+            const response = await fetch(`${API_BASE_URL}/api/venda-centralizada`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    vc_cliente_origem: clienteOrigemCodigo,
+                    vc_cliente_comprador: clienteCompradorCodigo
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.text();
+                throw new Error(error || 'Erro ao criar vínculo.');
+            }
+
+            // Ativar flag de venda centralizada automaticamente no roteiro do cliente
+            await this.ativarFlagVendaCentralizadaAutomaticamente(clienteOrigemCodigo);
+
+            this.showNotification('Vínculo criado com sucesso e flag ativada no roteiro.', 'success');
+
+            // Fechar modal e recarregar
+            const modal = document.getElementById('modalVincularComprador');
+            if (modal) modal.classList.remove('active');
+
+            await this.carregarClientesCentralizados(this.obterFiltrosCentralizacao());
+        } catch (error) {
+            console.error('Erro ao salvar vínculo:', error);
+            this.showNotification(error.message || 'Erro ao criar vínculo.', 'error');
+        }
+    }
+
+    async ativarFlagVendaCentralizadaAutomaticamente(clienteCodigo) {
+        try {
+            // Buscar todos os registros deste cliente no roteiro
+            const clientesRoteiro = await db.buscarClienteNoRoteiro(clienteCodigo);
+
+            if (clientesRoteiro && clientesRoteiro.length > 0) {
+                const usuario = this.usuarioLogado?.username || 'desconhecido';
+
+                // Ativar flag para todos os repositores que atendem este cliente
+                for (const clienteRot of clientesRoteiro) {
+                    if (clienteRot.rot_cli_id) {
+                        await db.atualizarVendaCentralizada(clienteRot.rot_cli_id, true, usuario);
+                        console.log(`Flag venda centralizada ativada para cliente ${clienteCodigo}, roteiro ${clienteRot.rot_cli_id}`);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao ativar flag de venda centralizada:', error);
+            // Não lançar erro pois o vínculo já foi criado
         }
     }
 
@@ -3652,9 +3930,9 @@ class App {
             document.getElementById('modalClienteOrigemCnpj').textContent = '';
         }
 
-        // Carregar cidades
-        const cidades = await db.getCidadesComercial();
-        console.log('Cidades carregadas:', cidades.length, cidades);
+        // Carregar cidades (de potencial_cidade)
+        const cidades = await db.getCidadesPotencial();
+        console.log('Cidades potenciais carregadas:', cidades.length, cidades);
         const selectCidade = document.getElementById('selectCidadeComprador');
         selectCidade.innerHTML = '<option value="">Selecione a cidade...</option>';
 
@@ -3666,7 +3944,7 @@ class App {
                 selectCidade.appendChild(option);
             });
         } else {
-            console.warn('Nenhuma cidade encontrada no banco comercial');
+            console.warn('Nenhuma cidade potencial encontrada');
         }
 
         // Limpar campos
@@ -3810,6 +4088,11 @@ class App {
     }
 
     async salvarVinculoComprador() {
+        // Verificar se está em modo de adição manual
+        if (this.contextoVinculoCentralizacao?.modo === 'adicionar_manual') {
+            return this.salvarVinculoManualCentralizacao();
+        }
+
         const clienteComprador = document.getElementById('selectClienteComprador')?.value?.trim();
 
         if (!clienteComprador) {

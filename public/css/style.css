@@ -4242,6 +4242,82 @@ body.modal-open {
     }
 }
 
+/* ==================== CARD AVISO RATEIO 0% ==================== */
+.card-aviso-rateio-zero {
+    background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);
+    border: 2px solid var(--warning);
+    border-radius: var(--radius-lg);
+    margin-bottom: 24px;
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+}
+
+.card-aviso-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 20px;
+    background: rgba(245, 158, 11, 0.15);
+    border-bottom: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.card-aviso-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+}
+
+.card-aviso-titulo {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #92400e;
+}
+
+.card-aviso-body {
+    padding: 20px;
+}
+
+.card-aviso-body p {
+    margin: 0 0 12px 0;
+    color: #78350f;
+    line-height: 1.6;
+}
+
+.lista-rateios-zero {
+    list-style: none;
+    padding: 0;
+    margin: 16px 0;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.lista-rateios-zero li {
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    background: white;
+    border-left: 4px solid var(--warning);
+    border-radius: 4px;
+    color: #78350f;
+    box-shadow: var(--shadow-sm);
+}
+
+.lista-rateios-zero li strong {
+    color: #92400e;
+}
+
+.card-aviso-dica {
+    margin-top: 16px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 6px;
+    font-size: 0.95rem;
+}
+
+.card-aviso-dica em {
+    color: #92400e;
+    font-style: normal;
+    font-weight: 500;
+}
+
 /* ==================== RATEIO EM CASCATA ==================== */
 .rateio-cascata-container {
     display: flex;

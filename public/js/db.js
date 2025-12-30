@@ -1223,7 +1223,10 @@ class TursoDatabase {
 
     async getCidadesPotencial() {
         await this.connectComercial();
-        if (!this.comercialClient) return [];
+        if (!this.comercialClient) {
+            console.warn('Cliente comercial não conectado');
+            return [];
+        }
 
         try {
             const resultado = await this.comercialClient.execute({
@@ -1232,15 +1235,29 @@ class TursoDatabase {
                     FROM potencial_cidade
                     WHERE cidade IS NOT NULL AND cidade != ''
                     ORDER BY cidade
-                `
+                `,
+                args: []
             });
 
-            if (!resultado || !resultado.rows) {
-                console.warn('Resultado de cidades potenciais vazio ou inválido:', resultado);
+            console.log('Resultado getCidadesPotencial:', resultado);
+
+            if (!resultado) {
+                console.warn('Resultado nulo');
                 return [];
             }
 
-            return resultado.rows.map(row => row.cidade);
+            // Verificar diferentes formatos de resposta
+            let rows = [];
+            if (Array.isArray(resultado)) {
+                rows = resultado;
+            } else if (resultado.rows && Array.isArray(resultado.rows)) {
+                rows = resultado.rows;
+            } else {
+                console.warn('Formato de resultado inesperado:', resultado);
+                return [];
+            }
+
+            return rows.map(row => row.cidade).filter(Boolean);
         } catch (error) {
             console.error('Erro ao buscar cidades potenciais:', error);
             return [];
@@ -1312,6 +1329,31 @@ class TursoDatabase {
         } catch (error) {
             console.error('Erro ao buscar clientes por código:', error);
             return {};
+        }
+    }
+
+    async getClientesPorCidade(cidade) {
+        await this.connectComercial();
+        if (!this.comercialClient || !cidade) return [];
+
+        try {
+            const resultado = await this.comercialClient.execute({
+                sql: `
+                    SELECT cliente, nome, fantasia, CAST(cnpj_cpf AS TEXT) AS cnpj_cpf, cidade, estado
+                    FROM tab_cliente
+                    WHERE cidade = ?
+                    ORDER BY nome, fantasia
+                `,
+                args: [cidade]
+            });
+
+            return resultado.rows.map(cli => ({
+                ...cli,
+                cnpj_cpf: documentoParaExibicao(cli.cnpj_cpf)
+            }));
+        } catch (error) {
+            console.error('Erro ao buscar clientes por cidade:', error);
+            return [];
         }
     }
 
@@ -2631,6 +2673,128 @@ class TursoDatabase {
             });
         } catch (e) {
             console.warn('Aviso ao registrar auditoria de rateio:', e?.message || e);
+        }
+    }
+
+    async buscarRateiosPorCliente(clienteCodigo) {
+        try {
+            await this.connect();
+
+            if (!this.mainClient) {
+                console.error('mainClient não inicializado');
+                return [];
+            }
+
+            const resultado = await this.mainClient.execute({
+                sql: `
+                    SELECT
+                        rat_cliente_codigo,
+                        rat_repositor_id,
+                        rat_percentual,
+                        rat_vigencia_inicio,
+                        rat_vigencia_fim
+                    FROM rat_cliente_repositor
+                    WHERE rat_cliente_codigo = ?
+                `,
+                args: [clienteCodigo]
+            });
+
+            const linhasBrutas = Array.isArray(resultado)
+                ? resultado
+                : Array.isArray(resultado?.rows)
+                    ? resultado.rows
+                    : [];
+
+            return linhasBrutas.filter(row => row && typeof row === 'object');
+        } catch (error) {
+            console.error('Erro ao buscar rateios por cliente:', error);
+            return [];
+        }
+    }
+
+    async buscarClienteNoRoteiro(clienteCodigo) {
+        try {
+            await this.connect();
+
+            if (!this.mainClient) {
+                console.error('mainClient não inicializado');
+                return [];
+            }
+
+            const resultado = await this.mainClient.execute({
+                sql: `
+                    SELECT
+                        cli.rot_cli_id,
+                        cli.rot_cliente_codigo,
+                        cid.rot_repositor_id as repositor_id,
+                        cid.rot_cidade,
+                        cid.rot_dia_semana
+                    FROM rot_roteiro_cliente cli
+                    JOIN rot_roteiro_cidade cid ON cid.rot_cid_id = cli.rot_cid_id
+                    WHERE cli.rot_cliente_codigo = ?
+                `,
+                args: [clienteCodigo]
+            });
+
+            const linhasBrutas = Array.isArray(resultado)
+                ? resultado
+                : Array.isArray(resultado?.rows)
+                    ? resultado.rows
+                    : [];
+
+            return linhasBrutas.filter(row => row && typeof row === 'object');
+        } catch (error) {
+            console.error('Erro ao buscar cliente no roteiro:', error);
+            return [];
+        }
+    }
+
+    async criarRateioAutomatico(clienteCodigo, repositorId, percentual, usuario = '') {
+        try {
+            await this.connect();
+
+            if (!this.mainClient) {
+                throw new Error('mainClient não inicializado');
+            }
+
+            const agora = new Date().toISOString();
+
+            await this.mainClient.execute({
+                sql: `
+                    INSERT INTO rat_cliente_repositor (
+                        rat_cliente_codigo,
+                        rat_repositor_id,
+                        rat_percentual,
+                        rat_vigencia_inicio,
+                        rat_vigencia_fim,
+                        rat_criado_em,
+                        rat_atualizado_em
+                    ) VALUES (?, ?, ?, NULL, NULL, ?, ?)
+                `,
+                args: [
+                    clienteCodigo,
+                    repositorId,
+                    Number(percentual),
+                    agora,
+                    agora
+                ]
+            });
+
+            // Registrar auditoria
+            try {
+                await this.registrarAuditoriaRoteiro({
+                    usuario,
+                    repositorId,
+                    acao: 'RATEIO_AUTO_CRIADO',
+                    clienteCodigo,
+                    detalhes: `Rateio criado automaticamente com ${percentual}%`
+                });
+            } catch (e) {
+                console.warn('Aviso ao registrar auditoria de rateio automático:', e?.message || e);
+            }
+        } catch (error) {
+            console.error('Erro ao criar rateio automático:', error);
+            throw new Error('Não foi possível criar o rateio automático.');
         }
     }
 
