@@ -1221,6 +1221,32 @@ class TursoDatabase {
         }
     }
 
+    async getCidadesPotencial() {
+        await this.connectComercial();
+        if (!this.comercialClient) return [];
+
+        try {
+            const resultado = await this.comercialClient.execute({
+                sql: `
+                    SELECT DISTINCT cidade
+                    FROM potencial_cidade
+                    WHERE cidade IS NOT NULL AND cidade != ''
+                    ORDER BY cidade
+                `
+            });
+
+            if (!resultado || !resultado.rows) {
+                console.warn('Resultado de cidades potenciais vazio ou inválido:', resultado);
+                return [];
+            }
+
+            return resultado.rows.map(row => row.cidade);
+        } catch (error) {
+            console.error('Erro ao buscar cidades potenciais:', error);
+            return [];
+        }
+    }
+
     async getClientesPorCidadeComFiltro(cidade, cnpjRaiz = null, busca = '') {
         await this.connectComercial();
         if (!this.comercialClient || !cidade) return [];

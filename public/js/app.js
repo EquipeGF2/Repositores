@@ -3108,10 +3108,10 @@ class App {
 
     // ==================== CADASTRO DE RATEIO ====================
     async inicializarCadastroRateio() {
-        // Popular filtro de cidades
+        // Popular filtro de cidades (buscar de potencial_cidade)
         const selectCidade = document.getElementById('filtroCidade');
         if (selectCidade && selectCidade.options.length === 1) {
-            const cidades = await db.getCidadesRateio();
+            const cidades = await db.getCidadesPotencial();
             cidades.forEach(cidade => {
                 const option = document.createElement('option');
                 option.value = cidade;
