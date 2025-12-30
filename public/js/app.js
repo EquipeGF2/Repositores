@@ -2639,6 +2639,11 @@ class App {
 
                 cliente.rot_venda_centralizada = toggle.checked ? 1 : 0;
                 this.carregarClientesRoteiro();
+
+                // Se marcou como venda centralizada, oferecer vincular cliente comprador
+                if (toggle.checked) {
+                    this.sugerirVinculoClienteComprador(cliente);
+                }
             });
         });
 
@@ -2695,6 +2700,16 @@ class App {
             cidade: cliente.cidade || '',
             estado: cliente.estado || ''
         });
+    }
+
+    async sugerirVinculoClienteComprador(cliente) {
+        const confirmar = confirm('Cliente marcado com venda centralizada. Deseja vincular o cliente comprador agora?');
+        if (!confirmar) return;
+
+        const clienteNome = cliente.cliente_dados?.nome || cliente.cliente_dados?.fantasia || 'Sem nome';
+
+        // Abrir o modal de vincular comprador
+        this.abrirModalVincularComprador(cliente.rot_cliente_codigo, clienteNome, false);
     }
 
     marcarRoteiroPendente() {
