@@ -4500,3 +4500,8 @@ body.modal-open {
         justify-content: flex-end;
     }
 }
+
+/* Nome do cliente em negrito em Manutenção de Rateio */
+.cliente-nome {
+    font-weight: 600;
+}

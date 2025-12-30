@@ -2610,13 +2610,6 @@ class App {
                 const cliente = clientesPorId.get(String(toggle.dataset.cliId));
                 if (!cliente) return;
 
-                // Adicionar indicação visual de pendente
-                const wrapper = toggle.closest('.rateio-toggle-wrapper');
-                if (wrapper) {
-                    wrapper.classList.add('toggle-pendente');
-                    wrapper.setAttribute('title', 'Alteração pendente - clique em "Salvar Roteiro" para confirmar');
-                }
-
                 if (toggle.checked) {
                     this.abrirModalRateioRapido(cliente);
                 } else {
@@ -2627,8 +2620,10 @@ class App {
                         ativo: false,
                         percentual: null
                     });
-                    this.carregarClientesRoteiro();
                 }
+
+                // Aplicar visual de pendente após definir
+                this.aplicarEstiloPendentesToggle();
             });
         });
 
@@ -2636,13 +2631,6 @@ class App {
             toggle.addEventListener('change', () => {
                 const cliente = clientesPorId.get(String(toggle.dataset.cliId));
                 if (!cliente) return;
-
-                // Adicionar indicação visual de pendente
-                const wrapper = toggle.closest('.rateio-toggle-wrapper');
-                if (wrapper) {
-                    wrapper.classList.add('toggle-pendente');
-                    wrapper.setAttribute('title', 'Alteração pendente - clique em "Salvar Roteiro" para confirmar');
-                }
 
                 this.definirVendaCentralizadaPendente({
                     rotCliId: cliente.rot_cli_id,
@@ -2652,7 +2640,9 @@ class App {
                 });
 
                 cliente.rot_venda_centralizada = toggle.checked ? 1 : 0;
-                this.carregarClientesRoteiro();
+
+                // Aplicar visual de pendente após definir
+                this.aplicarEstiloPendentesToggle();
 
                 // Se marcou como venda centralizada, oferecer vincular cliente comprador
                 if (toggle.checked) {
@@ -2661,7 +2651,40 @@ class App {
             });
         });
 
+        // Aplicar estilo pendente aos toggles que já têm alterações pendentes
+        this.aplicarEstiloPendentesToggle();
+
         if (mensagem) mensagem.textContent = '';
+    }
+
+    aplicarEstiloPendentesToggle() {
+        // Aplicar estilo aos toggles de rateio pendentes
+        if (this.rateioPendentes) {
+            Object.values(this.rateioPendentes).forEach(pendente => {
+                const toggle = document.querySelector(`.rateio-toggle[data-cli-id="${pendente.rotCliId}"]`);
+                if (toggle) {
+                    const wrapper = toggle.closest('.rateio-toggle-wrapper');
+                    if (wrapper) {
+                        wrapper.classList.add('toggle-pendente');
+                        wrapper.setAttribute('title', 'Alteração pendente - clique em "Salvar Roteiro" para confirmar');
+                    }
+                }
+            });
+        }
+
+        // Aplicar estilo aos toggles de venda centralizada pendentes
+        if (this.vendasCentralizadasPendentes) {
+            Object.values(this.vendasCentralizadasPendentes).forEach(pendente => {
+                const toggle = document.querySelector(`.venda-centralizada-toggle[data-cli-id="${pendente.rotCliId}"]`);
+                if (toggle) {
+                    const wrapper = toggle.closest('.rateio-toggle-wrapper');
+                    if (wrapper) {
+                        wrapper.classList.add('toggle-pendente');
+                        wrapper.setAttribute('title', 'Alteração pendente - clique em "Salvar Roteiro" para confirmar');
+                    }
+                }
+            });
+        }
     }
 
     async alternarClienteRoteiro(rotCidId, clienteCodigo, selecionado, opcoes = {}) {
