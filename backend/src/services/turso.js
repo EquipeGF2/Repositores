@@ -1593,7 +1593,7 @@ class TursoService {
     const sql = `
       SELECT u.*, r.repo_nome
       FROM cc_usuarios u
-      LEFT JOIN cc_repositor r ON u.rep_id = r.rep_id
+      LEFT JOIN cad_repositor r ON u.rep_id = r.repo_cod
       WHERE u.usuario_id = ? AND u.ativo = 1
     `;
     const result = await this.execute(sql, [usuarioId]);
@@ -1604,7 +1604,7 @@ class TursoService {
     const sql = `
       SELECT u.usuario_id, u.username, u.nome_completo, u.email, u.rep_id, u.perfil, u.ativo, u.ultimo_login, r.repo_nome
       FROM cc_usuarios u
-      LEFT JOIN cc_repositor r ON u.rep_id = r.rep_id
+      LEFT JOIN cad_repositor r ON u.rep_id = r.repo_cod
       ORDER BY u.nome_completo
     `;
     const result = await this.execute(sql, []);
