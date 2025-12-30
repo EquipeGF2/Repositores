@@ -1547,6 +1547,34 @@ class TursoService {
   // ==================== AUTENTICAÇÃO E USUÁRIOS ====================
 
   async ensureUsuariosSchema() {
+    // Primeiro garantir que a tabela cad_repositor existe (necessária para a FK)
+    const sqlRepositor = `
+      CREATE TABLE IF NOT EXISTS cad_repositor (
+        repo_cod INTEGER PRIMARY KEY AUTOINCREMENT,
+        repo_nome TEXT NOT NULL,
+        repo_data_inicio DATE NOT NULL,
+        repo_data_fim DATE,
+        repo_cidade_ref TEXT,
+        repo_representante TEXT,
+        rep_telefone TEXT,
+        rep_email TEXT,
+        rep_contato_telefone TEXT,
+        repo_vinculo TEXT DEFAULT 'repositor',
+        dias_trabalhados TEXT DEFAULT 'seg,ter,qua,qui,sex',
+        jornada TEXT DEFAULT 'integral',
+        rep_jornada_tipo TEXT DEFAULT 'INTEGRAL',
+        rep_supervisor TEXT,
+        rep_representante_codigo TEXT,
+        rep_representante_nome TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+
+    await this.execute(sqlRepositor, []);
+    console.log('✅ Tabela cad_repositor garantida');
+
+    // Agora criar a tabela cc_usuarios com FK para cad_repositor
     const sqlUsuarios = `
       CREATE TABLE IF NOT EXISTS cc_usuarios (
         usuario_id INTEGER PRIMARY KEY AUTOINCREMENT,
