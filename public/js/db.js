@@ -1332,6 +1332,31 @@ class TursoDatabase {
         }
     }
 
+    async getClientesPorCidade(cidade) {
+        await this.connectComercial();
+        if (!this.comercialClient || !cidade) return [];
+
+        try {
+            const resultado = await this.comercialClient.execute({
+                sql: `
+                    SELECT cliente, nome, fantasia, CAST(cnpj_cpf AS TEXT) AS cnpj_cpf, cidade, estado
+                    FROM tab_cliente
+                    WHERE cidade = ?
+                    ORDER BY nome, fantasia
+                `,
+                args: [cidade]
+            });
+
+            return resultado.rows.map(cli => ({
+                ...cli,
+                cnpj_cpf: documentoParaExibicao(cli.cnpj_cpf)
+            }));
+        } catch (error) {
+            console.error('Erro ao buscar clientes por cidade:', error);
+            return [];
+        }
+    }
+
     async getRoteiroCidadePorId(rotCidId) {
         try {
             const resultado = await this.mainClient.execute({

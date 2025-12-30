@@ -479,7 +479,8 @@ export const pages = {
                             Vincule clientes com venda centralizada ao cliente que realiza a compra.
                         </p>
                     </div>
-                    <div class="card-actions">
+                    <div class="card-actions" style="display: flex; gap: 10px;">
+                        <button class="btn btn-primary btn-sm" id="btnAdicionarClienteCentralizacao">+ Adicionar Cliente</button>
                         <button class="btn btn-secondary btn-sm" id="btnRecarregarCentralizacao">Recarregar</button>
                     </div>
                 </div>

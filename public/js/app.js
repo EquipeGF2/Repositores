@@ -3550,6 +3550,11 @@ class App {
             btnAplicarFiltros.addEventListener('click', () => this.aplicarFiltrosCentralizacao());
         }
 
+        const btnAdicionarCliente = document.getElementById('btnAdicionarClienteCentralizacao');
+        if (btnAdicionarCliente) {
+            btnAdicionarCliente.addEventListener('click', () => this.abrirModalAdicionarCentralizacao());
+        }
+
         // Permitir filtrar ao pressionar Enter
         const inputCliente = document.getElementById('filtroClienteCentralizacao');
         if (inputCliente) {
@@ -3558,6 +3563,186 @@ class App {
                     this.aplicarFiltrosCentralizacao();
                 }
             });
+        }
+    }
+
+    async abrirModalAdicionarCentralizacao() {
+        const modal = document.getElementById('modalVincularComprador');
+        if (!modal) {
+            this.showNotification('Modal não encontrado.', 'error');
+            return;
+        }
+
+        // Definir modo de adição manual
+        this.contextoVinculoCentralizacao = { modo: 'adicionar_manual' };
+
+        // Modificar o modal para modo de seleção manual
+        const clienteOrigemContainer = modal.querySelector('.form-group');
+        if (clienteOrigemContainer) {
+            clienteOrigemContainer.innerHTML = `
+                <label style="font-weight: 600;">Cliente Origem</label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px;">
+                    <div>
+                        <label for="selectCidadeOrigem" style="font-size: 0.9rem; margin-bottom: 4px; display: block;">Cidade</label>
+                        <select id="selectCidadeOrigem" class="form-control full-width">
+                            <option value="">Selecione a cidade...</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="selectClienteOrigem" style="font-size: 0.9rem; margin-bottom: 4px; display: block;">Cliente *</label>
+                        <select id="selectClienteOrigem" class="form-control full-width" disabled>
+                            <option value="">Primeiro selecione a cidade...</option>
+                        </select>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Esconder checkbox de CNPJ
+        const checkMesmoCnpj = document.getElementById('checkMesmoCnpjRaiz');
+        if (checkMesmoCnpj) {
+            const checkGroup = checkMesmoCnpj.closest('.form-group');
+            if (checkGroup) checkGroup.style.display = 'none';
+        }
+
+        // Limpar seletores de comprador
+        const selectCidadeComprador = document.getElementById('selectCidadeComprador');
+        const selectClienteComprador = document.getElementById('selectClienteComprador');
+
+        if (selectCidadeComprador) selectCidadeComprador.value = '';
+        if (selectClienteComprador) {
+            selectClienteComprador.innerHTML = '<option value="">Primeiro selecione a cidade...</option>';
+            selectClienteComprador.disabled = true;
+        }
+
+        // Carregar cidades para origem
+        try {
+            const cidades = await db.getCidadesPotencial();
+
+            const selectCidadeOrigem = document.getElementById('selectCidadeOrigem');
+            if (selectCidadeOrigem) {
+                selectCidadeOrigem.innerHTML = '<option value="">Selecione a cidade...</option>';
+                cidades.forEach(cidade => {
+                    const option = document.createElement('option');
+                    option.value = cidade;
+                    option.textContent = cidade;
+                    selectCidadeOrigem.appendChild(option);
+                });
+
+                // Event listener para carregar clientes da cidade origem
+                selectCidadeOrigem.addEventListener('change', async (e) => {
+                    const cidadeSelecionada = e.target.value;
+                    const selectClienteOrigem = document.getElementById('selectClienteOrigem');
+
+                    if (!cidadeSelecionada) {
+                        selectClienteOrigem.innerHTML = '<option value="">Primeiro selecione a cidade...</option>';
+                        selectClienteOrigem.disabled = true;
+                        return;
+                    }
+
+                    try {
+                        const clientes = await db.getClientesPorCidade(cidadeSelecionada);
+                        selectClienteOrigem.innerHTML = '<option value="">Selecione o cliente...</option>';
+                        clientes.forEach(cliente => {
+                            const option = document.createElement('option');
+                            option.value = cliente.cliente;
+                            option.textContent = `${cliente.cliente} - ${cliente.nome || cliente.fantasia}`;
+                            selectClienteOrigem.appendChild(option);
+                        });
+                        selectClienteOrigem.disabled = false;
+                    } catch (error) {
+                        console.error('Erro ao carregar clientes:', error);
+                        this.showNotification('Erro ao carregar clientes da cidade.', 'error');
+                    }
+                });
+            }
+
+            // Carregar cidades para comprador
+            if (selectCidadeComprador) {
+                selectCidadeComprador.innerHTML = '<option value="">Selecione a cidade...</option>';
+                cidades.forEach(cidade => {
+                    const option = document.createElement('option');
+                    option.value = cidade;
+                    option.textContent = cidade;
+                    selectCidadeComprador.appendChild(option);
+                });
+            }
+        } catch (error) {
+            console.error('Erro ao carregar cidades:', error);
+            this.showNotification('Erro ao carregar cidades.', 'error');
+        }
+
+        modal.classList.add('active');
+    }
+
+    async salvarVinculoManualCentralizacao() {
+        const selectClienteOrigem = document.getElementById('selectClienteOrigem');
+        const selectClienteComprador = document.getElementById('selectClienteComprador');
+
+        const clienteOrigemCodigo = selectClienteOrigem?.value;
+        const clienteCompradorCodigo = selectClienteComprador?.value;
+
+        if (!clienteOrigemCodigo || !clienteCompradorCodigo) {
+            this.showNotification('Selecione o cliente origem e o cliente comprador.', 'warning');
+            return;
+        }
+
+        if (clienteOrigemCodigo === clienteCompradorCodigo) {
+            this.showNotification('O cliente origem e comprador não podem ser o mesmo.', 'warning');
+            return;
+        }
+
+        try {
+            // Criar vínculo de venda centralizada
+            const response = await fetch(`${API_BASE_URL}/api/venda-centralizada`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    vc_cliente_origem: clienteOrigemCodigo,
+                    vc_cliente_comprador: clienteCompradorCodigo
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.text();
+                throw new Error(error || 'Erro ao criar vínculo.');
+            }
+
+            // Ativar flag de venda centralizada automaticamente no roteiro do cliente
+            await this.ativarFlagVendaCentralizadaAutomaticamente(clienteOrigemCodigo);
+
+            this.showNotification('Vínculo criado com sucesso e flag ativada no roteiro.', 'success');
+
+            // Fechar modal e recarregar
+            const modal = document.getElementById('modalVincularComprador');
+            if (modal) modal.classList.remove('active');
+
+            await this.carregarClientesCentralizados(this.obterFiltrosCentralizacao());
+        } catch (error) {
+            console.error('Erro ao salvar vínculo:', error);
+            this.showNotification(error.message || 'Erro ao criar vínculo.', 'error');
+        }
+    }
+
+    async ativarFlagVendaCentralizadaAutomaticamente(clienteCodigo) {
+        try {
+            // Buscar todos os registros deste cliente no roteiro
+            const clientesRoteiro = await db.buscarClienteNoRoteiro(clienteCodigo);
+
+            if (clientesRoteiro && clientesRoteiro.length > 0) {
+                const usuario = this.usuarioLogado?.username || 'desconhecido';
+
+                // Ativar flag para todos os repositores que atendem este cliente
+                for (const clienteRot of clientesRoteiro) {
+                    if (clienteRot.rot_cli_id) {
+                        await db.atualizarVendaCentralizada(clienteRot.rot_cli_id, true, usuario);
+                        console.log(`Flag venda centralizada ativada para cliente ${clienteCodigo}, roteiro ${clienteRot.rot_cli_id}`);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao ativar flag de venda centralizada:', error);
+            // Não lançar erro pois o vínculo já foi criado
         }
     }
 
@@ -3903,6 +4088,11 @@ class App {
     }
 
     async salvarVinculoComprador() {
+        // Verificar se está em modo de adição manual
+        if (this.contextoVinculoCentralizacao?.modo === 'adicionar_manual') {
+            return this.salvarVinculoManualCentralizacao();
+        }
+
         const clienteComprador = document.getElementById('selectClienteComprador')?.value?.trim();
 
         if (!clienteComprador) {
