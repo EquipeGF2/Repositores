@@ -10,6 +10,7 @@ import documentosRoutes from './routes/documentos.js';
 import arquivosRoutes from './routes/arquivos.js';
 import campanhasRoutes from './routes/campanhas.js';
 import rateioRoutes from './routes/rateio.js';
+import vendaCentralizadaRoutes from './routes/vendaCentralizada.js';
 import healthRoutes from './routes/health.js';
 import authRoutes from './routes/auth.js';
 import usuariosRoutes from './routes/usuarios.js';
@@ -103,6 +104,7 @@ app.use('/api/documentos', documentosRoutes);
 app.use('/api/arquivos', arquivosRoutes);
 app.use('/api/campanhas', campanhasRoutes);
 app.use('/api/rateio', rateioRoutes);
+app.use('/api/venda-centralizada', vendaCentralizadaRoutes);
 
 // Rota 404
 app.use((req, res) => {

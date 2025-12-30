@@ -21,6 +21,9 @@ class TursoService {
       this.ensureRateioSchema().catch((err) => {
         console.warn('⚠️  Falha ao garantir schema de rateio:', err?.message || err);
       });
+      this.ensureVendaCentralizadaSchema().catch((err) => {
+        console.warn('⚠️  Falha ao garantir schema de venda centralizada:', err?.message || err);
+      });
       this.ensureDrivePendenciaSchema().catch((err) => {
         console.warn('⚠️  Falha ao garantir schema de pendência de Drive:', err?.message || err);
       });
@@ -187,6 +190,32 @@ class TursoService {
     }
   }
 
+  async ensureVendaCentralizadaSchema() {
+    try {
+      await this.execute(
+        `CREATE TABLE IF NOT EXISTS venda_centralizada (
+          vc_id INTEGER PRIMARY KEY AUTOINCREMENT,
+          vc_cliente_origem TEXT NOT NULL,
+          vc_cliente_comprador TEXT NOT NULL,
+          vc_observacao TEXT,
+          vc_criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+          vc_atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`
+      );
+
+      await this.execute(
+        'CREATE UNIQUE INDEX IF NOT EXISTS uniq_vc_cliente_origem ON venda_centralizada (vc_cliente_origem)'
+      );
+
+      await this.execute(
+        'CREATE INDEX IF NOT EXISTS idx_vc_cliente_comprador ON venda_centralizada (vc_cliente_comprador)'
+      );
+    } catch (error) {
+      console.error('❌ Erro ao garantir schema de venda centralizada:', error?.message || error);
+      throw error;
+    }
+  }
+
   async listarRateiosManutencao({ cidadeId, clienteId, repositorId, rateioId } = {}) {
     await this.ensureRateioSchema();
 
@@ -290,6 +319,117 @@ class TursoService {
 
     const atualizado = await this.listarRateiosManutencao({ rateioId: ratId });
     return atualizado?.[0] || null;
+  }
+
+  // ==================== VENDA CENTRALIZADA ====================
+  async listarVendasCentralizadas({ clienteOrigem, clienteComprador } = {}) {
+    await this.ensureVendaCentralizadaSchema();
+
+    const filtros = [];
+    const args = [];
+
+    if (clienteOrigem) {
+      filtros.push('vc_cliente_origem = ?');
+      args.push(clienteOrigem);
+    }
+
+    if (clienteComprador) {
+      filtros.push('vc_cliente_comprador = ?');
+      args.push(clienteComprador);
+    }
+
+    const whereClause = filtros.length ? `WHERE ${filtros.join(' AND ')}` : '';
+
+    const sql = `
+      SELECT
+        vc_id,
+        vc_cliente_origem,
+        vc_cliente_comprador,
+        vc_observacao,
+        vc_criado_em,
+        vc_atualizado_em
+      FROM venda_centralizada
+      ${whereClause}
+      ORDER BY vc_cliente_origem
+    `;
+
+    const resultado = await this.execute(sql, args);
+    return resultado?.rows || [];
+  }
+
+  async criarVendaCentralizada({ clienteOrigem, clienteComprador, observacao }) {
+    if (!clienteOrigem || !clienteComprador) {
+      throw new Error('Cliente origem e cliente comprador são obrigatórios');
+    }
+
+    await this.ensureVendaCentralizadaSchema();
+
+    const sql = `
+      INSERT INTO venda_centralizada (vc_cliente_origem, vc_cliente_comprador, vc_observacao)
+      VALUES (?, ?, ?)
+    `;
+
+    const resultado = await this.execute(sql, [clienteOrigem, clienteComprador, observacao || null]);
+    return { vc_id: Number(resultado.lastInsertRowid), clienteOrigem, clienteComprador };
+  }
+
+  async atualizarVendaCentralizada(vcId, { clienteComprador, observacao }) {
+    if (!vcId) {
+      throw new Error('ID da venda centralizada é obrigatório');
+    }
+
+    await this.ensureVendaCentralizadaSchema();
+
+    const updates = [];
+    const args = [];
+
+    if (clienteComprador !== undefined) {
+      updates.push('vc_cliente_comprador = ?');
+      args.push(clienteComprador);
+    }
+
+    if (observacao !== undefined) {
+      updates.push('vc_observacao = ?');
+      args.push(observacao || null);
+    }
+
+    updates.push('vc_atualizado_em = CURRENT_TIMESTAMP');
+    args.push(vcId);
+
+    const sql = `UPDATE venda_centralizada SET ${updates.join(', ')} WHERE vc_id = ?`;
+    const resultado = await this.execute(sql, args);
+
+    if (!resultado || (resultado.rowsAffected ?? 0) === 0) {
+      return null;
+    }
+
+    return { vc_id: vcId };
+  }
+
+  async removerVendaCentralizada(vcId) {
+    if (!vcId) {
+      throw new Error('ID da venda centralizada é obrigatório');
+    }
+
+    await this.ensureVendaCentralizadaSchema();
+
+    const sql = 'DELETE FROM venda_centralizada WHERE vc_id = ?';
+    const resultado = await this.execute(sql, [vcId]);
+
+    return (resultado.rowsAffected ?? 0) > 0;
+  }
+
+  async buscarVendaCentralizadaPorCliente(clienteOrigem) {
+    if (!clienteOrigem) {
+      return null;
+    }
+
+    await this.ensureVendaCentralizadaSchema();
+
+    const sql = 'SELECT * FROM venda_centralizada WHERE vc_cliente_origem = ?';
+    const resultado = await this.execute(sql, [clienteOrigem]);
+
+    return resultado?.rows?.[0] || null;
   }
 
   async hasTabela(nome) {
