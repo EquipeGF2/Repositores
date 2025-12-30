@@ -3155,42 +3155,59 @@ class App {
 
     // ==================== CADASTRO DE RATEIO ====================
     async inicializarCadastroRateio() {
-        // Popular filtro de cidades (buscar de potencial_cidade)
-        const selectCidade = document.getElementById('filtroCidade');
-        if (selectCidade && selectCidade.options.length === 1) {
-            const cidades = await db.getCidadesPotencial();
-            cidades.forEach(cidade => {
-                const option = document.createElement('option');
-                option.value = cidade;
-                option.textContent = cidade;
-                selectCidade.appendChild(option);
-            });
-        }
+        try {
+            // Popular filtro de cidades (buscar de potencial_cidade)
+            const selectCidade = document.getElementById('filtroCidade');
+            if (selectCidade && selectCidade.options.length === 1) {
+                try {
+                    const cidades = await db.getCidadesPotencial();
+                    if (cidades && Array.isArray(cidades)) {
+                        cidades.forEach(cidade => {
+                            const option = document.createElement('option');
+                            option.value = cidade;
+                            option.textContent = cidade;
+                            selectCidade.appendChild(option);
+                        });
+                    }
+                } catch (error) {
+                    console.error('Erro ao carregar cidades:', error);
+                }
+            }
 
-        // Popular filtro de clientes com rateio
-        const selectCliente = document.getElementById('filtroCliente');
-        if (selectCliente && selectCliente.options.length === 1) {
-            const clientes = await db.getClientesComRateio();
-            clientes.forEach(cliente => {
-                const option = document.createElement('option');
-                option.value = cliente.cliente;
-                option.textContent = `${cliente.cliente} - ${cliente.nome || cliente.fantasia}`;
-                selectCliente.appendChild(option);
-            });
-        }
+            // Popular filtro de clientes com rateio
+            const selectCliente = document.getElementById('filtroCliente');
+            if (selectCliente && selectCliente.options.length === 1) {
+                try {
+                    const clientes = await db.getClientesComRateio();
+                    if (clientes && Array.isArray(clientes)) {
+                        clientes.forEach(cliente => {
+                            const option = document.createElement('option');
+                            option.value = cliente.cliente;
+                            option.textContent = `${cliente.cliente} - ${cliente.nome || cliente.fantasia}`;
+                            selectCliente.appendChild(option);
+                        });
+                    }
+                } catch (error) {
+                    console.error('Erro ao carregar clientes com rateio:', error);
+                }
+            }
 
-        // Event listeners
-        const btnRecarregar = document.getElementById('btnRecarregarRateio');
-        if (btnRecarregar) {
-            btnRecarregar.addEventListener('click', () => this.aplicarFiltrosRateio());
-        }
+            // Event listeners
+            const btnRecarregar = document.getElementById('btnRecarregarRateio');
+            if (btnRecarregar) {
+                btnRecarregar.addEventListener('click', () => this.aplicarFiltrosRateio());
+            }
 
-        const btnAplicarFiltros = document.getElementById('btnAplicarFiltrosRateio');
-        if (btnAplicarFiltros) {
-            btnAplicarFiltros.addEventListener('click', () => this.aplicarFiltrosRateio());
-        }
+            const btnAplicarFiltros = document.getElementById('btnAplicarFiltrosRateio');
+            if (btnAplicarFiltros) {
+                btnAplicarFiltros.addEventListener('click', () => this.aplicarFiltrosRateio());
+            }
 
-        await this.carregarListaRateioManutencao();
+            await this.carregarListaRateioManutencao();
+        } catch (error) {
+            console.error('Erro ao inicializar cadastro de rateio:', error);
+            this.showNotification('Erro ao inicializar tela de rateio. Tente recarregar a página.', 'error');
+        }
     }
 
     obterFiltrosRateio() {
