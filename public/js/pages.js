@@ -1749,6 +1749,9 @@ export const pages = {
                         </div>
                     </div>
 
+                    <!-- Container para aviso de clientes pendentes -->
+                    <div id="avisoClientesPendentesContainer" style="margin-top: 1rem; display: none;"></div>
+
                     <div id="roteiroContainer" style="margin-top: 1.5rem;">
                         <div class="empty-state">
                             <div class="empty-state-icon">📋</div>
