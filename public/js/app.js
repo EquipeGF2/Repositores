@@ -7489,6 +7489,245 @@ class App {
         };
     }
 
+    // ==================== CLIENTES PENDENTES DO DIA ANTERIOR ====================
+
+    calcularDiasUteisAtras(dataInicial, numDias) {
+        const data = new Date(dataInicial + 'T12:00:00');
+        let diasContados = 0;
+
+        while (diasContados < numDias) {
+            data.setDate(data.getDate() - 1);
+            const diaSemana = data.getDay();
+            // 0 = Domingo, 6 = Sábado
+            if (diaSemana !== 0 && diaSemana !== 6) {
+                diasContados++;
+            }
+        }
+
+        return data.toISOString().split('T')[0];
+    }
+
+    calcularDiasUteisFrente(dataInicial, numDias) {
+        const data = new Date(dataInicial + 'T12:00:00');
+        let diasContados = 0;
+
+        while (diasContados < numDias) {
+            data.setDate(data.getDate() + 1);
+            const diaSemana = data.getDay();
+            if (diaSemana !== 0 && diaSemana !== 6) {
+                diasContados++;
+            }
+        }
+
+        return data.toISOString().split('T')[0];
+    }
+
+    obterUltimoDiaUtil(dataReferencia) {
+        const data = new Date(dataReferencia + 'T12:00:00');
+        data.setDate(data.getDate() - 1);
+
+        while (true) {
+            const diaSemana = data.getDay();
+            if (diaSemana !== 0 && diaSemana !== 6) {
+                return data.toISOString().split('T')[0];
+            }
+            data.setDate(data.getDate() - 1);
+        }
+    }
+
+    async verificarClientesPendentes() {
+        try {
+            const selectRepositor = document.getElementById('registroRepositor');
+            const inputData = document.getElementById('registroData');
+
+            const repId = selectRepositor?.value ? parseInt(selectRepositor.value) : null;
+            const dataAtual = inputData?.value;
+
+            if (!repId || !dataAtual) return;
+
+            // Calcular último dia útil
+            const ultimoDiaUtil = this.obterUltimoDiaUtil(dataAtual);
+
+            // Verificar se já passaram mais de 2 dias úteis
+            const limiteAviso = this.calcularDiasUteisAtras(dataAtual, 2);
+
+            if (ultimoDiaUtil < limiteAviso) {
+                // Já passou o prazo de 2 dias úteis
+                this.limparAvisoClientesPendentes();
+                return;
+            }
+
+            // Calcular dia da semana do último dia útil
+            const dataUltimo = new Date(ultimoDiaUtil + 'T12:00:00');
+            const diaNumero = dataUltimo.getDay();
+            const diasMap = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
+            const diaSemana = diasMap[diaNumero];
+
+            // Buscar roteiro do último dia útil
+            const roteiroAnterior = await db.carregarRoteiroRepositorDia(repId, diaSemana);
+
+            if (!roteiroAnterior || roteiroAnterior.length === 0) {
+                this.limparAvisoClientesPendentes();
+                return;
+            }
+
+            // Buscar resumo de visitas do último dia útil
+            const resumoAnterior = await this.buscarResumoVisitas(repId, ultimoDiaUtil);
+            const mapaResumo = new Map(resumoAnterior.map(r => [String(r.cliente_id).trim(), r]));
+
+            // Filtrar clientes sem checkout
+            const clientesPendentes = roteiroAnterior.filter(cliente => {
+                const clienteId = String(cliente.cli_codigo).trim();
+                const resumo = mapaResumo.get(clienteId);
+                return !resumo || resumo.status !== 'finalizado';
+            });
+
+            if (clientesPendentes.length === 0) {
+                this.limparAvisoClientesPendentes();
+                return;
+            }
+
+            // Verificar clientes já ignorados hoje
+            const ignoradosKey = `clientes_pendentes_ignorados_${repId}_${dataAtual}`;
+            const ignoradosStr = localStorage.getItem(ignoradosKey);
+            const ignorados = ignoradosStr ? JSON.parse(ignoradosStr) : [];
+
+            const clientesParaMostrar = clientesPendentes.filter(c =>
+                !ignorados.includes(String(c.cli_codigo).trim())
+            );
+
+            if (clientesParaMostrar.length === 0) {
+                this.limparAvisoClientesPendentes();
+                return;
+            }
+
+            // Renderizar aviso
+            this.renderizarAvisoClientesPendentes(clientesParaMostrar, ultimoDiaUtil, repId, dataAtual);
+        } catch (error) {
+            console.error('Erro ao verificar clientes pendentes:', error);
+        }
+    }
+
+    renderizarAvisoClientesPendentes(clientes, dataPendente, repId, dataAtual) {
+        const container = document.getElementById('avisoClientesPendentesContainer');
+        if (!container) return;
+
+        const formatarData = (data) => {
+            const partes = data.split('-');
+            return `${partes[2]}/${partes[1]}/${partes[0]}`;
+        };
+
+        const html = `
+            <div class="aviso-clientes-pendentes">
+                <div class="aviso-header">
+                    <div class="aviso-icon">⚠️</div>
+                    <div class="aviso-titulo">
+                        <h4>Clientes não atendidos de ${formatarData(dataPendente)}</h4>
+                        <p>${clientes.length} cliente(s) sem checkout</p>
+                    </div>
+                </div>
+                <div class="aviso-lista">
+                    ${clientes.map(cliente => {
+                        const clienteId = String(cliente.cli_codigo).trim();
+                        const clienteNome = cliente.cli_nome || 'Sem nome';
+                        const endereco = [cliente.cli_cidade, cliente.cli_estado].filter(Boolean).join('/');
+
+                        return `
+                            <div class="aviso-cliente-item" data-cliente-id="${clienteId}">
+                                <div class="aviso-cliente-info">
+                                    <strong>${clienteId} - ${clienteNome}</strong>
+                                    <small>${endereco}</small>
+                                </div>
+                                <div class="aviso-cliente-acoes">
+                                    <button class="btn btn-sm btn-primary" onclick="app.incluirClientePendenteNoRoteiro('${clienteId}', '${clienteNome}', ${repId}, '${dataAtual}', '${dataPendente}')">
+                                        ✅ Incluir Hoje
+                                    </button>
+                                    <button class="btn btn-sm btn-secondary" onclick="app.ignorarClientePendente('${clienteId}', ${repId}, '${dataAtual}')">
+                                        ❌ Ignorar
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+        `;
+
+        container.innerHTML = html;
+        container.style.display = 'block';
+    }
+
+    limparAvisoClientesPendentes() {
+        const container = document.getElementById('avisoClientesPendentesContainer');
+        if (container) {
+            container.innerHTML = '';
+            container.style.display = 'none';
+        }
+    }
+
+    async incluirClientePendenteNoRoteiro(clienteId, clienteNome, repId, dataAtual, dataPendente) {
+        try {
+            // Calcular dia da semana
+            const data = new Date(dataAtual + 'T12:00:00');
+            const diaNumero = data.getDay();
+            const diasMap = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
+            const diaSemana = diasMap[diaNumero];
+
+            // Buscar roteiro do dia atual
+            const roteiro = await db.carregarRoteiroRepositorDia(repId, diaSemana);
+
+            // Verificar se cliente já está no roteiro
+            const jaExiste = roteiro.some(c => String(c.cli_codigo).trim() === clienteId);
+
+            if (jaExiste) {
+                this.showNotification('Cliente já está no roteiro de hoje', 'info');
+                this.ignorarClientePendente(clienteId, repId, dataAtual);
+                return;
+            }
+
+            // Adicionar marcador de atrasado
+            this.showNotification(`Cliente ${clienteNome} será incluído como ATRASADO no roteiro`, 'warning');
+
+            // Marcar como ignorado para não mostrar novamente
+            this.ignorarClientePendente(clienteId, repId, dataAtual);
+
+            // Nota: Como não temos acesso direto ao roteiro para adicionar,
+            // vamos apenas notificar o usuário que este cliente está atrasado
+            // O repositor precisará incluir manualmente via cadastro de roteiro
+            this.showNotification(`Atenção: Inclua ${clienteNome} manualmente no cadastro de roteiro marcando como atrasado`, 'info');
+
+            await this.carregarRoteiroRepositor();
+        } catch (error) {
+            console.error('Erro ao incluir cliente pendente:', error);
+            this.showNotification('Erro ao processar cliente: ' + error.message, 'error');
+        }
+    }
+
+    ignorarClientePendente(clienteId, repId, dataAtual) {
+        const ignoradosKey = `clientes_pendentes_ignorados_${repId}_${dataAtual}`;
+        const ignoradosStr = localStorage.getItem(ignoradosKey);
+        const ignorados = ignoradosStr ? JSON.parse(ignoradosStr) : [];
+
+        if (!ignorados.includes(clienteId)) {
+            ignorados.push(clienteId);
+            localStorage.setItem(ignoradosKey, JSON.stringify(ignorados));
+        }
+
+        // Remover item da lista
+        const item = document.querySelector(`.aviso-cliente-item[data-cliente-id="${clienteId}"]`);
+        if (item) {
+            item.remove();
+        }
+
+        // Verificar se ainda há clientes pendentes
+        const container = document.getElementById('avisoClientesPendentesContainer');
+        const itensRestantes = container?.querySelectorAll('.aviso-cliente-item');
+
+        if (!itensRestantes || itensRestantes.length === 0) {
+            this.limparAvisoClientesPendentes();
+        }
+    }
+
     async carregarRoteiroRepositor() {
         const container = document.getElementById('roteiroContainer');
 
@@ -7691,6 +7930,9 @@ class App {
         });
 
         this.showNotification(`${roteiro.length} cliente(s) no roteiro`, 'success');
+
+        // Verificar clientes não atendidos do último dia útil
+        await this.verificarClientesPendentes();
     } catch (error) {
         console.error('Erro ao carregar roteiro:', error);
         this.showNotification('Erro ao carregar roteiro: ' + error.message, 'error');
