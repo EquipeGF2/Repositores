@@ -75,21 +75,39 @@ app.use((req, res, next) => {
 
 // ==================== ROTAS ====================
 
-// Health check
+// Health check com retry para lidar com falhas temporárias do Turso
 app.get('/api/health', async (req, res) => {
-  try {
-    const db = getDbClient();
-    await db.execute({ sql: 'SELECT 1', args: [] });
+  const maxRetries = 3;
+  let lastError;
 
-    res.json({ ok: true });
-  } catch (error) {
-    if (error instanceof DatabaseNotConfiguredError) {
-      return res.status(503).json({ ok: false, code: error.code, message: error.message });
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const db = getDbClient();
+      await db.execute({ sql: 'SELECT 1', args: [] });
+
+      res.json({ ok: true });
+      return;
+    } catch (error) {
+      lastError = error;
+
+      if (error instanceof DatabaseNotConfiguredError) {
+        return res.status(503).json({ ok: false, code: error.code, message: error.message });
+      }
+
+      // Se for erro 502 (Bad Gateway) do Turso, tentar novamente
+      if (attempt < maxRetries - 1 && (error.message?.includes('502') || error.message?.includes('SERVER_ERROR'))) {
+        const delayMs = Math.pow(2, attempt) * 100; // 100ms, 200ms, 400ms
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        continue;
+      }
+
+      // Se não for 502 ou já esgotou tentativas, retornar erro
+      break;
     }
-
-    console.error('Erro no health check:', error?.stack || error);
-    res.status(500).json({ ok: false, code: 'HEALTH_CHECK_ERROR', message: 'Erro ao verificar banco' });
   }
+
+  console.error('Erro no health check:', lastError?.stack || lastError);
+  res.status(500).json({ ok: false, code: 'HEALTH_CHECK_ERROR', message: 'Erro ao verificar banco' });
 });
 
 // Rotas públicas (sem autenticação)

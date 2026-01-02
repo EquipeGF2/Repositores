@@ -1769,6 +1769,7 @@ export const pages = {
                             </div>
                             <button class="modal-close captura-close" onclick="window.app.fecharModalCaptura()" aria-label="Fechar" title="Fechar">&times;</button>
                         </div>
+                        <p id="avisoFotosCampanha" class="aviso-fotos-campanha" style="display: none; font-size: 0.75rem; color: #666; margin: 4px 0 0 0; padding: 0;">Máx 10 fotos</p>
                         <p id="capturaClienteInfo" class="captura-cliente-info"></p>
                     </div>
 

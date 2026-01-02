@@ -2981,17 +2981,18 @@ class App {
                     if (!jaTemRateio) {
                         console.log(`[AUTO-RATEIO] Criando rateio 0% para repositor ${clienteRot.repositor_id}`);
 
-                        // Criar rateio com 0% para este repositor
-                        await db.criarRateioAutomatico(
-                            clienteCodigo,
-                            clienteRot.repositor_id,
-                            0, // percentual 0%
-                            usuario
-                        );
-
-                        // Ativar flag de rateio no roteiro
+                        // Criar rateio com 0% para este repositor usando sincronizarRateioClienteRoteiro
+                        // Isso garante que apenas 1 registro será criado
                         if (clienteRot.rot_cli_id) {
-                            await db.atualizarRateioClienteRoteiro(clienteRot.rot_cli_id, true, usuario);
+                            await db.sincronizarRateioClienteRoteiro({
+                                rotCliId: clienteRot.rot_cli_id,
+                                repositorId: clienteRot.repositor_id,
+                                clienteCodigo: clienteCodigo,
+                                ativo: true,
+                                percentual: 0,
+                                vigenciaInicio: null,
+                                usuario
+                            });
                         }
 
                         console.log(`[AUTO-RATEIO] ✅ Rateio 0% criado para cliente ${clienteCodigo}, repositor ${clienteRot.repositor_id}`);
@@ -3222,6 +3223,8 @@ class App {
                 const campos = [
                     cliente.nome,
                     cliente.fantasia,
+                    cliente.endereco,
+                    cliente.num_endereco,
                     cliente.bairro,
                     cliente.grupo_desc,
                     documentoParaExibicao(cliente.cnpj_cpf)
@@ -3413,11 +3416,11 @@ class App {
     // ==================== CADASTRO DE RATEIO ====================
     async inicializarCadastroRateio() {
         try {
-            // Popular filtro de cidades (buscar de potencial_cidade)
+            // Popular filtro de cidades (buscar apenas cidades com rateio)
             const selectCidade = document.getElementById('filtroCidade');
             if (selectCidade && selectCidade.options.length === 1) {
                 try {
-                    const cidades = await db.getCidadesPotencial();
+                    const cidades = await db.getCidadesRateio();
                     if (cidades && Array.isArray(cidades)) {
                         cidades.forEach(cidade => {
                             const option = document.createElement('option');
@@ -4306,8 +4309,8 @@ class App {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    vc_cliente_origem: clienteOrigemCodigo,
-                    vc_cliente_comprador: clienteCompradorCodigo
+                    cliente_origem: clienteOrigemCodigo,
+                    cliente_comprador: clienteCompradorCodigo
                 })
             });
 
@@ -7540,6 +7543,9 @@ class App {
             return;
         }
 
+        // Preservar dados locais atualizados antes de sobrescrever com dados do backend
+        const resumoLocalAnterior = this.registroRotaState.resumoVisitas || new Map();
+
         const mapaResumo = new Map((resumo || []).map((item) => [normalizeClienteId(item.cliente_id), item]));
         this.registroRotaState.atendimentosAbertos = new Map((atendimentosAbertos || [])
             .map((item) => [normalizeClienteId(item.cliente_id), item]));
@@ -7562,6 +7568,17 @@ class App {
                 this.persistirAtendimentoLocal(repId, cliNorm, {
                     rv_id: aberto.rv_id
                 });
+            }
+        });
+
+        // Preservar status local recém-atualizado (checkout, etc.) se o timestamp for recente (< 5s)
+        resumoLocalAnterior.forEach((statusLocal, clienteId) => {
+            const agoraMs = Date.now();
+            const timestampLocal = statusLocal._timestamp_update || 0;
+            const eRecente = (agoraMs - timestampLocal) < 5000; // 5 segundos
+
+            if (eRecente && (statusLocal.status === 'finalizado' || statusLocal.status === 'em_atendimento')) {
+                mapaResumo.set(clienteId, statusLocal);
             }
         });
 
@@ -7876,7 +7893,8 @@ class App {
         const combinado = {
             ...atual,
             ...novoStatus,
-            cliente_id: clienteIdNorm
+            cliente_id: clienteIdNorm,
+            _timestamp_update: Date.now()
         };
 
         mapaResumo.set(clienteIdNorm, combinado);
@@ -8268,6 +8286,12 @@ class App {
         const tipoBadge = document.getElementById('capturaTipoBadge');
         if (tipoBadge) {
             tipoBadge.textContent = tipoPadrao.toUpperCase();
+        }
+
+        // Mostrar aviso de fotos apenas para campanha
+        const avisoFotos = document.getElementById('avisoFotosCampanha');
+        if (avisoFotos) {
+            avisoFotos.style.display = tipoPadrao === 'campanha' ? 'block' : 'none';
         }
 
         const clienteInfo = document.getElementById('capturaClienteInfo');
@@ -11717,6 +11741,7 @@ class App {
             });
 
             console.log('[PONTUALIDADE] Totais calculados:', totaisPlanejamento);
+            console.log('[PONTUALIDADE] Resumo do backend:', resumoPontualidade);
 
             // Calcular médias e percentuais
             if (stats.total_clientes > 0) {
@@ -11733,18 +11758,25 @@ class App {
                 stats.perc_pontos_extras = ((stats.visitas_com_pontos_extras / stats.total_visitas) * 100).toFixed(1);
             }
 
-            const visitasAdiantadas = resumoPontualidade?.qtde_adiantadas ?? totaisPlanejamento.adiantadas;
-            const visitasAtrasadas = resumoPontualidade?.qtde_atrasadas ?? totaisPlanejamento.atrasadas;
+            // Priorizar cálculo local sobre backend quando houver discrepância
+            // Backend pode ter dados desatualizados ou incorretos
+            const visitasAdiantadas = totaisPlanejamento.adiantadas;
+            const visitasAtrasadas = totaisPlanejamento.atrasadas;
 
-            const percentAdiantadas = resumoPontualidade?.percent_adiantadas
-                ?? (totalCheckoutsLocal > 0 ? (totaisPlanejamento.adiantadas / totalCheckoutsLocal) * 100 : 0);
-            const percentAtrasadas = resumoPontualidade?.percent_atrasadas
-                ?? (totalCheckoutsLocal > 0 ? (totaisPlanejamento.atrasadas / totalCheckoutsLocal) * 100 : 0);
+            const percentAdiantadas = totalCheckoutsLocal > 0 ? (totaisPlanejamento.adiantadas / totalCheckoutsLocal) * 100 : 0;
+            const percentAtrasadas = totalCheckoutsLocal > 0 ? (totaisPlanejamento.atrasadas / totalCheckoutsLocal) * 100 : 0;
 
             stats.visitas_adiantadas = visitasAdiantadas;
             stats.visitas_atrasadas = visitasAtrasadas;
             stats.percent_adiantadas = formatPercentual(percentAdiantadas);
             stats.percent_atrasadas = formatPercentual(percentAtrasadas);
+
+            console.log('[PONTUALIDADE] Stats finais:', {
+                visitas_adiantadas: stats.visitas_adiantadas,
+                visitas_atrasadas: stats.visitas_atrasadas,
+                percent_adiantadas: stats.percent_adiantadas,
+                percent_atrasadas: stats.percent_atrasadas
+            });
 
             this.renderizarServicos(stats);
         } catch (error) {
