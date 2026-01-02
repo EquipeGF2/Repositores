@@ -89,3 +89,42 @@ class GeoService {
 }
 
 export const geoService = new GeoService();
+
+export async function getCurrentPositionPromise(options = REQUEST_OPTIONS_FAST) {
+    if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
+        throw { code: 'GEO_UNAVAILABLE', message: 'GPS não disponível no navegador.' };
+    }
+
+    const erros = [];
+    const registrarLocalizacao = (position) => {
+        const location = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+            ts: Date.now()
+        };
+        geoService.salvarLocalizacao(location);
+        return location;
+    };
+
+    try {
+        const position = await geoService.tentarCapturarLocalizacao(options);
+        return registrarLocalizacao(position);
+    } catch (erroPrimario) {
+        erros.push(erroPrimario);
+        if (erroPrimario?.code === 1 || erroPrimario?.code === 'GEO_PERMISSION_DENIED') {
+            throw { code: 'GEO_PERMISSION_DENIED', message: 'Permissão de localização negada.', erros };
+        }
+        if (erroPrimario?.code === 3 || erroPrimario?.code === 'TIMEOUT') {
+            throw { code: 'GEO_TIMEOUT', message: 'Tempo limite para capturar localização excedido.', erros };
+        }
+    }
+
+    try {
+        const positionFallback = await geoService.tentarCapturarLocalizacao(REQUEST_OPTIONS_FALLBACK);
+        return registrarLocalizacao(positionFallback);
+    } catch (erroFallback) {
+        erros.push(erroFallback);
+        throw { code: erroFallback?.code || 'GEO_FAILED', message: erroFallback?.message || 'Falha ao capturar localização.', erros };
+    }
+}

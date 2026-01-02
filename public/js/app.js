@@ -6,7 +6,7 @@
 import { db } from './db.js';
 import { mobilePageTitles, pages, pageTitles } from './pages.js';
 import { ACL_RECURSOS } from './acl-resources.js';
-import { geoService } from './geo.js';
+import { geoService, getCurrentPositionPromise } from './geo.js';
 import { formatarDataISO, normalizarDataISO, normalizarSupervisor, normalizarTextoCadastro, formatarGrupo, documentoParaBusca, documentoParaExibicao } from './utils.js';
 
 performance.mark('app_start');
@@ -466,9 +466,12 @@ class App {
         this.registrarResumoPerformance();
         this.iniciarKeepAliveBackend();
 
-        const geoLiberado = await geoPromise;
-        if (!geoLiberado) {
-            this.showNotification('Localização não liberada. Ative o GPS para recursos de rota.', 'warning');
+        try {
+            await getCurrentPositionPromise();
+        } catch (geoError) {
+            console.warn('Falha ao capturar localização inicial:', geoError);
+            const mensagemGeo = geoError?.message || 'Localização não liberada. Ative o GPS para recursos de rota.';
+            this.showNotification(mensagemGeo, 'warning');
         }
     }
 
