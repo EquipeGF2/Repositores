@@ -42,6 +42,55 @@ const DOCUMENTOS_MIMES_PERMITIDOS = [
     'image/jpg'
 ];
 
+function safeJsonParse(value, fallback = null) {
+    if (value === undefined || value === null) return fallback;
+    if (typeof value === 'string' && value.trim() === '') return fallback;
+    try {
+        return JSON.parse(value);
+    } catch (error) {
+        console.warn('safeJsonParse falhou, retornando fallback', error);
+        return fallback;
+    }
+}
+
+async function fetchJson(url, options = {}) {
+    try {
+        const response = await fetch(url, options);
+        const texto = await response.text();
+        const corpoLimpo = texto?.trim();
+        const temBody = !!corpoLimpo;
+        const contentType = response.headers?.get('content-type') || '';
+        const pareceJson = contentType.includes('application/json') || (temBody && /^[\[{]/.test(corpoLimpo));
+        const corpoJson = pareceJson ? safeJsonParse(corpoLimpo, null) : null;
+
+        if (!response.ok) {
+            const mensagem = corpoJson?.message || corpoJson?.error || (temBody ? corpoLimpo?.slice(0, 200) : `Status ${response.status}`);
+            console.error('API_FAIL', { url, status: response.status, message: mensagem });
+            const erro = new Error(mensagem || 'Falha na requisição');
+            erro.status = response.status;
+            erro.body = corpoJson;
+            erro.raw = corpoLimpo;
+            throw erro;
+        }
+
+        if (!temBody) return null;
+
+        const resultado = corpoJson !== null ? corpoJson : { raw: texto };
+
+        if (resultado && typeof resultado === 'object') {
+            Object.defineProperty(resultado, '__status', { value: response.status, enumerable: false });
+            Object.defineProperty(resultado, '__raw', { value: texto, enumerable: false });
+        }
+
+        return resultado;
+    } catch (error) {
+        if (!error?.logged) {
+            console.error('API_FAIL', { url, status: error?.status || 'client_error', message: error?.message });
+        }
+        throw error;
+    }
+}
+
 function exibirErroGlobal(mensagem, detalhe = '') {
     let banner = document.getElementById('erroGlobalBanner');
     if (!banner) {
@@ -969,7 +1018,7 @@ class App {
         if (!armazenado) return null;
 
         try {
-            const contexto = JSON.parse(armazenado);
+            const contexto = safeJsonParse(armazenado, null);
             if (contexto?.id && contexto?.username) {
                 return contexto;
             }
@@ -1219,17 +1268,7 @@ class App {
                 headers['Authorization'] = `Bearer ${token}`;
             }
 
-            const response = await fetch(url, { headers });
-
-            console.log('[GESTAO_USUARIOS] Resposta da API:', response.status, response.statusText);
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                console.error('[GESTAO_USUARIOS] Erro na resposta:', errorData);
-                throw new Error(errorData.message || `Erro ${response.status}: ${response.statusText}`);
-            }
-
-            const data = await response.json();
+            const data = await fetchJson(url, { headers });
             console.log('[GESTAO_USUARIOS] Usuários carregados:', data.usuarios?.length || 0);
             this.usuariosFiltrados = data.usuarios || [];
             this.renderizarTabelaUsuarios();
@@ -1375,7 +1414,7 @@ class App {
 
         try {
             const token = localStorage.getItem('auth_token');
-            const response = await fetch(`${API_BASE_URL}/api/usuarios/${usuarioId}`, {
+            await fetchJson(`${API_BASE_URL}/api/usuarios/${usuarioId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1383,10 +1422,6 @@ class App {
                 },
                 body: JSON.stringify({ ativo: novoStatus })
             });
-
-            if (!response.ok) {
-                throw new Error('Erro ao atualizar status');
-            }
 
             this.showNotification(`Usuário ${novoStatus ? 'ativado' : 'desativado'} com sucesso!`, 'success');
             await this.carregarUsuarios();
@@ -1442,17 +1477,11 @@ class App {
                 headers['Authorization'] = `Bearer ${token}`;
             }
 
-            const response = await fetch(url, {
+            const result = await fetchJson(url, {
                 method: isEdicao ? 'PUT' : 'POST',
                 headers,
                 body: JSON.stringify(dados)
             });
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.message || 'Erro ao salvar usuário');
-            }
 
             this.showNotification(
                 isEdicao ? 'Usuário atualizado com sucesso!' : 'Usuário criado com sucesso!',
@@ -1501,21 +1530,16 @@ class App {
                 headers['Authorization'] = `Bearer ${token}`;
             }
 
-            const response = await fetch(`${API_BASE_URL}/api/usuarios`, {
+            const result = await fetchJson(`${API_BASE_URL}/api/usuarios`, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify(dados)
             });
 
-            const result = await response.json();
-
-            if (!response.ok) {
-                // Se o usuário já existe, não é um erro crítico
-                if (result.code === 'USERNAME_EXISTS') {
-                    console.log('Usuário já existe para este repositor');
-                    return;
-                }
-                throw new Error(result.message || 'Erro ao criar usuário');
+            // Se o usuário já existe, não é um erro crítico
+            if (result?.code === 'USERNAME_EXISTS') {
+                console.log('Usuário já existe para este repositor');
+                return;
             }
 
             console.log('Usuário criado automaticamente para repositor', repoCod);
@@ -3720,14 +3744,7 @@ class App {
             url.searchParams.set('repositor_id', filtros.repositorId);
         }
 
-        const resposta = await fetch(url.toString());
-
-        if (!resposta.ok) {
-            const texto = await resposta.text();
-            throw new Error(`Erro ao buscar rateios (${resposta.status}): ${texto}`);
-        }
-
-        const payload = await resposta.json();
+        const payload = await fetchJson(url.toString());
         return Array.isArray(payload?.data) ? payload.data : [];
     }
 
@@ -4105,18 +4122,11 @@ class App {
         }
 
         try {
-            const resposta = await fetch(`${API_BASE_URL}/api/rateio/${rateioId}`, {
+            const resultado = await fetchJson(`${API_BASE_URL}/api/rateio/${rateioId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-
-            if (!resposta.ok) {
-                const detalhe = await resposta.text();
-                throw new Error(detalhe || 'Falha ao salvar rateio.');
-            }
-
-            const resultado = await resposta.json();
             const atualizado = resultado?.data;
             if (atualizado) {
                 Object.assign(linha, atualizado);
@@ -4639,13 +4649,7 @@ class App {
             if (filtros.cliente_comprador) params.set('cliente_comprador', filtros.cliente_comprador);
 
             const url = `${API_BASE_URL}/api/venda-centralizada${params.toString() ? '?' + params.toString() : ''}`;
-            const response = await fetch(url);
-
-            if (!response.ok) {
-                throw new Error('Erro ao buscar vendas centralizadas');
-            }
-
-            const data = await response.json();
+            const data = await fetchJson(url);
             return data.data || [];
         } catch (error) {
             console.error('Erro ao buscar vendas centralizadas:', error);
@@ -7580,7 +7584,7 @@ class App {
         try {
             const chave = this.getAtendimentoStorageKey(repId, clienteId);
             const bruto = localStorage.getItem(chave);
-            return bruto ? JSON.parse(bruto) : null;
+            return safeJsonParse(bruto, null);
         } catch (error) {
             console.warn('Não foi possível recuperar atendimento salvo localmente', error);
             return null;
@@ -7623,7 +7627,7 @@ class App {
     recuperarContextoRegistroRota() {
         try {
             const bruto = localStorage.getItem(this.getRegistroRotaContextKey());
-            return bruto ? JSON.parse(bruto) : null;
+            return safeJsonParse(bruto, null);
         } catch (error) {
             console.warn('Não foi possível recuperar contexto de registro de rota', error);
             return null;
@@ -7836,7 +7840,7 @@ class App {
             // Verificar clientes já ignorados hoje
             const ignoradosKey = `clientes_pendentes_ignorados_${repId}_${dataAtual}`;
             const ignoradosStr = localStorage.getItem(ignoradosKey);
-            const ignorados = ignoradosStr ? JSON.parse(ignoradosStr) : [];
+            const ignorados = safeJsonParse(ignoradosStr, []);
 
             const clientesParaMostrar = clientesPendentes.filter(c =>
                 !ignorados.includes(String(c.cli_codigo).trim())
@@ -7952,7 +7956,7 @@ class App {
     ignorarClientePendente(clienteId, repId, dataAtual) {
         const ignoradosKey = `clientes_pendentes_ignorados_${repId}_${dataAtual}`;
         const ignoradosStr = localStorage.getItem(ignoradosKey);
-        const ignorados = ignoradosStr ? JSON.parse(ignoradosStr) : [];
+        const ignorados = safeJsonParse(ignoradosStr, []);
 
         if (!ignorados.includes(clienteId)) {
             ignorados.push(clienteId);
@@ -8203,12 +8207,7 @@ class App {
     async buscarResumoVisitas(repId, dataVisita) {
         try {
             const url = `${this.registroRotaState.backendUrl}/api/registro-rota/visitas?rep_id=${repId}&data_inicio=${dataVisita}&data_fim=${dataVisita}&modo=resumo`;
-            const response = await fetch(url);
-            if (!response.ok) {
-                console.warn('Erro ao buscar resumo de visitas:', response.status);
-                return [];
-            }
-            const result = await response.json();
+            const result = await fetchJson(url);
             return result.resumo || result.visitas || [];
         } catch (error) {
             console.warn('Erro ao buscar resumo de visitas:', error);
@@ -8219,14 +8218,7 @@ class App {
     async buscarAtendimentosAbertos(repId) {
         try {
             const url = `${this.registroRotaState.backendUrl}/api/registro-rota/atendimentos-abertos?repositor_id=${repId}`;
-            const response = await fetch(url);
-
-            if (!response.ok) {
-                console.warn('Erro ao buscar atendimentos abertos:', response.status);
-                return [];
-            }
-
-            const data = await response.json();
+            const data = await fetchJson(url);
             return data.atendimentos_abertos || [];
         } catch (error) {
             console.warn('Erro ao recuperar atendimentos abertos:', error);
@@ -8344,28 +8336,13 @@ class App {
             motivo: (motivo || '').toString().trim() || undefined
         };
 
-        const response = await fetch(`${this.registroRotaState.backendUrl}/api/registro-rota/cancelar-atendimento`, {
+        const data = await fetchJson(`${this.registroRotaState.backendUrl}/api/registro-rota/cancelar-atendimento`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
 
-        let data = {};
-        try {
-            data = await response.json();
-        } catch (parseError) {
-            console.warn('Resposta inesperada ao cancelar atendimento', parseError);
-        }
-
-        if (!response.ok) {
-            const erro = data?.message || 'Erro ao cancelar atendimento';
-            const erroObj = new Error(erro);
-            erroObj.code = data?.code;
-            erroObj.status = response.status;
-            throw erroObj;
-        }
-
-        return data;
+        return data || {};
     }
 
     async reidratarAtendimentosAposCancelamento(repId) {
@@ -8519,13 +8496,14 @@ class App {
     async extrairMensagemErro(response) {
         try {
             const contentType = response.headers.get('content-type') || '';
+            const texto = await response.text();
 
             if (contentType.includes('application/json')) {
-                const data = await response.json();
-                return data.message || JSON.stringify(data);
+                const data = safeJsonParse(texto, {});
+                return data?.message || JSON.stringify(data);
             }
 
-            return await response.text();
+            return texto;
         } catch (err) {
             console.warn('Não foi possível obter detalhes do erro da API:', err);
             return '';
@@ -8535,10 +8513,7 @@ class App {
     async buscarAtendimentoAberto(repId) {
         try {
             const url = `${this.registroRotaState.backendUrl}/api/registro-rota/atendimento-aberto?repositor_id=${repId}`;
-            const response = await fetch(url);
-            if (!response.ok) return null;
-
-            const data = await response.json();
+            const data = await fetchJson(url);
             return data || null;
         } catch (error) {
             console.warn('Erro ao buscar atendimento aberto:', error);
@@ -8591,10 +8566,7 @@ class App {
             const params = new URLSearchParams({ rep_id: repId });
             if (dataPlanejada) params.append('data_planejada', dataPlanejada);
 
-            const response = await fetch(`${this.registroRotaState.backendUrl}/api/registro-rota/sessao-aberta?${params.toString()}`);
-            if (!response.ok) return null;
-
-            const data = await response.json();
+            const data = await fetchJson(`${this.registroRotaState.backendUrl}/api/registro-rota/sessao-aberta?${params.toString()}`);
             return data.sessao_aberta || null;
         } catch (error) {
             console.warn('Erro ao buscar sessão aberta:', error);
@@ -8885,14 +8857,7 @@ class App {
 
             // Buscar sessão do cliente
             const url = `${this.registroRotaState.backendUrl}/api/registro-rota/sessoes?data_inicio=${dataVisita}&data_fim=${dataVisita}&rep_id=${repId}&contexto=planejado`;
-            const response = await fetch(url);
-
-            if (!response.ok) {
-                resumoDiv.style.display = 'none';
-                return;
-            }
-
-            const result = await response.json();
+            const result = await fetchJson(url);
             const sessoes = result.sessoes || [];
             const sessaoCliente = sessoes.find(s => String(s.cliente_id).trim() === String(clienteId).trim());
 
@@ -8997,17 +8962,11 @@ class App {
         try {
             // Usando API do OpenStreetMap Nominatim (gratuita)
             const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&addressdetails=1`;
-            const response = await fetch(url, {
+            const data = await fetchJson(url, {
                 headers: {
                     'User-Agent': 'RepositorApp/1.0'
                 }
             });
-
-            if (!response.ok) {
-                throw new Error('Erro ao buscar endereço');
-            }
-
-            const data = await response.json();
 
             // Montar endereço formatado
             const address = data.address || {};
@@ -9030,17 +8989,11 @@ class App {
         try {
             // Usando API do OpenStreetMap Nominatim (gratuita) para geocodificação
             const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(endereco)}&format=json&limit=1`;
-            const response = await fetch(url, {
+            const data = await fetchJson(url, {
                 headers: {
                     'User-Agent': 'RepositorApp/1.0'
                 }
             });
-
-            if (!response.ok) {
-                throw new Error('Erro ao buscar coordenadas');
-            }
-
-            const data = await response.json();
 
             if (data && data.length > 0) {
                 return {
@@ -9542,40 +9495,14 @@ class App {
 
             arquivos.forEach((arquivo) => formData.append('fotos', arquivo));
 
-            const response = await fetch(`${this.registroRotaState.backendUrl}/api/registro-rota/visitas`, {
+            const resposta = await fetchJson(`${this.registroRotaState.backendUrl}/api/registro-rota/visitas`, {
                 method: 'POST',
                 body: formData
             });
-
-            if (!response.ok) {
-                let corpoErro = null;
-                let detalhesErro = '';
-                let protocolo = response.headers.get('x-request-id') || '';
-
-                try {
-                    const clone = response.clone();
-                    corpoErro = await clone.json();
-                    detalhesErro = corpoErro?.message || '';
-                    protocolo = protocolo || corpoErro?.requestId || '';
-                } catch (_) {
-                    try {
-                        detalhesErro = await response.text();
-                    } catch (_) {
-                        detalhesErro = '';
-                    }
-                }
-
-                const erro = new Error(detalhesErro || `Erro ao salvar visita (status ${response.status})`);
-                erro.status = response.status;
-                erro.code = corpoErro?.code;
-                erro.requestId = protocolo;
-                throw erro;
-            }
-
-            const resposta = await response.json();
             const dataRegistro = resposta?.data_hora || new Date().toISOString();
             const rvResposta = resposta?.rv_id || resposta?.sessao_id || rvSessaoId;
-            const uploadPendente = response.status === 202 || resposta?.code === 'UPLOAD_PENDENTE';
+            const statusResposta = resposta?.__status || 200;
+            const uploadPendente = statusResposta === 202 || resposta?.code === 'UPLOAD_PENDENTE';
 
             if (tipoRegistro === 'checkin') {
                 if (!rvResposta) {
@@ -9891,12 +9818,7 @@ class App {
             const url = new URL(`${this.registroRotaState.backendUrl}/api/registro-rota/roteiro/clientes`);
             url.searchParams.set('repositor_id', repositorId);
 
-            const response = await fetch(url);
-            if (!response.ok) {
-                throw new Error('Não foi possível carregar os clientes do roteiro');
-            }
-
-            const data = await response.json();
+            const data = await fetchJson(url);
             const clientes = data.clientes || [];
 
             this.consultaVisitasState.clientesRoteiro = clientes;
@@ -10146,13 +10068,7 @@ class App {
             if (repId) url.searchParams.set('rep_id', repId);
             url.searchParams.set('status', status);
 
-            const response = await fetch(url.toString());
-
-            if (!response.ok) {
-                throw new Error('Erro ao consultar visitas');
-            }
-
-            const result = await response.json();
+            const result = await fetchJson(url.toString());
             let sessoes = result.sessoes || [];
 
             if (clienteFiltro) {
@@ -10336,13 +10252,7 @@ class App {
         }
 
         try {
-            const response = await fetch(`${API_BASE_URL}/api/documentos/tipos`);
-
-            if (!response.ok) {
-                throw new Error(`Erro ao carregar tipos: ${response.status}`);
-            }
-
-            const data = await response.json();
+            const data = await fetchJson(`${API_BASE_URL}/api/documentos/tipos`);
             this.documentosState.tipos = data.tipos || [];
             return this.documentosState.tipos;
         } catch (error) {
@@ -10865,17 +10775,10 @@ class App {
             const qtdArquivos = arquivosParaEnvio.length;
             this.showNotification(`Carregando / enviando ${qtdArquivos} anexo(s)...`, 'info');
 
-            const response = await fetch(`${API_BASE_URL}/api/documentos/upload-multiplo`, {
+            const data = await fetchJson(`${API_BASE_URL}/api/documentos/upload-multiplo`, {
                 method: 'POST',
                 body: formData
             });
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.message || error.error || 'Erro ao fazer upload');
-            }
-
-            const data = await response.json();
 
             const errosDetalhados = Array.isArray(data.erros) ? data.erros : [];
             const errosMap = new Map();
@@ -10936,10 +10839,7 @@ class App {
             if (dataInicio) params.append('data_inicio', dataInicio);
             if (dataFim) params.append('data_fim', dataFim);
 
-            const response = await fetch(`${API_BASE_URL}/api/documentos?${params.toString()}`);
-            if (!response.ok) throw new Error('Erro ao consultar documentos');
-
-            const data = await response.json();
+            const data = await fetchJson(`${API_BASE_URL}/api/documentos?${params.toString()}`);
             this.renderizarDocumentos(data.documentos || []);
         } catch (error) {
             console.error('Erro ao filtrar documentos:', error);
@@ -11311,11 +11211,7 @@ class App {
                 url += `&rep_id=${repositor}`;
             }
 
-            const response = await fetch(url);
-
-            if (!response.ok) throw new Error('Erro ao buscar dados');
-
-            const data = await response.json();
+            const data = await fetchJson(url);
             const sessoes = data.sessoes || [];
 
             // Filtrar por tempo
@@ -11441,11 +11337,7 @@ class App {
                 url += `&rep_id=${repositor}`;
             }
 
-            const response = await fetch(url);
-
-            if (!response.ok) throw new Error('Erro ao buscar dados');
-
-            const data = await response.json();
+            const data = await fetchJson(url);
             this.renderizarCampanha(data.grupos || [], agruparPor, data.total_imagens || 0);
         } catch (error) {
             console.error('Erro ao filtrar campanha:', error);
@@ -12007,22 +11899,16 @@ class App {
 
             // Buscar todas as visitas do período
             const url = `${this.registroRotaState.backendUrl}/api/registro-rota/visitas?data_inicio=${dataInicio}&data_fim=${dataFim}&tipo=checkout&rep_id=${repositor}`;
-
-            const response = await fetch(url);
-
-            if (!response.ok) {
-                const detalhes = await response.json().catch(() => null);
-                const mensagemErro = detalhes?.message || 'Erro ao buscar dados';
-
-                if (response.status === 400) {
-                    this.showNotification(`Não foi possível carregar os dados: ${mensagemErro}`, 'warning');
+            let data = {};
+            try {
+                data = await fetchJson(url);
+            } catch (erroConsulta) {
+                if (erroConsulta?.status === 400) {
+                    this.showNotification(`Não foi possível carregar os dados: ${erroConsulta.message}`, 'warning');
                     return;
                 }
-
-                throw new Error(mensagemErro);
+                throw erroConsulta;
             }
-
-            const data = await response.json();
             const todasVisitas = data.visitas || [];
             const visitasCheckout = todasVisitas.filter(v => (v.rv_tipo || v.tipo || '').toLowerCase() === 'checkout');
 
@@ -12239,11 +12125,7 @@ class App {
                 url += `&rep_id=${repositor}`;
             }
 
-            const response = await fetch(url);
-
-            if (!response.ok) throw new Error('Erro ao buscar dados');
-
-            const data = await response.json();
+            const data = await fetchJson(url);
             const sessoes = data.sessoes || [];
 
             let resumoPontualidade = null;
@@ -12253,13 +12135,8 @@ class App {
                     urlPontualidade += `&rep_id=${repositor}`;
                 }
 
-                const pontualidadeResponse = await fetch(urlPontualidade);
-                if (pontualidadeResponse.ok) {
-                    const jsonPontualidade = await pontualidadeResponse.json();
-                    resumoPontualidade = jsonPontualidade?.resumo || null;
-                } else {
-                    console.warn('Resumo de pontualidade indisponível. Código:', pontualidadeResponse.status);
-                }
+                const pontualidadeResponse = await fetchJson(urlPontualidade);
+                resumoPontualidade = pontualidadeResponse?.resumo || null;
             } catch (pontualidadeErro) {
                 console.warn('Falha ao carregar resumo de pontualidade. Usando cálculo local.', pontualidadeErro);
             }
