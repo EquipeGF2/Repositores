@@ -750,14 +750,14 @@ export const pages = {
                         <button class="modal-close" onclick="window.app.fecharModalAdicionarCliente()">&times;</button>
                     </div>
                     <div class="modal-body">
-                        <div class="form-group">
-                            <label for="modalBuscaClientesCidade">Buscar cliente</label>
-                            <input type="text" id="modalBuscaClientesCidade" placeholder="Nome, fantasia, bairro ou código">
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
+                        <div class="form-row" style="position: sticky; top: 0; background: white; z-index: 10; padding-bottom: 12px; margin-bottom: 16px; border-bottom: 1px solid #e5e7eb;">
+                            <div class="form-group" style="flex: 2;">
+                                <label for="modalBuscaClientesCidade">Buscar cliente</label>
+                                <input type="text" id="modalBuscaClientesCidade" placeholder="Nome, fantasia, bairro ou código">
+                            </div>
+                            <div class="form-group" style="flex: 1; min-width: 150px;">
                                 <label for="modalOrdemCliente">Ordem de atendimento</label>
-                                <input type="number" id="modalOrdemCliente" min="1" step="1" placeholder="Informe a ordem" required>
+                                <input type="number" id="modalOrdemCliente" min="1" step="1" placeholder="Ordem" required>
                                 <small id="modalOrdemHelper" class="text-muted"></small>
                             </div>
                         </div>

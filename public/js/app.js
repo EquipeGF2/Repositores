@@ -2559,10 +2559,17 @@ class App {
             });
         });
 
+        // Atualizar campo de ordem baseado no dia selecionado
         const campoOrdemCidade = document.getElementById('roteiroCidadeOrdem');
-        if (campoOrdemCidade && !campoOrdemCidade.value) {
+        if (campoOrdemCidade) {
             const maiorOrdem = Math.max(...cidades.map(c => Number(c.rot_ordem_cidade) || 0), 0);
-            campoOrdemCidade.value = (maiorOrdem + 1).toString();
+            const proximaOrdem = (maiorOrdem + 1).toString();
+
+            // Se o campo está vazio OU mudou de dia, atualizar com a próxima ordem
+            if (!campoOrdemCidade.value || campoOrdemCidade.dataset.diaCadastro !== dia) {
+                campoOrdemCidade.value = proximaOrdem;
+                campoOrdemCidade.dataset.diaCadastro = dia;
+            }
         }
 
         console.log('[ROTEIRO] Cidades renderizadas com sucesso! Total:', cidades.length);
@@ -3261,7 +3268,7 @@ class App {
                         <th class="col-endereco">Endereço</th>
                         <th>Bairro</th>
                         <th class="col-grupo">Grupo</th>
-                        <th class="col-acao">Ação</th>
+                        <th class="col-acao" style="min-width: 120px; width: 120px;">Ação</th>
                     </tr>
                 </thead>
                 <tbody>
