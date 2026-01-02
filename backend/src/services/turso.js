@@ -1602,12 +1602,23 @@ class TursoService {
   }
 
   async criarUsuario({ username, passwordHash, nomeCompleto, email, repId, perfil = 'repositor' }) {
+    // Validar se o repositor existe (se repId fornecido)
+    if (repId !== null && repId !== undefined && repId !== '') {
+      const sqlCheck = 'SELECT repo_cod FROM cad_repositor WHERE repo_cod = ?';
+      const checkResult = await this.execute(sqlCheck, [repId]);
+
+      if (!checkResult.rows || checkResult.rows.length === 0) {
+        throw new Error(`Repositor com código ${repId} não encontrado`);
+      }
+    }
+
     const sql = `
       INSERT INTO cc_usuarios (username, password_hash, nome_completo, email, rep_id, perfil)
       VALUES (?, ?, ?, ?, ?, ?)
     `;
 
-    const result = await this.execute(sql, [username, passwordHash, nomeCompleto, email, repId, perfil]);
+    const finalRepId = (repId === null || repId === undefined || repId === '') ? null : repId;
+    const result = await this.execute(sql, [username, passwordHash, nomeCompleto, email, finalRepId, perfil]);
     return { usuario_id: Number(result.lastInsertRowid), username, perfil };
   }
 

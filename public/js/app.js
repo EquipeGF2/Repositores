@@ -466,9 +466,11 @@ class App {
         this.registrarResumoPerformance();
         this.iniciarKeepAliveBackend();
 
-        const geoLiberado = await geoPromise;
-        if (!geoLiberado) {
-            this.showNotification('Localização não liberada. Ative o GPS para recursos de rota.', 'warning');
+        if (this.geoInicialPromise) {
+            const geoLiberado = await this.geoInicialPromise;
+            if (!geoLiberado) {
+                this.showNotification('Localização não liberada. Ative o GPS para recursos de rota.', 'warning');
+            }
         }
     }
 
@@ -7491,7 +7493,18 @@ class App {
 
     // ==================== CLIENTES PENDENTES DO DIA ANTERIOR ====================
 
-    calcularDiasUteisAtras(dataInicial, numDias) {
+    async verificarRepositorTrabalhaSabado(repId) {
+        try {
+            // Verifica se o repositor tem roteiro cadastrado para sábado
+            const roteiroSabado = await db.carregarRoteiroRepositorDia(repId, 'sab');
+            return roteiroSabado && roteiroSabado.length > 0;
+        } catch (error) {
+            console.warn('Erro ao verificar roteiro de sábado:', error);
+            return false;
+        }
+    }
+
+    calcularDiasUteisAtras(dataInicial, numDias, considerarSabado = false) {
         const data = new Date(dataInicial + 'T12:00:00');
         let diasContados = 0;
 
@@ -7499,7 +7512,11 @@ class App {
             data.setDate(data.getDate() - 1);
             const diaSemana = data.getDay();
             // 0 = Domingo, 6 = Sábado
-            if (diaSemana !== 0 && diaSemana !== 6) {
+            const isDiaUtil = considerarSabado
+                ? diaSemana !== 0  // Apenas domingo não é útil
+                : (diaSemana !== 0 && diaSemana !== 6);  // Sábado e domingo não são úteis
+
+            if (isDiaUtil) {
                 diasContados++;
             }
         }
@@ -7507,14 +7524,18 @@ class App {
         return data.toISOString().split('T')[0];
     }
 
-    calcularDiasUteisFrente(dataInicial, numDias) {
+    calcularDiasUteisFrente(dataInicial, numDias, considerarSabado = false) {
         const data = new Date(dataInicial + 'T12:00:00');
         let diasContados = 0;
 
         while (diasContados < numDias) {
             data.setDate(data.getDate() + 1);
             const diaSemana = data.getDay();
-            if (diaSemana !== 0 && diaSemana !== 6) {
+            const isDiaUtil = considerarSabado
+                ? diaSemana !== 0  // Apenas domingo não é útil
+                : (diaSemana !== 0 && diaSemana !== 6);  // Sábado e domingo não são úteis
+
+            if (isDiaUtil) {
                 diasContados++;
             }
         }
@@ -7522,13 +7543,17 @@ class App {
         return data.toISOString().split('T')[0];
     }
 
-    obterUltimoDiaUtil(dataReferencia) {
+    obterUltimoDiaUtil(dataReferencia, considerarSabado = false) {
         const data = new Date(dataReferencia + 'T12:00:00');
         data.setDate(data.getDate() - 1);
 
         while (true) {
             const diaSemana = data.getDay();
-            if (diaSemana !== 0 && diaSemana !== 6) {
+            const isDiaUtil = considerarSabado
+                ? diaSemana !== 0  // Apenas domingo não é útil
+                : (diaSemana !== 0 && diaSemana !== 6);  // Sábado e domingo não são úteis
+
+            if (isDiaUtil) {
                 return data.toISOString().split('T')[0];
             }
             data.setDate(data.getDate() - 1);
@@ -7545,11 +7570,14 @@ class App {
 
             if (!repId || !dataAtual) return;
 
-            // Calcular último dia útil
-            const ultimoDiaUtil = this.obterUltimoDiaUtil(dataAtual);
+            // Verificar se o repositor trabalha no sábado
+            const trabalhaSabado = await this.verificarRepositorTrabalhaSabado(repId);
+
+            // Calcular último dia útil (considerando sábado se o repositor trabalha nesse dia)
+            const ultimoDiaUtil = this.obterUltimoDiaUtil(dataAtual, trabalhaSabado);
 
             // Verificar se já passaram mais de 2 dias úteis
-            const limiteAviso = this.calcularDiasUteisAtras(dataAtual, 2);
+            const limiteAviso = this.calcularDiasUteisAtras(dataAtual, 2, trabalhaSabado);
 
             if (ultimoDiaUtil < limiteAviso) {
                 // Já passou o prazo de 2 dias úteis
@@ -7818,6 +7846,18 @@ class App {
 
             if (eRecente && (statusLocal.status === 'finalizado' || statusLocal.status === 'em_atendimento')) {
                 mapaResumo.set(clienteId, statusLocal);
+            } else if (statusLocal.status === 'em_atendimento') {
+                // Preservar atividades_count local se for maior que o do backend
+                const statusBackend = mapaResumo.get(clienteId) || {};
+                const atividadesLocal = Number(statusLocal.atividades_count || 0);
+                const atividadesBackend = Number(statusBackend.atividades_count || 0);
+
+                if (atividadesLocal > atividadesBackend) {
+                    mapaResumo.set(clienteId, {
+                        ...statusBackend,
+                        atividades_count: atividadesLocal
+                    });
+                }
             }
         });
 
@@ -8520,6 +8560,20 @@ class App {
             ts: posicao.ts
         };
 
+        // Validar distância apenas para checkin
+        if (tipoPadrao === 'checkin' && enderecoCadastro) {
+            const validacao = await this.validarDistanciaCheckin(
+                posicao.lat,
+                posicao.lng,
+                enderecoCadastro
+            );
+
+            if (!validacao.valido) {
+                this.showNotification(validacao.aviso, 'warning');
+                // Não bloqueia, apenas avisa o repositor
+            }
+        }
+
         const tituloModal = document.getElementById('modalCapturaTitulo');
         if (tituloModal) {
             tituloModal.textContent = this.registroRotaState.clienteAtual.clienteNome || 'Registrar Visita';
@@ -8751,6 +8805,93 @@ class App {
         } catch (error) {
             console.error('Erro ao buscar endereço:', error);
             return null;
+        }
+    }
+
+    async obterCoordenadasPorEndereco(endereco) {
+        try {
+            // Usando API do OpenStreetMap Nominatim (gratuita) para geocodificação
+            const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(endereco)}&format=json&limit=1`;
+            const response = await fetch(url, {
+                headers: {
+                    'User-Agent': 'RepositorApp/1.0'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Erro ao buscar coordenadas');
+            }
+
+            const data = await response.json();
+
+            if (data && data.length > 0) {
+                return {
+                    lat: parseFloat(data[0].lat),
+                    lng: parseFloat(data[0].lon)
+                };
+            }
+
+            return null;
+        } catch (error) {
+            console.error('Erro ao buscar coordenadas:', error);
+            return null;
+        }
+    }
+
+    calcularDistanciaHaversine(lat1, lon1, lat2, lon2) {
+        // Fórmula de Haversine para calcular distância entre dois pontos em metros
+        const R = 6371e3; // Raio da Terra em metros
+        const φ1 = lat1 * Math.PI / 180;
+        const φ2 = lat2 * Math.PI / 180;
+        const Δφ = (lat2 - lat1) * Math.PI / 180;
+        const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+        const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                  Math.cos(φ1) * Math.cos(φ2) *
+                  Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        return R * c; // Distância em metros
+    }
+
+    async validarDistanciaCheckin(latCheckin, lngCheckin, enderecoCliente) {
+        try {
+            // Tenta obter coordenadas do endereço do cliente
+            const coordsCliente = await this.obterCoordenadasPorEndereco(enderecoCliente);
+
+            if (!coordsCliente) {
+                // Se não conseguiu geocodificar, apenas avisa mas permite o checkin
+                console.warn('Não foi possível validar distância - endereço não geocodificado');
+                return { valido: true, distancia: null, aviso: 'Não foi possível validar a distância do estabelecimento' };
+            }
+
+            // Calcula distância em metros
+            const distancia = this.calcularDistanciaHaversine(
+                latCheckin,
+                lngCheckin,
+                coordsCliente.lat,
+                coordsCliente.lng
+            );
+
+            const DISTANCIA_MAXIMA = 200; // 200 metros
+
+            if (distancia > DISTANCIA_MAXIMA) {
+                return {
+                    valido: false,
+                    distancia: Math.round(distancia),
+                    aviso: `⚠️ ATENÇÃO: Você está a ${Math.round(distancia)}m do estabelecimento cadastrado. O limite é de ${DISTANCIA_MAXIMA}m.`
+                };
+            }
+
+            return {
+                valido: true,
+                distancia: Math.round(distancia),
+                aviso: null
+            };
+        } catch (error) {
+            console.error('Erro ao validar distância:', error);
+            // Em caso de erro, permite o checkin mas registra o erro
+            return { valido: true, distancia: null, aviso: 'Erro ao validar distância' };
         }
     }
 
