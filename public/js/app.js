@@ -8380,7 +8380,32 @@ class App {
 
         this.registroRotaState.resumoVisitas = mapaResumo;
 
+        // Guardar roteiro no state para uso posterior (refresh de distâncias)
+        this.registroRotaState.roteiroAtual = roteiro;
+
         container.innerHTML = '';
+
+        // Adicionar cabeçalho com botão de atualizar distâncias
+        const cabecalho = document.createElement('div');
+        cabecalho.className = 'roteiro-header';
+        cabecalho.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding:8px 12px;background:#f8fafc;border-radius:8px;';
+        cabecalho.innerHTML = `
+            <span style="font-size:14px;color:#374151;font-weight:500;">
+                📍 Distâncias calculadas com base na sua localização atual
+            </span>
+            <button id="btnAtualizarDistancias" class="btn btn-small" style="font-size:12px;padding:6px 12px;">
+                🔄 Atualizar GPS
+            </button>
+        `;
+        container.appendChild(cabecalho);
+
+        // Event listener para atualizar distâncias
+        const btnAtualizar = cabecalho.querySelector('#btnAtualizarDistancias');
+        if (btnAtualizar) {
+            btnAtualizar.addEventListener('click', () => {
+                this.atualizarDistanciasRoteiro();
+            });
+        }
 
         roteiro.forEach(cliente => {
             const cliId = normalizeClienteId(cliente.cli_codigo);
@@ -8475,6 +8500,9 @@ class App {
                 <div class="route-item-info">
                     <div class="route-item-name">${cliId} - ${cliNome}</div>
                     <div class="route-item-address">${linhaEndereco}</div>
+                    <div class="route-item-distance" id="distancia-${cliId}" style="font-size:12px;color:#666;margin-top:4px;">
+                        📍 Calculando distância...
+                    </div>
                     ${tempoTexto}
                 </div>
                 <div class="route-item-actions">
@@ -8487,6 +8515,9 @@ class App {
         });
 
         this.showNotification(`${roteiro.length} cliente(s) no roteiro`, 'success');
+
+        // Calcular distâncias em background após carregar a lista
+        this.calcularDistanciasRoteiro(roteiro, repId, dataVisita);
 
         // Verificar clientes não atendidos do último dia útil
         await this.verificarClientesPendentes();
@@ -9311,6 +9342,19 @@ class App {
     async obterCoordenadasPorEndereco(endereco) {
         if (!endereco || typeof endereco !== 'string') return null;
 
+        // Inicializar cache se não existir
+        if (!this.geocodeCache) {
+            this.geocodeCache = {};
+        }
+
+        // Verificar cache (válido por 10 minutos)
+        const cacheKey = endereco.toLowerCase().trim();
+        const cached = this.geocodeCache[cacheKey];
+        if (cached && (Date.now() - cached.timestamp) < 600000) {
+            console.log('Geocodificação (cache):', endereco);
+            return cached.coords;
+        }
+
         try {
             // Limpar e formatar o endereço para melhor resultado
             // Formato esperado: "CIDADE/UF - Rua X, Bairro" ou similar
@@ -9337,10 +9381,13 @@ class App {
 
             if (data && data.length > 0) {
                 console.log('Geocodificação OK:', data[0].display_name);
-                return {
+                const coords = {
                     lat: parseFloat(data[0].lat),
                     lng: parseFloat(data[0].lon)
                 };
+                // Salvar no cache
+                this.geocodeCache[cacheKey] = { coords, timestamp: Date.now() };
+                return coords;
             }
 
             // Se não encontrou, tentar apenas com cidade/UF
@@ -9366,10 +9413,13 @@ class App {
 
                 if (dataCidade && dataCidade.length > 0) {
                     console.log('Geocodificação por cidade OK:', dataCidade[0].display_name);
-                    return {
+                    const coords = {
                         lat: parseFloat(dataCidade[0].lat),
                         lng: parseFloat(dataCidade[0].lon)
                     };
+                    // Salvar no cache
+                    this.geocodeCache[cacheKey] = { coords, timestamp: Date.now() };
+                    return coords;
                 }
             }
 
@@ -9447,6 +9497,261 @@ class App {
             console.error('Erro ao validar distância:', error);
             // Em caso de erro, permite o checkin mas registra o erro
             return { valido: true, distancia: null, aviso: 'Erro ao validar distância' };
+        }
+    }
+
+    /**
+     * Calcula e exibe a distância da posição atual para cada cliente do roteiro
+     * Desabilita o botão de check-in se estiver fora do perímetro configurado
+     */
+    async calcularDistanciasRoteiro(roteiro, repId, dataVisita) {
+        if (!roteiro || roteiro.length === 0) return;
+
+        // Obter configuração de distância máxima
+        const config = this.getConfigSistema();
+        const distanciaMaximaKm = config.distanciaMaximaCheckin || 30;
+
+        // 1. Capturar posição GPS atual
+        let posicaoAtual = null;
+        try {
+            posicaoAtual = await this.obterPosicaoAtual();
+            console.log('Posição atual capturada:', posicaoAtual);
+        } catch (error) {
+            console.warn('Não foi possível obter posição GPS:', error);
+            // Atualizar todos os cards indicando que GPS não está disponível
+            roteiro.forEach(cli => {
+                const cliId = String(cli.cliente_id || cli.cod_cliente || '').trim().replace(/\.0$/, '');
+                const elDistancia = document.getElementById(`distancia-${cliId}`);
+                if (elDistancia) {
+                    elDistancia.innerHTML = '📍 GPS indisponível';
+                    elDistancia.style.color = '#b91c1c';
+                }
+            });
+            return;
+        }
+
+        // 2. Para cada cliente, calcular distância (com delay para evitar rate limit do Nominatim)
+        for (let i = 0; i < roteiro.length; i++) {
+            const cli = roteiro[i];
+            const cliId = String(cli.cliente_id || cli.cod_cliente || '').trim().replace(/\.0$/, '');
+            const elDistancia = document.getElementById(`distancia-${cliId}`);
+            const itemElement = document.querySelector(`.route-item[data-cliente-id="${cliId}"]`);
+
+            if (!elDistancia) continue;
+
+            // Montar endereço do cadastro
+            const enderecoCadastro = this.formatarEnderecoCadastro(cli);
+
+            if (!enderecoCadastro) {
+                elDistancia.innerHTML = '📍 Endereço não cadastrado';
+                elDistancia.style.color = '#b91c1c';
+                continue;
+            }
+
+            try {
+                // Aguardar um pouco entre requisições para não sobrecarregar API (1.5 segundos)
+                if (i > 0) {
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                }
+
+                // Geocodificar endereço do cliente
+                const coordsCliente = await this.obterCoordenadasPorEndereco(enderecoCadastro);
+
+                if (!coordsCliente) {
+                    elDistancia.innerHTML = '📍 Não foi possível localizar';
+                    elDistancia.style.color = '#f59e0b';
+                    continue;
+                }
+
+                // Calcular distância
+                const distanciaMetros = this.calcularDistanciaHaversine(
+                    posicaoAtual.lat,
+                    posicaoAtual.lng,
+                    coordsCliente.lat,
+                    coordsCliente.lng
+                );
+
+                const distanciaKm = (distanciaMetros / 1000).toFixed(1);
+                const foraDoPer = distanciaMetros > (distanciaMaximaKm * 1000);
+
+                // Atualizar display da distância
+                if (foraDoPer) {
+                    elDistancia.innerHTML = `📍 <strong style="color:#b91c1c;">${distanciaKm} km</strong> (fora do perímetro de ${distanciaMaximaKm}km)`;
+                    elDistancia.style.color = '#b91c1c';
+
+                    // Desabilitar botão de check-in se estiver fora do perímetro
+                    this.desabilitarCheckinCliente(itemElement, cliId, distanciaKm, distanciaMaximaKm);
+                } else {
+                    elDistancia.innerHTML = `📍 ${distanciaKm} km`;
+                    elDistancia.style.color = '#059669'; // verde
+                }
+
+            } catch (error) {
+                console.warn(`Erro ao calcular distância para cliente ${cliId}:`, error);
+                elDistancia.innerHTML = '📍 Erro ao calcular';
+                elDistancia.style.color = '#b91c1c';
+            }
+        }
+
+        console.log('Cálculo de distâncias do roteiro concluído');
+    }
+
+    /**
+     * Obtém a posição GPS atual do dispositivo
+     */
+    obterPosicaoAtual() {
+        return new Promise((resolve, reject) => {
+            if (!navigator.geolocation) {
+                reject(new Error('Geolocalização não suportada'));
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    resolve({
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude,
+                        accuracy: position.coords.accuracy
+                    });
+                },
+                (error) => {
+                    let mensagem = 'Erro ao obter localização';
+                    switch (error.code) {
+                        case error.PERMISSION_DENIED:
+                            mensagem = 'Permissão de localização negada';
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            mensagem = 'Localização indisponível';
+                            break;
+                        case error.TIMEOUT:
+                            mensagem = 'Tempo esgotado ao obter localização';
+                            break;
+                    }
+                    reject(new Error(mensagem));
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 15000,
+                    maximumAge: 60000 // Cache de 1 minuto
+                }
+            );
+        });
+    }
+
+    /**
+     * Formata o endereço de cadastro do cliente para geocodificação
+     * Compatível com os campos do roteiro (cli_cidade, cli_estado, etc.)
+     */
+    formatarEnderecoCadastro(cli) {
+        // Campos do roteiro usam prefixo cli_
+        const cidade = String(cli.cli_cidade || cli.cidade || '').trim();
+        const uf = String(cli.cli_estado || cli.cli_uf || cli.uf || '').trim();
+        const rua = String(cli.cli_endereco || cli.cli_logradouro || cli.cli_rua || cli.endereco || cli.rua || '').trim();
+        const numero = String(cli.cli_numero || cli.numero || '').trim();
+        const bairro = String(cli.cli_bairro || cli.bairro || '').trim();
+
+        if (!cidade) return null;
+
+        // Montar cidadeUF
+        const cidadeUF = uf ? `${cidade}/${uf}` : cidade;
+
+        // Montar partes do endereço
+        const enderecoPartes = [rua, numero, bairro].filter(Boolean);
+        const enderecoTexto = enderecoPartes.join(', ');
+
+        // Formato final: "CIDADE/UF - RUA, NUMERO, BAIRRO"
+        if (enderecoTexto) {
+            return `${cidadeUF} - ${enderecoTexto}`;
+        }
+        return cidadeUF;
+    }
+
+    /**
+     * Atualiza as distâncias do roteiro usando a nova posição GPS
+     */
+    async atualizarDistanciasRoteiro() {
+        const roteiro = this.registroRotaState.roteiroAtual;
+        if (!roteiro || roteiro.length === 0) {
+            this.showNotification('Nenhum roteiro carregado para atualizar', 'warning');
+            return;
+        }
+
+        const btn = document.getElementById('btnAtualizarDistancias');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Atualizando...';
+        }
+
+        try {
+            // Resetar exibição das distâncias
+            roteiro.forEach(cli => {
+                const cliId = String(cli.cli_codigo || cli.cliente_id || '').trim().replace(/\.0$/, '');
+                const elDistancia = document.getElementById(`distancia-${cliId}`);
+                if (elDistancia) {
+                    elDistancia.innerHTML = '📍 Calculando distância...';
+                    elDistancia.style.color = '#666';
+                }
+
+                // Remover avisos de fora do perímetro anteriores
+                const itemElement = document.querySelector(`.route-item[data-cliente-id="${cliId}"]`);
+                if (itemElement) {
+                    const avisoAntigo = itemElement.querySelector('.aviso-fora-perimetro');
+                    if (avisoAntigo) avisoAntigo.remove();
+
+                    // Reabilitar botão de check-in se existir
+                    const btnCheckin = itemElement.querySelector('button.btn-small');
+                    if (btnCheckin && btnCheckin.textContent.includes('Check-in')) {
+                        btnCheckin.disabled = false;
+                        btnCheckin.style.opacity = '';
+                        btnCheckin.style.cursor = '';
+                        btnCheckin.title = '';
+                    }
+                }
+            });
+
+            // Limpar cache de geocodificação para forçar nova busca
+            this.geocodeCache = {};
+
+            // Recalcular distâncias
+            const repId = this.registroRotaState.repositorSelecionado;
+            const dataVisita = this.registroRotaState.dataSelecionada;
+            await this.calcularDistanciasRoteiro(roteiro, repId, dataVisita);
+
+            this.showNotification('Distâncias atualizadas com sucesso', 'success');
+        } catch (error) {
+            console.error('Erro ao atualizar distâncias:', error);
+            this.showNotification('Erro ao atualizar distâncias: ' + error.message, 'error');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '🔄 Atualizar GPS';
+            }
+        }
+    }
+
+    /**
+     * Desabilita o botão de check-in para um cliente fora do perímetro
+     */
+    desabilitarCheckinCliente(itemElement, cliId, distanciaKm, limiteKm) {
+        if (!itemElement) return;
+
+        // Buscar botão de check-in dentro do item
+        const btnCheckin = itemElement.querySelector('button.btn-small');
+        if (btnCheckin && btnCheckin.textContent.includes('Check-in')) {
+            btnCheckin.disabled = true;
+            btnCheckin.style.opacity = '0.5';
+            btnCheckin.style.cursor = 'not-allowed';
+            btnCheckin.title = `Você está a ${distanciaKm}km do cliente. O limite é ${limiteKm}km.`;
+
+            // Adicionar aviso visual
+            const actionsDiv = itemElement.querySelector('.route-item-actions');
+            if (actionsDiv && !actionsDiv.querySelector('.aviso-fora-perimetro')) {
+                const aviso = document.createElement('span');
+                aviso.className = 'aviso-fora-perimetro';
+                aviso.style.cssText = 'display:block;color:#b91c1c;font-size:11px;margin-top:6px;font-weight:600;';
+                aviso.textContent = `⚠️ Fora do perímetro (${limiteKm}km)`;
+                actionsDiv.appendChild(aviso);
+            }
         }
     }
 
