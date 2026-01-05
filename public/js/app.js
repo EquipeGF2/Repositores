@@ -1659,6 +1659,10 @@ class App {
                 await this.inicializarAnalisePerformance();
             } else if (pageName === 'consulta-campanha') {
                 await this.inicializarConsultaCampanha();
+            } else if (pageName === 'cadastro-pesquisa') {
+                await this.inicializarPaginaPesquisas();
+            } else if (pageName === 'consulta-pesquisa') {
+                await this.inicializarConsultaPesquisa();
             }
         } catch (error) {
             console.error('Erro ao carregar página:', error);
@@ -9527,6 +9531,15 @@ class App {
                 return;
             }
 
+            // Verificar pesquisas obrigatórias pendentes antes do checkout
+            if (tipoRegistro === 'checkout') {
+                const pesquisasPendentes = await this.verificarPesquisasObrigatoriasPendentes(repId, clienteId, dataVisita);
+                if (pesquisasPendentes && pesquisasPendentes.length > 0) {
+                    await this.abrirModalPesquisaVisita(pesquisasPendentes, repId, clienteId, clienteNome, dataVisita);
+                    return; // O checkout será retomado após completar as pesquisas
+                }
+            }
+
             if (tipoRegistro === 'checkin' && statusCliente?.status === 'em_atendimento') {
                 this.showNotification('Já existe um check-in em aberto para este cliente.', 'warning');
                 return;
@@ -12501,6 +12514,915 @@ class App {
         `;
 
         container.innerHTML = html;
+    }
+
+    // ==================== PESQUISAS ====================
+
+    pesquisaCampos = [];
+    pesquisaRepositoresSelecionados = [];
+
+    async inicializarPaginaPesquisas() {
+        await this.carregarListaPesquisas();
+    }
+
+    async carregarListaPesquisas() {
+        const container = document.getElementById('pesquisasLista');
+        if (!container) return;
+
+        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⏳</div><p>Carregando...</p></div>';
+
+        try {
+            const termo = document.getElementById('filtroPesquisaTermo')?.value || '';
+            const status = document.getElementById('filtroPesquisaStatus')?.value;
+
+            const filtros = { termo };
+            if (status !== '') {
+                filtros.ativa = status === '1';
+            }
+
+            const pesquisas = await db.listarPesquisas(filtros);
+
+            if (pesquisas.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📝</div>
+                        <p>Nenhuma pesquisa encontrada.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = pesquisas.map(p => {
+                const badges = [];
+                badges.push(p.pes_obrigatorio ?
+                    '<span class="pesquisa-badge pesquisa-badge-obrigatoria">Obrigatória</span>' :
+                    '<span class="pesquisa-badge pesquisa-badge-opcional">Opcional</span>');
+                if (p.pes_foto_obrigatoria) {
+                    badges.push('<span class="pesquisa-badge pesquisa-badge-foto">Foto</span>');
+                }
+                badges.push(p.pes_ativa ?
+                    '<span class="pesquisa-badge pesquisa-badge-ativa">Ativa</span>' :
+                    '<span class="pesquisa-badge pesquisa-badge-inativa">Inativa</span>');
+
+                const dataInicio = p.pes_data_inicio ? new Date(p.pes_data_inicio).toLocaleDateString('pt-BR') : '-';
+                const dataFim = p.pes_data_fim ? new Date(p.pes_data_fim).toLocaleDateString('pt-BR') : '-';
+
+                return `
+                    <div class="pesquisa-card">
+                        <div class="pesquisa-card-header">
+                            <div>
+                                <h4 class="pesquisa-titulo">${p.pes_titulo}</h4>
+                                ${p.pes_descricao ? `<p class="pesquisa-descricao">${p.pes_descricao}</p>` : ''}
+                            </div>
+                            <div class="pesquisa-badges">
+                                ${badges.join('')}
+                            </div>
+                        </div>
+                        <div class="pesquisa-info">
+                            <div class="pesquisa-info-item">
+                                <span>📅</span>
+                                <span>Início: <strong>${dataInicio}</strong></span>
+                            </div>
+                            <div class="pesquisa-info-item">
+                                <span>📅</span>
+                                <span>Fim: <strong>${dataFim}</strong></span>
+                            </div>
+                            <div class="pesquisa-info-item">
+                                <span>📋</span>
+                                <span><strong>${p.total_campos || 0}</strong> campos</span>
+                            </div>
+                            <div class="pesquisa-info-item">
+                                <span>👥</span>
+                                <span><strong>${p.total_repositores || 0}</strong> repositores</span>
+                            </div>
+                            <div class="pesquisa-info-item">
+                                <span>✅</span>
+                                <span><strong>${p.total_respostas || 0}</strong> respostas</span>
+                            </div>
+                        </div>
+                        <div class="pesquisa-acoes">
+                            <button class="btn btn-secondary btn-sm" onclick="window.app.editarPesquisa(${p.pes_id})">Editar</button>
+                            <button class="btn btn-${p.pes_ativa ? 'warning' : 'success'} btn-sm" onclick="window.app.togglePesquisaAtiva(${p.pes_id}, ${p.pes_ativa})">
+                                ${p.pes_ativa ? 'Desativar' : 'Ativar'}
+                            </button>
+                            <button class="btn btn-danger btn-sm" onclick="window.app.excluirPesquisa(${p.pes_id})">Excluir</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        } catch (error) {
+            console.error('Erro ao carregar pesquisas:', error);
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">❌</div>
+                    <p>Erro ao carregar pesquisas: ${error.message}</p>
+                </div>
+            `;
+        }
+    }
+
+    async abrirModalPesquisa(pesquisaId = null) {
+        const modal = document.getElementById('modalPesquisa');
+        const title = document.getElementById('modalPesquisaTitle');
+        const form = document.getElementById('formPesquisa');
+
+        if (!modal || !form) return;
+
+        // Resetar form
+        form.reset();
+        document.getElementById('pes_id').value = '';
+        this.pesquisaCampos = [];
+        this.pesquisaRepositoresSelecionados = [];
+
+        // Carregar repositores para o select
+        await this.carregarRepositoresParaPesquisa();
+
+        if (pesquisaId) {
+            title.textContent = 'Editar Pesquisa';
+            await this.carregarDadosPesquisa(pesquisaId);
+        } else {
+            title.textContent = 'Nova Pesquisa';
+            this.renderCamposPesquisa();
+            this.renderRepositoresSelecionados();
+        }
+
+        modal.classList.add('active');
+    }
+
+    fecharModalPesquisa() {
+        const modal = document.getElementById('modalPesquisa');
+        if (modal) {
+            modal.classList.remove('active');
+        }
+    }
+
+    async carregarRepositoresParaPesquisa() {
+        const select = document.getElementById('pes_repositor_select');
+        if (!select) return;
+
+        try {
+            const repositores = await db.getRepositores({ status: 'ativos' });
+            select.innerHTML = '<option value="">Selecione um repositor...</option>';
+            repositores.forEach(repo => {
+                const option = document.createElement('option');
+                option.value = repo.repo_cod;
+                option.textContent = `${repo.repo_cod} - ${repo.repo_nome}`;
+                option.dataset.nome = repo.repo_nome;
+                select.appendChild(option);
+            });
+
+            // Event listener para adicionar repositor
+            select.onchange = () => {
+                if (select.value) {
+                    const option = select.selectedOptions[0];
+                    this.adicionarRepositorPesquisa(select.value, option.dataset.nome);
+                    select.value = '';
+                }
+            };
+        } catch (error) {
+            console.error('Erro ao carregar repositores:', error);
+        }
+    }
+
+    adicionarRepositorPesquisa(codigo, nome) {
+        if (this.pesquisaRepositoresSelecionados.find(r => r.codigo === codigo)) {
+            return; // Já adicionado
+        }
+        this.pesquisaRepositoresSelecionados.push({ codigo, nome });
+        this.renderRepositoresSelecionados();
+    }
+
+    removerRepositorPesquisa(codigo) {
+        this.pesquisaRepositoresSelecionados = this.pesquisaRepositoresSelecionados.filter(r => r.codigo !== codigo);
+        this.renderRepositoresSelecionados();
+    }
+
+    renderRepositoresSelecionados() {
+        const container = document.getElementById('pesquisaRepositoresLista');
+        if (!container) return;
+
+        if (this.pesquisaRepositoresSelecionados.length === 0) {
+            container.innerHTML = '<span class="text-muted" style="font-size: 0.85rem;">Todos os repositores (nenhum selecionado)</span>';
+            return;
+        }
+
+        container.innerHTML = this.pesquisaRepositoresSelecionados.map(r => `
+            <span class="repositor-tag">
+                ${r.codigo} - ${r.nome}
+                <button type="button" class="repositor-tag-remove" onclick="window.app.removerRepositorPesquisa('${r.codigo}')">&times;</button>
+            </span>
+        `).join('');
+    }
+
+    adicionarCampoPesquisa() {
+        const novoCampo = {
+            id: Date.now(),
+            pergunta: '',
+            tipo: 'texto',
+            obrigatorio: false,
+            ordem: this.pesquisaCampos.length + 1
+        };
+        this.pesquisaCampos.push(novoCampo);
+        this.renderCamposPesquisa();
+    }
+
+    removerCampoPesquisa(campoId) {
+        this.pesquisaCampos = this.pesquisaCampos.filter(c => c.id !== campoId);
+        // Reordenar
+        this.pesquisaCampos.forEach((c, i) => c.ordem = i + 1);
+        this.renderCamposPesquisa();
+    }
+
+    moverCampoPesquisa(campoId, direcao) {
+        const index = this.pesquisaCampos.findIndex(c => c.id === campoId);
+        if (index === -1) return;
+
+        const novoIndex = direcao === 'up' ? index - 1 : index + 1;
+        if (novoIndex < 0 || novoIndex >= this.pesquisaCampos.length) return;
+
+        // Swap
+        const temp = this.pesquisaCampos[index];
+        this.pesquisaCampos[index] = this.pesquisaCampos[novoIndex];
+        this.pesquisaCampos[novoIndex] = temp;
+
+        // Reordenar
+        this.pesquisaCampos.forEach((c, i) => c.ordem = i + 1);
+        this.renderCamposPesquisa();
+    }
+
+    renderCamposPesquisa() {
+        const container = document.getElementById('pesquisaCamposContainer');
+        if (!container) return;
+
+        if (this.pesquisaCampos.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state" style="padding: 20px;">
+                    <p>Nenhum campo adicionado. Clique em "+ Adicionar Campo" para começar.</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = this.pesquisaCampos.map(campo => `
+            <div class="pesquisa-campo-item" data-campo-id="${campo.id}">
+                <div class="pesquisa-campo-ordem">
+                    <button type="button" onclick="window.app.moverCampoPesquisa(${campo.id}, 'up')">▲</button>
+                    <span class="pesquisa-campo-numero">${campo.ordem}</span>
+                    <button type="button" onclick="window.app.moverCampoPesquisa(${campo.id}, 'down')">▼</button>
+                </div>
+                <input type="text"
+                    placeholder="Digite a pergunta..."
+                    value="${campo.pergunta || ''}"
+                    onchange="window.app.atualizarCampoPesquisa(${campo.id}, 'pergunta', this.value)">
+                <select onchange="window.app.atualizarCampoPesquisa(${campo.id}, 'tipo', this.value)">
+                    <option value="texto" ${campo.tipo === 'texto' ? 'selected' : ''}>Texto</option>
+                    <option value="numero" ${campo.tipo === 'numero' ? 'selected' : ''}>Número</option>
+                    <option value="sim_nao" ${campo.tipo === 'sim_nao' ? 'selected' : ''}>Sim/Não</option>
+                    <option value="data" ${campo.tipo === 'data' ? 'selected' : ''}>Data</option>
+                    <option value="selecao" ${campo.tipo === 'selecao' ? 'selected' : ''}>Seleção</option>
+                </select>
+                <label class="checkbox-inline">
+                    <input type="checkbox" ${campo.obrigatorio ? 'checked' : ''}
+                        onchange="window.app.atualizarCampoPesquisa(${campo.id}, 'obrigatorio', this.checked)">
+                    <span>Obrig.</span>
+                </label>
+                <button type="button" class="pesquisa-campo-remove" onclick="window.app.removerCampoPesquisa(${campo.id})">×</button>
+            </div>
+        `).join('');
+    }
+
+    atualizarCampoPesquisa(campoId, propriedade, valor) {
+        const campo = this.pesquisaCampos.find(c => c.id === campoId);
+        if (campo) {
+            campo[propriedade] = valor;
+        }
+    }
+
+    async carregarDadosPesquisa(pesquisaId) {
+        try {
+            const pesquisa = await db.getPesquisaPorId(pesquisaId);
+            if (!pesquisa) {
+                this.showNotification('Pesquisa não encontrada', 'error');
+                return;
+            }
+
+            document.getElementById('pes_id').value = pesquisa.pes_id;
+            document.getElementById('pes_titulo').value = pesquisa.pes_titulo || '';
+            document.getElementById('pes_descricao').value = pesquisa.pes_descricao || '';
+            document.getElementById('pes_data_inicio').value = pesquisa.pes_data_inicio || '';
+            document.getElementById('pes_data_fim').value = pesquisa.pes_data_fim || '';
+            document.getElementById('pes_obrigatorio').checked = !!pesquisa.pes_obrigatorio;
+            document.getElementById('pes_foto_obrigatoria').checked = !!pesquisa.pes_foto_obrigatoria;
+
+            // Carregar campos
+            this.pesquisaCampos = (pesquisa.campos || []).map(c => ({
+                id: c.pca_id || Date.now() + Math.random(),
+                pergunta: c.pca_pergunta,
+                tipo: c.pca_tipo,
+                obrigatorio: !!c.pca_obrigatorio,
+                ordem: c.pca_ordem
+            }));
+            this.renderCamposPesquisa();
+
+            // Carregar repositores vinculados
+            this.pesquisaRepositoresSelecionados = (pesquisa.repositores || []).map(r => ({
+                codigo: r.per_repo_cod,
+                nome: r.repo_nome || r.per_repo_cod
+            }));
+            this.renderRepositoresSelecionados();
+
+        } catch (error) {
+            console.error('Erro ao carregar dados da pesquisa:', error);
+            this.showNotification('Erro ao carregar pesquisa', 'error');
+        }
+    }
+
+    async salvarPesquisa(event) {
+        event.preventDefault();
+
+        const pesId = document.getElementById('pes_id').value;
+        const titulo = document.getElementById('pes_titulo').value.trim();
+        const descricao = document.getElementById('pes_descricao').value.trim();
+        const dataInicio = document.getElementById('pes_data_inicio').value;
+        const dataFim = document.getElementById('pes_data_fim').value;
+        const obrigatorio = document.getElementById('pes_obrigatorio').checked;
+        const fotoObrigatoria = document.getElementById('pes_foto_obrigatoria').checked;
+
+        if (!titulo) {
+            this.showNotification('O título é obrigatório', 'error');
+            return;
+        }
+
+        // Validar campos
+        const camposValidos = this.pesquisaCampos.filter(c => c.pergunta && c.pergunta.trim());
+        if (camposValidos.length === 0) {
+            this.showNotification('Adicione pelo menos um campo com pergunta', 'error');
+            return;
+        }
+
+        const dados = {
+            titulo,
+            descricao,
+            dataInicio: dataInicio || null,
+            dataFim: dataFim || null,
+            obrigatorio,
+            fotoObrigatoria,
+            campos: camposValidos.map((c, i) => ({
+                pergunta: c.pergunta.trim(),
+                tipo: c.tipo,
+                obrigatorio: c.obrigatorio,
+                ordem: i + 1
+            })),
+            repositores: this.pesquisaRepositoresSelecionados.map(r => r.codigo)
+        };
+
+        try {
+            if (pesId) {
+                await db.atualizarPesquisa(pesId, dados);
+                this.showNotification('Pesquisa atualizada com sucesso', 'success');
+            } else {
+                await db.criarPesquisa(dados);
+                this.showNotification('Pesquisa criada com sucesso', 'success');
+            }
+
+            this.fecharModalPesquisa();
+            await this.carregarListaPesquisas();
+        } catch (error) {
+            console.error('Erro ao salvar pesquisa:', error);
+            this.showNotification('Erro ao salvar pesquisa: ' + error.message, 'error');
+        }
+    }
+
+    async editarPesquisa(pesquisaId) {
+        await this.abrirModalPesquisa(pesquisaId);
+    }
+
+    async togglePesquisaAtiva(pesquisaId, atualmenteAtiva) {
+        try {
+            await db.atualizarPesquisa(pesquisaId, { ativa: !atualmenteAtiva });
+            this.showNotification(atualmenteAtiva ? 'Pesquisa desativada' : 'Pesquisa ativada', 'success');
+            await this.carregarListaPesquisas();
+        } catch (error) {
+            console.error('Erro ao atualizar status:', error);
+            this.showNotification('Erro ao atualizar status', 'error');
+        }
+    }
+
+    async excluirPesquisa(pesquisaId) {
+        if (!confirm('Tem certeza que deseja excluir esta pesquisa? Esta ação não pode ser desfeita.')) {
+            return;
+        }
+
+        try {
+            await db.excluirPesquisa(pesquisaId);
+            this.showNotification('Pesquisa excluída com sucesso', 'success');
+            await this.carregarListaPesquisas();
+        } catch (error) {
+            console.error('Erro ao excluir pesquisa:', error);
+            this.showNotification('Erro ao excluir pesquisa: ' + error.message, 'error');
+        }
+    }
+
+    // ==================== CONSULTA DE PESQUISAS ====================
+
+    async inicializarConsultaPesquisa() {
+        // Carregar lista de pesquisas no filtro
+        await this.carregarFiltrosPesquisas();
+
+        // Definir datas padrão (últimos 30 dias)
+        const hoje = new Date();
+        const inicio = new Date(hoje);
+        inicio.setDate(inicio.getDate() - 30);
+
+        document.getElementById('filtroConsultaDataFim').value = hoje.toISOString().split('T')[0];
+        document.getElementById('filtroConsultaDataInicio').value = inicio.toISOString().split('T')[0];
+
+        // Configurar botão exportar
+        const btnExportar = document.getElementById('btnExportarRespostasPesquisa');
+        if (btnExportar) {
+            btnExportar.onclick = () => this.exportarRespostasPesquisa();
+        }
+    }
+
+    async carregarFiltrosPesquisas() {
+        const selectPesquisa = document.getElementById('filtroConsultaPesquisa');
+        if (!selectPesquisa) return;
+
+        try {
+            const pesquisas = await db.listarPesquisas({});
+            selectPesquisa.innerHTML = '<option value="">Todas</option>';
+            pesquisas.forEach(p => {
+                const option = document.createElement('option');
+                option.value = p.pes_id;
+                option.textContent = p.pes_titulo;
+                selectPesquisa.appendChild(option);
+            });
+        } catch (error) {
+            console.error('Erro ao carregar pesquisas:', error);
+        }
+    }
+
+    respostasPesquisaAtual = [];
+
+    async buscarRespostasPesquisa() {
+        const container = document.getElementById('consultaPesquisaResultado');
+        if (!container) return;
+
+        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⏳</div><p>Buscando...</p></div>';
+
+        try {
+            const filtros = {
+                pesquisaId: document.getElementById('filtroConsultaPesquisa')?.value || null,
+                supervisor: document.getElementById('filtroConsultaSupervisor')?.value || null,
+                representante: document.getElementById('filtroConsultaRepresentante')?.value || null,
+                repositor: document.getElementById('filtroConsultaRepositor')?.value || null,
+                dataInicio: document.getElementById('filtroConsultaDataInicio')?.value || null,
+                dataFim: document.getElementById('filtroConsultaDataFim')?.value || null
+            };
+
+            const respostas = await db.listarRespostasPesquisa(filtros);
+            this.respostasPesquisaAtual = respostas;
+
+            if (respostas.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📭</div>
+                        <p>Nenhuma resposta encontrada para os filtros selecionados.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="table-container" style="overflow-x: auto;">
+                    <table class="respostas-table">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>Pesquisa</th>
+                                <th>Repositor</th>
+                                <th>Cliente</th>
+                                <th>Foto</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${respostas.map(r => {
+                                const data = r.res_data_resposta ? new Date(r.res_data_resposta).toLocaleDateString('pt-BR') : '-';
+                                const fotoThumb = r.res_foto_url ? `<img src="${r.res_foto_url}" class="resposta-foto-thumb" onclick="window.open('${r.res_foto_url}', '_blank')">` : '-';
+
+                                return `
+                                    <tr>
+                                        <td>${data}</td>
+                                        <td>${r.pes_titulo || '-'}</td>
+                                        <td>${r.res_repo_cod} - ${r.repo_nome || ''}</td>
+                                        <td>${r.res_cliente_codigo} - ${r.cliente_nome || ''}</td>
+                                        <td>${fotoThumb}</td>
+                                        <td>
+                                            <button class="btn btn-secondary btn-sm" onclick="window.app.verDetalhesResposta(${r.res_id})">
+                                                Ver
+                                            </button>
+                                        </td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                <p class="text-muted" style="margin-top: 10px; font-size: 0.85rem;">
+                    ${respostas.length} resposta(s) encontrada(s)
+                </p>
+            `;
+        } catch (error) {
+            console.error('Erro ao buscar respostas:', error);
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">❌</div>
+                    <p>Erro ao buscar respostas: ${error.message}</p>
+                </div>
+            `;
+        }
+    }
+
+    async verDetalhesResposta(respostaId) {
+        const modal = document.getElementById('modalDetalhesResposta');
+        const body = document.getElementById('modalDetalhesRespostaBody');
+        if (!modal || !body) return;
+
+        body.innerHTML = '<div class="empty-state"><p>Carregando...</p></div>';
+        modal.classList.add('active');
+
+        try {
+            // Buscar resposta completa
+            const resposta = this.respostasPesquisaAtual.find(r => r.res_id === respostaId);
+            if (!resposta) {
+                body.innerHTML = '<p>Resposta não encontrada.</p>';
+                return;
+            }
+
+            // Parsear respostas dos campos
+            let respostasCampos = [];
+            if (resposta.res_respostas) {
+                try {
+                    respostasCampos = JSON.parse(resposta.res_respostas);
+                } catch (e) {
+                    console.error('Erro ao parsear respostas:', e);
+                }
+            }
+
+            const data = resposta.res_data_resposta ? new Date(resposta.res_data_resposta).toLocaleString('pt-BR') : '-';
+
+            body.innerHTML = `
+                <div class="detalhes-resposta-grid">
+                    <div class="detalhes-resposta-item">
+                        <label>Pesquisa</label>
+                        <div class="valor">${resposta.pes_titulo || '-'}</div>
+                    </div>
+                    <div class="detalhes-resposta-item">
+                        <label>Data/Hora</label>
+                        <div class="valor">${data}</div>
+                    </div>
+                    <div class="detalhes-resposta-item">
+                        <label>Repositor</label>
+                        <div class="valor">${resposta.res_repo_cod} - ${resposta.repo_nome || ''}</div>
+                    </div>
+                    <div class="detalhes-resposta-item">
+                        <label>Cliente</label>
+                        <div class="valor">${resposta.res_cliente_codigo} - ${resposta.cliente_nome || ''}</div>
+                    </div>
+                </div>
+
+                ${respostasCampos.length > 0 ? `
+                    <div class="detalhes-resposta-campos">
+                        <h4>Respostas</h4>
+                        ${respostasCampos.map(rc => `
+                            <div class="detalhes-campo-item">
+                                <span class="detalhes-campo-pergunta">${rc.pergunta || rc.campo}</span>
+                                <span class="detalhes-campo-resposta">${rc.resposta || '-'}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : ''}
+
+                ${resposta.res_foto_url ? `
+                    <div class="detalhes-resposta-foto">
+                        <h4>Foto</h4>
+                        <img src="${resposta.res_foto_url}" alt="Foto da pesquisa">
+                    </div>
+                ` : ''}
+            `;
+        } catch (error) {
+            console.error('Erro ao carregar detalhes:', error);
+            body.innerHTML = '<p>Erro ao carregar detalhes.</p>';
+        }
+    }
+
+    fecharModalDetalhesResposta() {
+        const modal = document.getElementById('modalDetalhesResposta');
+        if (modal) {
+            modal.classList.remove('active');
+        }
+    }
+
+    async exportarRespostasPesquisa() {
+        if (this.respostasPesquisaAtual.length === 0) {
+            this.showNotification('Nenhuma resposta para exportar. Faça uma busca primeiro.', 'warning');
+            return;
+        }
+
+        try {
+            // Preparar dados para CSV
+            const headers = ['Data', 'Pesquisa', 'Repositor', 'Nome Repositor', 'Cliente', 'Nome Cliente', 'Tem Foto'];
+            const rows = this.respostasPesquisaAtual.map(r => [
+                r.res_data_resposta ? new Date(r.res_data_resposta).toLocaleDateString('pt-BR') : '',
+                r.pes_titulo || '',
+                r.res_repo_cod || '',
+                r.repo_nome || '',
+                r.res_cliente_codigo || '',
+                r.cliente_nome || '',
+                r.res_foto_url ? 'Sim' : 'Não'
+            ]);
+
+            // Criar CSV
+            const csvContent = [
+                headers.join(';'),
+                ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(';'))
+            ].join('\n');
+
+            // Download
+            const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `respostas_pesquisas_${new Date().toISOString().split('T')[0]}.csv`;
+            link.click();
+
+            this.showNotification('Exportação realizada com sucesso', 'success');
+        } catch (error) {
+            console.error('Erro ao exportar:', error);
+            this.showNotification('Erro ao exportar dados', 'error');
+        }
+    }
+
+    // ==================== PESQUISA NA VISITA ====================
+
+    pesquisaVisitaState = {
+        pesquisasPendentes: [],
+        pesquisaAtualIndex: 0,
+        respostasColetadas: [],
+        contextoVisita: null,
+        fotoPesquisa: null
+    };
+
+    async verificarPesquisasObrigatoriasPendentes(repId, clienteId, dataVisita) {
+        try {
+            const pesquisas = await db.getPesquisasPendentesRepositor(repId);
+            const hoje = new Date().toISOString().split('T')[0];
+
+            // Filtrar pesquisas obrigatórias que ainda não foram respondidas
+            const pendentes = [];
+            for (const pesquisa of pesquisas) {
+                if (!pesquisa.pes_obrigatorio) continue;
+
+                // Verificar se está no período válido
+                if (pesquisa.pes_data_inicio && pesquisa.pes_data_inicio > hoje) continue;
+                if (pesquisa.pes_data_fim && pesquisa.pes_data_fim < hoje) continue;
+
+                // Verificar se já foi respondida para este cliente/data
+                const jaRespondida = await db.verificarPesquisaRespondida(
+                    pesquisa.pes_id,
+                    repId,
+                    clienteId,
+                    dataVisita || hoje
+                );
+
+                if (!jaRespondida) {
+                    pendentes.push(pesquisa);
+                }
+            }
+
+            return pendentes;
+        } catch (error) {
+            console.error('Erro ao verificar pesquisas pendentes:', error);
+            return [];
+        }
+    }
+
+    async abrirModalPesquisaVisita(pesquisas, repId, clienteId, clienteNome, dataVisita) {
+        this.pesquisaVisitaState = {
+            pesquisasPendentes: pesquisas,
+            pesquisaAtualIndex: 0,
+            respostasColetadas: [],
+            contextoVisita: { repId, clienteId, clienteNome, dataVisita },
+            fotoPesquisa: null
+        };
+
+        // Criar modal se não existir
+        let modal = document.getElementById('modalPesquisaVisita');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.className = 'modal modal-pesquisa-visita';
+            modal.id = 'modalPesquisaVisita';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 600px; max-height: 90vh; overflow-y: auto;">
+                    <div class="modal-header">
+                        <h3 id="modalPesquisaVisitaTitulo">Pesquisa Obrigatória</h3>
+                        <button class="modal-close" onclick="window.app.cancelarPesquisaVisita()">&times;</button>
+                    </div>
+                    <div class="modal-body" id="modalPesquisaVisitaBody">
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        this.renderPesquisaAtual();
+        modal.classList.add('active');
+    }
+
+    renderPesquisaAtual() {
+        const { pesquisasPendentes, pesquisaAtualIndex, contextoVisita } = this.pesquisaVisitaState;
+        const pesquisa = pesquisasPendentes[pesquisaAtualIndex];
+        const body = document.getElementById('modalPesquisaVisitaBody');
+        const titulo = document.getElementById('modalPesquisaVisitaTitulo');
+
+        if (!pesquisa || !body) return;
+
+        titulo.textContent = `Pesquisa ${pesquisaAtualIndex + 1}/${pesquisasPendentes.length}: ${pesquisa.pes_titulo}`;
+
+        const camposHtml = (pesquisa.campos || []).map(campo => {
+            let inputHtml = '';
+            switch (campo.pca_tipo) {
+                case 'texto':
+                    inputHtml = `<input type="text" id="campo_${campo.pca_id}" class="form-control" ${campo.pca_obrigatorio ? 'required' : ''}>`;
+                    break;
+                case 'numero':
+                    inputHtml = `<input type="number" id="campo_${campo.pca_id}" class="form-control" ${campo.pca_obrigatorio ? 'required' : ''}>`;
+                    break;
+                case 'sim_nao':
+                    inputHtml = `
+                        <div class="radio-group" style="display: flex; gap: 20px;">
+                            <label class="radio-inline">
+                                <input type="radio" name="campo_${campo.pca_id}" value="Sim" ${campo.pca_obrigatorio ? 'required' : ''}>
+                                <span>Sim</span>
+                            </label>
+                            <label class="radio-inline">
+                                <input type="radio" name="campo_${campo.pca_id}" value="Não">
+                                <span>Não</span>
+                            </label>
+                        </div>
+                    `;
+                    break;
+                case 'data':
+                    inputHtml = `<input type="date" id="campo_${campo.pca_id}" class="form-control" ${campo.pca_obrigatorio ? 'required' : ''}>`;
+                    break;
+                default:
+                    inputHtml = `<input type="text" id="campo_${campo.pca_id}" class="form-control" ${campo.pca_obrigatorio ? 'required' : ''}>`;
+            }
+
+            return `
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label style="font-weight: 600; margin-bottom: 6px; display: block;">
+                        ${campo.pca_pergunta}
+                        ${campo.pca_obrigatorio ? '<span style="color: #ef4444;">*</span>' : ''}
+                    </label>
+                    ${inputHtml}
+                </div>
+            `;
+        }).join('');
+
+        const fotoSection = pesquisa.pes_foto_obrigatoria ? `
+            <div class="form-group" style="margin-top: 20px; padding: 16px; background: #f9fafb; border-radius: 8px;">
+                <label style="font-weight: 600; margin-bottom: 10px; display: block;">
+                    Foto <span style="color: #ef4444;">*</span>
+                </label>
+                <div id="pesquisaFotoPreview" style="margin-bottom: 10px;"></div>
+                <input type="file" id="pesquisaFotoInput" accept="image/*" capture="environment" style="display: none;" onchange="window.app.capturarFotoPesquisa(event)">
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('pesquisaFotoInput').click()">
+                    📷 Capturar Foto
+                </button>
+            </div>
+        ` : '';
+
+        body.innerHTML = `
+            <div class="pesquisa-visita-info" style="margin-bottom: 16px; padding: 12px; background: #eff6ff; border-radius: 8px;">
+                <p style="margin: 0; font-size: 0.9rem; color: #1e40af;">
+                    <strong>Cliente:</strong> ${contextoVisita.clienteId} - ${contextoVisita.clienteNome}
+                </p>
+                ${pesquisa.pes_descricao ? `<p style="margin: 8px 0 0; font-size: 0.85rem; color: #3b82f6;">${pesquisa.pes_descricao}</p>` : ''}
+            </div>
+            <form id="formPesquisaVisita" onsubmit="window.app.enviarRespostaPesquisaVisita(event)">
+                ${camposHtml}
+                ${fotoSection}
+                <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+                    <button type="button" class="btn btn-secondary" onclick="window.app.cancelarPesquisaVisita()">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">
+                        ${pesquisaAtualIndex < pesquisasPendentes.length - 1 ? 'Próxima' : 'Finalizar'}
+                    </button>
+                </div>
+            </form>
+        `;
+    }
+
+    capturarFotoPesquisa(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const preview = document.getElementById('pesquisaFotoPreview');
+        if (preview) {
+            const url = URL.createObjectURL(file);
+            preview.innerHTML = `<img src="${url}" style="max-width: 100%; max-height: 200px; border-radius: 8px;">`;
+        }
+
+        this.pesquisaVisitaState.fotoPesquisa = file;
+    }
+
+    async enviarRespostaPesquisaVisita(event) {
+        event.preventDefault();
+
+        const { pesquisasPendentes, pesquisaAtualIndex, contextoVisita } = this.pesquisaVisitaState;
+        const pesquisa = pesquisasPendentes[pesquisaAtualIndex];
+
+        if (!pesquisa) return;
+
+        // Coletar respostas dos campos
+        const respostas = [];
+        for (const campo of (pesquisa.campos || [])) {
+            let valor = '';
+            if (campo.pca_tipo === 'sim_nao') {
+                const radio = document.querySelector(`input[name="campo_${campo.pca_id}"]:checked`);
+                valor = radio ? radio.value : '';
+            } else {
+                const input = document.getElementById(`campo_${campo.pca_id}`);
+                valor = input ? input.value : '';
+            }
+
+            if (campo.pca_obrigatorio && !valor) {
+                this.showNotification(`O campo "${campo.pca_pergunta}" é obrigatório`, 'warning');
+                return;
+            }
+
+            respostas.push({
+                campo: campo.pca_id,
+                pergunta: campo.pca_pergunta,
+                resposta: valor
+            });
+        }
+
+        // Verificar foto obrigatória
+        if (pesquisa.pes_foto_obrigatoria && !this.pesquisaVisitaState.fotoPesquisa) {
+            this.showNotification('A foto é obrigatória para esta pesquisa', 'warning');
+            return;
+        }
+
+        // Salvar resposta
+        try {
+            const dados = {
+                pesquisaId: pesquisa.pes_id,
+                repoCod: contextoVisita.repId,
+                clienteCodigo: contextoVisita.clienteId,
+                dataResposta: new Date().toISOString(),
+                respostas: JSON.stringify(respostas),
+                foto: this.pesquisaVisitaState.fotoPesquisa
+            };
+
+            await db.salvarRespostaPesquisa(dados);
+
+            // Limpar foto para próxima pesquisa
+            this.pesquisaVisitaState.fotoPesquisa = null;
+
+            // Avançar para próxima pesquisa ou finalizar
+            if (pesquisaAtualIndex < pesquisasPendentes.length - 1) {
+                this.pesquisaVisitaState.pesquisaAtualIndex++;
+                this.renderPesquisaAtual();
+            } else {
+                // Todas as pesquisas respondidas, continuar com checkout
+                this.fecharModalPesquisaVisita();
+                this.showNotification('Pesquisas respondidas. Continuando com o checkout...', 'success');
+
+                // Continuar salvando a visita
+                setTimeout(() => {
+                    this.salvarVisita();
+                }, 500);
+            }
+        } catch (error) {
+            console.error('Erro ao salvar resposta:', error);
+            this.showNotification('Erro ao salvar resposta: ' + error.message, 'error');
+        }
+    }
+
+    cancelarPesquisaVisita() {
+        const modal = document.getElementById('modalPesquisaVisita');
+        if (modal) {
+            modal.classList.remove('active');
+        }
+        this.showNotification('Checkout cancelado. Complete as pesquisas obrigatórias para finalizar.', 'warning');
+    }
+
+    fecharModalPesquisaVisita() {
+        const modal = document.getElementById('modalPesquisaVisita');
+        if (modal) {
+            modal.classList.remove('active');
+        }
     }
 
     // ==================== NOTIFICAÇÕES ====================

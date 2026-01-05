@@ -3886,6 +3886,616 @@ export const pages = {
                 }
             </style>
         `;
+    },
+
+    // ==================== PESQUISAS ====================
+
+    'cadastro-pesquisa': async () => {
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">Cadastro de Pesquisas</h3>
+                        <p class="text-muted" style="margin: 4px 0 0; font-size: 0.9rem;">
+                            Crie e gerencie pesquisas para os repositores realizarem durante as visitas.
+                        </p>
+                    </div>
+                    <div class="card-actions">
+                        <button class="btn btn-primary btn-sm" onclick="window.app.abrirModalPesquisa()">
+                            + Nova Pesquisa
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="filtros-section" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                        <div class="row" style="display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
+                            <div class="col" style="flex: 1; min-width: 200px;">
+                                <label for="filtroPesquisaTermo" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Buscar</label>
+                                <input type="text" id="filtroPesquisaTermo" class="form-control" placeholder="Título ou descrição..." style="width: 100%;">
+                            </div>
+                            <div class="col" style="flex: 0 0 180px;">
+                                <label for="filtroPesquisaStatus" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Status</label>
+                                <select id="filtroPesquisaStatus" class="form-control" style="width: 100%;">
+                                    <option value="">Todas</option>
+                                    <option value="1" selected>Ativas</option>
+                                    <option value="0">Inativas</option>
+                                </select>
+                            </div>
+                            <div class="col" style="flex: 0; min-width: 120px;">
+                                <button class="btn btn-primary" onclick="window.app.carregarListaPesquisas()">Buscar</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="pesquisasLista" class="pesquisas-lista">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📝</div>
+                            <p>Carregando pesquisas...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Pesquisa -->
+            <div class="modal modal-pesquisa" id="modalPesquisa">
+                <div class="modal-content" style="max-width: 900px;">
+                    <div class="modal-header modal-header-with-actions">
+                        <h3 id="modalPesquisaTitle">Nova Pesquisa</h3>
+                        <div class="modal-header-actions">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="window.app.fecharModalPesquisa()">Cancelar</button>
+                            <button type="submit" form="formPesquisa" class="btn btn-primary btn-sm">Salvar</button>
+                        </div>
+                        <button class="modal-close" onclick="window.app.fecharModalPesquisa()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="formPesquisa" onsubmit="window.app.salvarPesquisa(event)">
+                            <input type="hidden" id="pes_id" value="">
+
+                            <div class="pesquisa-form-grid">
+                                <!-- Dados Básicos -->
+                                <section class="form-card" style="grid-column: 1 / -1;">
+                                    <div class="form-card-header">
+                                        <p class="form-card-eyebrow">Informações</p>
+                                        <h4 class="form-card-title-inline">Dados da Pesquisa</h4>
+                                    </div>
+                                    <div class="form-card-body">
+                                        <div class="dados-pesquisa-grid">
+                                            <div class="form-group span-3-cols">
+                                                <label for="pes_titulo">Título da Pesquisa *</label>
+                                                <input type="text" id="pes_titulo" required placeholder="Ex: Pesquisa de Satisfação">
+                                            </div>
+                                            <div class="form-group span-3-cols">
+                                                <label for="pes_descricao">Descrição</label>
+                                                <textarea id="pes_descricao" rows="2" placeholder="Descreva o objetivo da pesquisa..."></textarea>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="pes_data_inicio">Data Início</label>
+                                                <input type="date" id="pes_data_inicio">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="pes_data_fim">Data Fim</label>
+                                                <input type="date" id="pes_data_fim">
+                                            </div>
+                                            <div class="form-group checkbox-group" style="display: flex; gap: 20px; align-items: center; padding-top: 24px;">
+                                                <label class="checkbox-inline">
+                                                    <input type="checkbox" id="pes_obrigatorio">
+                                                    <span>Obrigatória</span>
+                                                </label>
+                                                <label class="checkbox-inline">
+                                                    <input type="checkbox" id="pes_foto_obrigatoria">
+                                                    <span>Foto obrigatória</span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </section>
+
+                                <!-- Campos da Pesquisa -->
+                                <section class="form-card" style="grid-column: 1 / -1;">
+                                    <div class="form-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                                        <div>
+                                            <p class="form-card-eyebrow">Questionário</p>
+                                            <h4 class="form-card-title-inline">Campos da Pesquisa</h4>
+                                        </div>
+                                        <button type="button" class="btn btn-secondary btn-sm" onclick="window.app.adicionarCampoPesquisa()">
+                                            + Adicionar Campo
+                                        </button>
+                                    </div>
+                                    <div class="form-card-body">
+                                        <div id="pesquisaCamposContainer" class="pesquisa-campos-container">
+                                            <div class="empty-state" style="padding: 20px;">
+                                                <p>Nenhum campo adicionado. Clique em "+ Adicionar Campo" para começar.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </section>
+
+                                <!-- Repositores Vinculados -->
+                                <section class="form-card" style="grid-column: 1 / -1;">
+                                    <div class="form-card-header">
+                                        <div>
+                                            <p class="form-card-eyebrow">Vincular (opcional)</p>
+                                            <h4 class="form-card-title-inline">Repositores</h4>
+                                        </div>
+                                    </div>
+                                    <div class="form-card-body">
+                                        <p class="text-muted" style="margin-bottom: 10px; font-size: 0.85rem;">
+                                            Deixe vazio para disponibilizar para todos os repositores, ou selecione repositores específicos.
+                                        </p>
+                                        <div class="form-group">
+                                            <select id="pes_repositor_select" class="form-control">
+                                                <option value="">Selecione um repositor...</option>
+                                            </select>
+                                        </div>
+                                        <div id="pesquisaRepositoresLista" class="repositores-vinculados-lista" style="margin-top: 10px;">
+                                        </div>
+                                    </div>
+                                </section>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <style>
+                .pesquisas-lista {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 12px;
+                }
+
+                .pesquisa-card {
+                    background: #fff;
+                    border: 1px solid #e5e7eb;
+                    border-radius: 8px;
+                    padding: 16px;
+                    transition: all 0.2s;
+                }
+
+                .pesquisa-card:hover {
+                    border-color: #d1d5db;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                }
+
+                .pesquisa-card-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: flex-start;
+                    gap: 16px;
+                    margin-bottom: 12px;
+                }
+
+                .pesquisa-titulo {
+                    font-weight: 600;
+                    font-size: 1.1rem;
+                    color: #111827;
+                    margin: 0;
+                }
+
+                .pesquisa-descricao {
+                    color: #6b7280;
+                    font-size: 0.9rem;
+                    margin: 4px 0 0;
+                }
+
+                .pesquisa-badges {
+                    display: flex;
+                    gap: 8px;
+                    flex-wrap: wrap;
+                }
+
+                .pesquisa-badge {
+                    display: inline-block;
+                    padding: 4px 10px;
+                    border-radius: 12px;
+                    font-size: 0.75rem;
+                    font-weight: 600;
+                }
+
+                .pesquisa-badge-obrigatoria {
+                    background: #fef3c7;
+                    color: #92400e;
+                }
+
+                .pesquisa-badge-opcional {
+                    background: #dbeafe;
+                    color: #1e40af;
+                }
+
+                .pesquisa-badge-foto {
+                    background: #f3e8ff;
+                    color: #7c3aed;
+                }
+
+                .pesquisa-badge-ativa {
+                    background: #d1fae5;
+                    color: #065f46;
+                }
+
+                .pesquisa-badge-inativa {
+                    background: #fee2e2;
+                    color: #991b1b;
+                }
+
+                .pesquisa-info {
+                    display: flex;
+                    gap: 24px;
+                    flex-wrap: wrap;
+                    margin-bottom: 12px;
+                }
+
+                .pesquisa-info-item {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    font-size: 0.85rem;
+                    color: #6b7280;
+                }
+
+                .pesquisa-info-item strong {
+                    color: #374151;
+                }
+
+                .pesquisa-acoes {
+                    display: flex;
+                    gap: 8px;
+                    justify-content: flex-end;
+                }
+
+                .pesquisa-form-grid {
+                    display: grid;
+                    gap: 20px;
+                }
+
+                .dados-pesquisa-grid {
+                    display: grid;
+                    grid-template-columns: repeat(3, 1fr);
+                    gap: 16px;
+                }
+
+                .dados-pesquisa-grid .span-3-cols {
+                    grid-column: span 3;
+                }
+
+                .pesquisa-campos-container {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 12px;
+                }
+
+                .pesquisa-campo-item {
+                    display: grid;
+                    grid-template-columns: 30px 1fr 150px 100px 40px;
+                    gap: 10px;
+                    align-items: center;
+                    padding: 12px;
+                    background: #f9fafb;
+                    border: 1px solid #e5e7eb;
+                    border-radius: 6px;
+                }
+
+                .pesquisa-campo-ordem {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 2px;
+                }
+
+                .pesquisa-campo-ordem button {
+                    background: none;
+                    border: none;
+                    cursor: pointer;
+                    padding: 2px;
+                    color: #9ca3af;
+                    font-size: 12px;
+                }
+
+                .pesquisa-campo-ordem button:hover {
+                    color: #374151;
+                }
+
+                .pesquisa-campo-numero {
+                    font-weight: 600;
+                    color: #6b7280;
+                    font-size: 0.85rem;
+                }
+
+                .pesquisa-campo-item input[type="text"],
+                .pesquisa-campo-item select {
+                    width: 100%;
+                    padding: 8px 10px;
+                    border: 1px solid #d1d5db;
+                    border-radius: 4px;
+                    font-size: 0.9rem;
+                }
+
+                .pesquisa-campo-item .checkbox-inline {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    font-size: 0.85rem;
+                }
+
+                .pesquisa-campo-remove {
+                    background: none;
+                    border: none;
+                    cursor: pointer;
+                    color: #ef4444;
+                    font-size: 18px;
+                    padding: 4px;
+                }
+
+                .pesquisa-campo-remove:hover {
+                    color: #dc2626;
+                }
+
+                .repositores-vinculados-lista {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                }
+
+                .repositor-tag {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    padding: 6px 12px;
+                    background: #eff6ff;
+                    border: 1px solid #bfdbfe;
+                    border-radius: 20px;
+                    font-size: 0.85rem;
+                    color: #1e40af;
+                }
+
+                .repositor-tag-remove {
+                    background: none;
+                    border: none;
+                    cursor: pointer;
+                    color: #3b82f6;
+                    font-size: 14px;
+                    padding: 0;
+                    line-height: 1;
+                }
+
+                .repositor-tag-remove:hover {
+                    color: #1d4ed8;
+                }
+
+                @media (max-width: 768px) {
+                    .dados-pesquisa-grid {
+                        grid-template-columns: 1fr;
+                    }
+
+                    .dados-pesquisa-grid .span-3-cols {
+                        grid-column: span 1;
+                    }
+
+                    .pesquisa-campo-item {
+                        grid-template-columns: 1fr;
+                        gap: 8px;
+                    }
+
+                    .pesquisa-campo-ordem {
+                        flex-direction: row;
+                        justify-content: space-between;
+                    }
+                }
+            </style>
+        `;
+    },
+
+    'consulta-pesquisa': async () => {
+        const [supervisores, representantes] = await Promise.all([
+            db.getSupervisoresComercial(),
+            db.getRepresentantesComercial()
+        ]);
+
+        const supervisorOptions = supervisores.map(sup => `<option value="${sup}">${sup}</option>`).join('');
+        const representanteOptions = representantes.map(rep => `
+            <option value="${rep.representante}">${rep.representante} - ${rep.desc_representante}</option>
+        `).join('');
+
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">Consulta de Pesquisas</h3>
+                        <p class="text-muted" style="margin: 4px 0 0; font-size: 0.9rem;">
+                            Visualize as respostas das pesquisas realizadas pelos repositores.
+                        </p>
+                    </div>
+                    <div class="card-actions">
+                        <button class="btn btn-secondary btn-sm" id="btnExportarRespostasPesquisa">
+                            📥 Exportar
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="filtros-section" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                        <div class="row" style="display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
+                            <div class="col" style="flex: 1; min-width: 180px;">
+                                <label for="filtroConsultaPesquisa" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Pesquisa</label>
+                                <select id="filtroConsultaPesquisa" class="form-control" style="width: 100%;">
+                                    <option value="">Todas</option>
+                                </select>
+                            </div>
+                            <div class="col" style="flex: 1; min-width: 150px;">
+                                <label for="filtroConsultaSupervisor" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Supervisor</label>
+                                <select id="filtroConsultaSupervisor" class="form-control" style="width: 100%;">
+                                    <option value="">Todos</option>
+                                    ${supervisorOptions}
+                                </select>
+                            </div>
+                            <div class="col" style="flex: 1; min-width: 180px;">
+                                <label for="filtroConsultaRepresentante" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Representante</label>
+                                <select id="filtroConsultaRepresentante" class="form-control" style="width: 100%;">
+                                    <option value="">Todos</option>
+                                    ${representanteOptions}
+                                </select>
+                            </div>
+                            <div class="col" style="flex: 1; min-width: 180px;">
+                                <label for="filtroConsultaRepositor" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Repositor</label>
+                                <input type="text" id="filtroConsultaRepositor" class="form-control" placeholder="Código ou nome..." style="width: 100%;">
+                            </div>
+                            <div class="col" style="flex: 0 0 130px;">
+                                <label for="filtroConsultaDataInicio" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Data Início</label>
+                                <input type="date" id="filtroConsultaDataInicio" class="form-control" style="width: 100%;">
+                            </div>
+                            <div class="col" style="flex: 0 0 130px;">
+                                <label for="filtroConsultaDataFim" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Data Fim</label>
+                                <input type="date" id="filtroConsultaDataFim" class="form-control" style="width: 100%;">
+                            </div>
+                            <div class="col" style="flex: 0; min-width: 100px;">
+                                <button class="btn btn-primary" onclick="window.app.buscarRespostasPesquisa()">Buscar</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="consultaPesquisaResultado" class="consulta-pesquisa-resultado">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">🔍</div>
+                            <p>Use os filtros acima para buscar as respostas das pesquisas.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Detalhes Resposta -->
+            <div class="modal modal-detalhes-resposta" id="modalDetalhesResposta">
+                <div class="modal-content" style="max-width: 700px;">
+                    <div class="modal-header">
+                        <h3>Detalhes da Resposta</h3>
+                        <button class="modal-close" onclick="window.app.fecharModalDetalhesResposta()">&times;</button>
+                    </div>
+                    <div class="modal-body" id="modalDetalhesRespostaBody">
+                    </div>
+                </div>
+            </div>
+
+            <style>
+                .consulta-pesquisa-resultado {
+                    min-height: 200px;
+                }
+
+                .respostas-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-size: 0.9rem;
+                }
+
+                .respostas-table th,
+                .respostas-table td {
+                    padding: 10px 12px;
+                    text-align: left;
+                    border-bottom: 1px solid #e5e7eb;
+                }
+
+                .respostas-table th {
+                    background: #f9fafb;
+                    font-weight: 600;
+                    color: #374151;
+                    position: sticky;
+                    top: 0;
+                }
+
+                .respostas-table tr:hover {
+                    background: #f9fafb;
+                }
+
+                .resposta-resumo {
+                    max-width: 300px;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }
+
+                .resposta-foto-thumb {
+                    width: 40px;
+                    height: 40px;
+                    object-fit: cover;
+                    border-radius: 4px;
+                    cursor: pointer;
+                }
+
+                .detalhes-resposta-grid {
+                    display: grid;
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: 16px;
+                }
+
+                .detalhes-resposta-item {
+                    padding: 12px;
+                    background: #f9fafb;
+                    border-radius: 6px;
+                }
+
+                .detalhes-resposta-item label {
+                    font-weight: 600;
+                    color: #6b7280;
+                    font-size: 0.85rem;
+                    display: block;
+                    margin-bottom: 4px;
+                }
+
+                .detalhes-resposta-item .valor {
+                    color: #111827;
+                    font-size: 1rem;
+                }
+
+                .detalhes-resposta-campos {
+                    margin-top: 20px;
+                }
+
+                .detalhes-resposta-campos h4 {
+                    margin-bottom: 12px;
+                    color: #374151;
+                }
+
+                .detalhes-campo-item {
+                    display: flex;
+                    justify-content: space-between;
+                    padding: 10px 0;
+                    border-bottom: 1px solid #e5e7eb;
+                }
+
+                .detalhes-campo-item:last-child {
+                    border-bottom: none;
+                }
+
+                .detalhes-campo-pergunta {
+                    font-weight: 500;
+                    color: #374151;
+                }
+
+                .detalhes-campo-resposta {
+                    color: #111827;
+                    text-align: right;
+                }
+
+                .detalhes-resposta-foto {
+                    margin-top: 20px;
+                    text-align: center;
+                }
+
+                .detalhes-resposta-foto img {
+                    max-width: 100%;
+                    max-height: 400px;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                }
+
+                @media (max-width: 768px) {
+                    .detalhes-resposta-grid {
+                        grid-template-columns: 1fr;
+                    }
+
+                    .respostas-table {
+                        display: block;
+                        overflow-x: auto;
+                    }
+                }
+            </style>
+        `;
     }
 };
 
@@ -3908,6 +4518,8 @@ export const pageTitles = {
     'controle-acessos': 'Controle de Acessos',
     'gestao-usuarios': 'Gestão de Usuários',
     'roteiro-repositor': 'Roteiro do Repositor',
+    'cadastro-pesquisa': 'Cadastro de Pesquisas',
+    'consulta-pesquisa': 'Consulta de Pesquisas',
     'registro-rota': 'Registro de Rota',
     'consulta-visitas': 'Consulta de Visitas',
     'consulta-campanha': 'Consulta Campanha',

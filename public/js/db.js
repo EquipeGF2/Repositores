@@ -3712,6 +3712,331 @@ class TursoDatabase {
             throw error;
         }
     }
+
+    // ==================== PESQUISAS - CRUD ====================
+
+    async listarPesquisas(filtros = {}) {
+        try {
+            let sql = `
+                SELECT p.*,
+                    (SELECT COUNT(*) FROM cc_pesquisa_repositores WHERE per_pes_id = p.pes_id) as total_repositores,
+                    (SELECT COUNT(*) FROM cc_pesquisa_campos WHERE pca_pes_id = p.pes_id) as total_campos,
+                    (SELECT COUNT(*) FROM cc_pesquisa_respostas WHERE res_pes_id = p.pes_id) as total_respostas
+                FROM cc_pesquisas p
+                WHERE 1=1
+            `;
+            const args = [];
+
+            if (filtros.ativa !== undefined) {
+                sql += ` AND p.pes_ativa = ?`;
+                args.push(filtros.ativa ? 1 : 0);
+            }
+
+            if (filtros.termo) {
+                sql += ` AND (p.pes_titulo LIKE ? OR p.pes_descricao LIKE ?)`;
+                args.push(`%${filtros.termo}%`, `%${filtros.termo}%`);
+            }
+
+            sql += ` ORDER BY p.pes_criado_em DESC`;
+
+            const result = await this.mainClient.execute({ sql, args });
+            return result.rows;
+        } catch (error) {
+            console.error('Erro ao listar pesquisas:', error);
+            throw error;
+        }
+    }
+
+    async getPesquisaPorId(pesId) {
+        try {
+            const result = await this.mainClient.execute({
+                sql: `SELECT * FROM cc_pesquisas WHERE pes_id = ?`,
+                args: [pesId]
+            });
+
+            if (result.rows.length === 0) return null;
+
+            const pesquisa = result.rows[0];
+
+            // Buscar campos
+            const campos = await this.mainClient.execute({
+                sql: `SELECT * FROM cc_pesquisa_campos WHERE pca_pes_id = ? ORDER BY pca_ordem`,
+                args: [pesId]
+            });
+            pesquisa.campos = campos.rows;
+
+            // Buscar repositores vinculados
+            const repositores = await this.mainClient.execute({
+                sql: `
+                    SELECT pr.*, r.repo_nome, r.repo_cod
+                    FROM cc_pesquisa_repositores pr
+                    JOIN cad_repositor r ON r.repo_cod = pr.per_rep_id
+                    WHERE pr.per_pes_id = ?
+                `,
+                args: [pesId]
+            });
+            pesquisa.repositores = repositores.rows;
+
+            return pesquisa;
+        } catch (error) {
+            console.error('Erro ao buscar pesquisa:', error);
+            throw error;
+        }
+    }
+
+    async criarPesquisa(dados) {
+        try {
+            const { titulo, descricao, obrigatorio, fotoObrigatoria, dataInicio, dataFim, campos, repositores } = dados;
+
+            // Criar pesquisa
+            const result = await this.mainClient.execute({
+                sql: `
+                    INSERT INTO cc_pesquisas (pes_titulo, pes_descricao, pes_obrigatorio, pes_foto_obrigatoria, pes_data_inicio, pes_data_fim, pes_ativa)
+                    VALUES (?, ?, ?, ?, ?, ?, 1)
+                `,
+                args: [titulo, descricao || null, obrigatorio ? 1 : 0, fotoObrigatoria ? 1 : 0, dataInicio || null, dataFim || null]
+            });
+
+            const pesId = Number(result.lastInsertRowid);
+
+            // Adicionar campos
+            if (campos && campos.length > 0) {
+                for (let i = 0; i < campos.length; i++) {
+                    const campo = campos[i];
+                    await this.mainClient.execute({
+                        sql: `
+                            INSERT INTO cc_pesquisa_campos (pca_pes_id, pca_ordem, pca_tipo, pca_titulo, pca_obrigatorio, pca_opcoes)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                        `,
+                        args: [pesId, i + 1, campo.tipo, campo.titulo, campo.obrigatorio ? 1 : 0, campo.opcoes || null]
+                    });
+                }
+            }
+
+            // Vincular repositores (se vazio, significa todos)
+            if (repositores && repositores.length > 0) {
+                for (const repId of repositores) {
+                    await this.mainClient.execute({
+                        sql: `INSERT INTO cc_pesquisa_repositores (per_pes_id, per_rep_id) VALUES (?, ?)`,
+                        args: [pesId, repId]
+                    });
+                }
+            }
+
+            return { success: true, id: pesId };
+        } catch (error) {
+            console.error('Erro ao criar pesquisa:', error);
+            throw error;
+        }
+    }
+
+    async atualizarPesquisa(pesId, dados) {
+        try {
+            const { titulo, descricao, obrigatorio, fotoObrigatoria, dataInicio, dataFim, ativa, campos, repositores } = dados;
+
+            await this.mainClient.execute({
+                sql: `
+                    UPDATE cc_pesquisas
+                    SET pes_titulo = ?, pes_descricao = ?, pes_obrigatorio = ?, pes_foto_obrigatoria = ?,
+                        pes_data_inicio = ?, pes_data_fim = ?, pes_ativa = ?, pes_atualizado_em = datetime('now')
+                    WHERE pes_id = ?
+                `,
+                args: [titulo, descricao || null, obrigatorio ? 1 : 0, fotoObrigatoria ? 1 : 0, dataInicio || null, dataFim || null, ativa ? 1 : 0, pesId]
+            });
+
+            // Atualizar campos - remove e recria
+            if (campos !== undefined) {
+                await this.mainClient.execute({
+                    sql: `DELETE FROM cc_pesquisa_campos WHERE pca_pes_id = ?`,
+                    args: [pesId]
+                });
+
+                for (let i = 0; i < campos.length; i++) {
+                    const campo = campos[i];
+                    await this.mainClient.execute({
+                        sql: `
+                            INSERT INTO cc_pesquisa_campos (pca_pes_id, pca_ordem, pca_tipo, pca_titulo, pca_obrigatorio, pca_opcoes)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                        `,
+                        args: [pesId, i + 1, campo.tipo, campo.titulo, campo.obrigatorio ? 1 : 0, campo.opcoes || null]
+                    });
+                }
+            }
+
+            // Atualizar repositores vinculados
+            if (repositores !== undefined) {
+                await this.mainClient.execute({
+                    sql: `DELETE FROM cc_pesquisa_repositores WHERE per_pes_id = ?`,
+                    args: [pesId]
+                });
+
+                for (const repId of repositores) {
+                    await this.mainClient.execute({
+                        sql: `INSERT INTO cc_pesquisa_repositores (per_pes_id, per_rep_id) VALUES (?, ?)`,
+                        args: [pesId, repId]
+                    });
+                }
+            }
+
+            return { success: true };
+        } catch (error) {
+            console.error('Erro ao atualizar pesquisa:', error);
+            throw error;
+        }
+    }
+
+    async excluirPesquisa(pesId) {
+        try {
+            // Campos e repositores são deletados em cascata
+            await this.mainClient.execute({
+                sql: `DELETE FROM cc_pesquisas WHERE pes_id = ?`,
+                args: [pesId]
+            });
+            return { success: true };
+        } catch (error) {
+            console.error('Erro ao excluir pesquisa:', error);
+            throw error;
+        }
+    }
+
+    async getPesquisasPendentesRepositor(repId) {
+        try {
+            const hoje = new Date().toISOString().split('T')[0];
+
+            // Buscar pesquisas ativas para este repositor (ou para todos se não tiver vínculo específico)
+            const result = await this.mainClient.execute({
+                sql: `
+                    SELECT DISTINCT p.*
+                    FROM cc_pesquisas p
+                    LEFT JOIN cc_pesquisa_repositores pr ON pr.per_pes_id = p.pes_id
+                    WHERE p.pes_ativa = 1
+                      AND (p.pes_data_inicio IS NULL OR p.pes_data_inicio <= ?)
+                      AND (p.pes_data_fim IS NULL OR p.pes_data_fim >= ?)
+                      AND (
+                          pr.per_rep_id = ?
+                          OR NOT EXISTS (SELECT 1 FROM cc_pesquisa_repositores WHERE per_pes_id = p.pes_id)
+                      )
+                    ORDER BY p.pes_obrigatorio DESC, p.pes_titulo
+                `,
+                args: [hoje, hoje, repId]
+            });
+
+            // Para cada pesquisa, buscar campos
+            const pesquisas = [];
+            for (const pes of result.rows) {
+                const campos = await this.mainClient.execute({
+                    sql: `SELECT * FROM cc_pesquisa_campos WHERE pca_pes_id = ? ORDER BY pca_ordem`,
+                    args: [pes.pes_id]
+                });
+                pesquisas.push({ ...pes, campos: campos.rows });
+            }
+
+            return pesquisas;
+        } catch (error) {
+            console.error('Erro ao buscar pesquisas pendentes:', error);
+            throw error;
+        }
+    }
+
+    async salvarRespostaPesquisa(dados) {
+        try {
+            const { pesId, repId, clienteCodigo, visitaId, respostas, fotoUrl } = dados;
+            const dataHoje = new Date().toISOString().split('T')[0];
+
+            const result = await this.mainClient.execute({
+                sql: `
+                    INSERT INTO cc_pesquisa_respostas (res_pes_id, res_rep_id, res_cliente_codigo, res_visita_id, res_data, res_respostas, res_foto_url)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                `,
+                args: [pesId, repId, clienteCodigo || null, visitaId || null, dataHoje, JSON.stringify(respostas), fotoUrl || null]
+            });
+
+            return { success: true, id: Number(result.lastInsertRowid) };
+        } catch (error) {
+            console.error('Erro ao salvar resposta:', error);
+            throw error;
+        }
+    }
+
+    async listarRespostasPesquisa(filtros = {}) {
+        try {
+            let sql = `
+                SELECT r.*, p.pes_titulo, p.pes_obrigatorio, rep.repo_nome
+                FROM cc_pesquisa_respostas r
+                JOIN cc_pesquisas p ON p.pes_id = r.res_pes_id
+                JOIN cad_repositor rep ON rep.repo_cod = r.res_rep_id
+                WHERE 1=1
+            `;
+            const args = [];
+
+            if (filtros.pesId) {
+                sql += ` AND r.res_pes_id = ?`;
+                args.push(filtros.pesId);
+            }
+
+            if (filtros.repId) {
+                sql += ` AND r.res_rep_id = ?`;
+                args.push(filtros.repId);
+            }
+
+            if (filtros.dataInicio) {
+                sql += ` AND r.res_data >= ?`;
+                args.push(filtros.dataInicio);
+            }
+
+            if (filtros.dataFim) {
+                sql += ` AND r.res_data <= ?`;
+                args.push(filtros.dataFim);
+            }
+
+            sql += ` ORDER BY r.res_criado_em DESC`;
+
+            if (filtros.limite) {
+                sql += ` LIMIT ?`;
+                args.push(filtros.limite);
+            }
+
+            const result = await this.mainClient.execute({ sql, args });
+            return result.rows.map(r => ({
+                ...r,
+                res_respostas: r.res_respostas ? JSON.parse(r.res_respostas) : {}
+            }));
+        } catch (error) {
+            console.error('Erro ao listar respostas:', error);
+            throw error;
+        }
+    }
+
+    async verificarPesquisaRespondida(pesId, repId, clienteCodigo, data) {
+        try {
+            const result = await this.mainClient.execute({
+                sql: `
+                    SELECT COUNT(*) as total
+                    FROM cc_pesquisa_respostas
+                    WHERE res_pes_id = ? AND res_rep_id = ? AND res_data = ?
+                    ${clienteCodigo ? 'AND res_cliente_codigo = ?' : ''}
+                `,
+                args: clienteCodigo ? [pesId, repId, data, clienteCodigo] : [pesId, repId, data]
+            });
+            return result.rows[0]?.total > 0;
+        } catch (error) {
+            console.error('Erro ao verificar pesquisa respondida:', error);
+            return false;
+        }
+    }
+
+    async getDrivePastaRepositor(repId) {
+        try {
+            const result = await this.mainClient.execute({
+                sql: `SELECT * FROM cc_repositor_drive WHERE rpd_repositor_id = ?`,
+                args: [repId]
+            });
+            return result.rows[0] || null;
+        } catch (error) {
+            console.error('Erro ao buscar pasta do drive:', error);
+            return null;
+        }
+    }
 }
 
 export const db = new TursoDatabase();
