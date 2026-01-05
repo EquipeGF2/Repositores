@@ -3938,7 +3938,7 @@ export const pages = {
 
             <!-- Modal Pesquisa -->
             <div class="modal modal-pesquisa" id="modalPesquisa">
-                <div class="modal-content" style="max-width: 900px;">
+                <div class="modal-content" style="width: 95%; max-width: 1400px; height: auto; max-height: 95vh;">
                     <div class="modal-header modal-header-with-actions">
                         <h3 id="modalPesquisaTitle">Nova Pesquisa</h3>
                         <div class="modal-header-actions">
@@ -4165,13 +4165,38 @@ export const pages = {
 
                 .pesquisa-campo-item {
                     display: grid;
-                    grid-template-columns: 30px 1fr 150px 100px 40px;
+                    grid-template-columns: 30px 1fr 140px 80px 80px 40px;
                     gap: 10px;
                     align-items: center;
                     padding: 12px;
                     background: #f9fafb;
                     border: 1px solid #e5e7eb;
                     border-radius: 6px;
+                }
+
+                .pesquisa-campo-minmax {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 2px;
+                }
+
+                .pesquisa-campo-minmax label {
+                    font-size: 0.7rem;
+                    color: #6b7280;
+                    text-align: center;
+                }
+
+                .pesquisa-campo-minmax input {
+                    width: 100%;
+                    padding: 6px;
+                    border: 1px solid #d1d5db;
+                    border-radius: 4px;
+                    font-size: 0.85rem;
+                    text-align: center;
+                }
+
+                .pesquisa-campo-minmax-hidden {
+                    visibility: hidden;
                 }
 
                 .pesquisa-campo-ordem {

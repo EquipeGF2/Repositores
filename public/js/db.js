@@ -617,9 +617,19 @@ class TursoDatabase {
                     pca_titulo TEXT NOT NULL,
                     pca_obrigatorio INTEGER DEFAULT 0,
                     pca_opcoes TEXT,
+                    pca_min INTEGER,
+                    pca_max INTEGER,
                     FOREIGN KEY (pca_pes_id) REFERENCES cc_pesquisas(pes_id) ON DELETE CASCADE
                 )
             `);
+
+            // Adicionar colunas min/max se não existirem (migração)
+            try {
+                await this.mainClient.execute(`ALTER TABLE cc_pesquisa_campos ADD COLUMN pca_min INTEGER`);
+            } catch (e) { /* coluna já existe */ }
+            try {
+                await this.mainClient.execute(`ALTER TABLE cc_pesquisa_campos ADD COLUMN pca_max INTEGER`);
+            } catch (e) { /* coluna já existe */ }
 
             // Clientes vinculados à pesquisa
             await this.mainClient.execute(`
@@ -3805,10 +3815,10 @@ class TursoDatabase {
                     const campo = campos[i];
                     await this.mainClient.execute({
                         sql: `
-                            INSERT INTO cc_pesquisa_campos (pca_pes_id, pca_ordem, pca_tipo, pca_titulo, pca_obrigatorio, pca_opcoes)
-                            VALUES (?, ?, ?, ?, ?, ?)
+                            INSERT INTO cc_pesquisa_campos (pca_pes_id, pca_ordem, pca_tipo, pca_titulo, pca_min, pca_max, pca_opcoes)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
                         `,
-                        args: [pesId, i + 1, campo.tipo, campo.titulo, campo.obrigatorio ? 1 : 0, campo.opcoes || null]
+                        args: [pesId, i + 1, campo.tipo, campo.pergunta || campo.titulo, campo.min ?? null, campo.max ?? null, campo.opcoes || null]
                     });
                 }
             }
@@ -3855,10 +3865,10 @@ class TursoDatabase {
                     const campo = campos[i];
                     await this.mainClient.execute({
                         sql: `
-                            INSERT INTO cc_pesquisa_campos (pca_pes_id, pca_ordem, pca_tipo, pca_titulo, pca_obrigatorio, pca_opcoes)
-                            VALUES (?, ?, ?, ?, ?, ?)
+                            INSERT INTO cc_pesquisa_campos (pca_pes_id, pca_ordem, pca_tipo, pca_titulo, pca_min, pca_max, pca_opcoes)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
                         `,
-                        args: [pesId, i + 1, campo.tipo, campo.titulo, campo.obrigatorio ? 1 : 0, campo.opcoes || null]
+                        args: [pesId, i + 1, campo.tipo, campo.pergunta || campo.titulo, campo.min ?? null, campo.max ?? null, campo.opcoes || null]
                     });
                 }
             }
