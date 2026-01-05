@@ -12749,12 +12749,19 @@ class App {
     // Carregar dados do roteiro para os dropdowns
     async carregarDadosRoteiroPesquisa() {
         try {
+            console.log('Carregando dados do roteiro para pesquisa...');
             const [cidades, clientes] = await Promise.all([
                 db.getCidadesDoRoteiro(),
                 db.getClientesDoRoteiro()
             ]);
             this.cidadesDoRoteiro = cidades;
             this.clientesDoRoteiro = clientes;
+            console.log('Cidades carregadas:', this.cidadesDoRoteiro.length, this.cidadesDoRoteiro);
+            console.log('Clientes carregados:', this.clientesDoRoteiro.length, this.clientesDoRoteiro);
+
+            // Renderizar dropdowns iniciais
+            this.renderDropdownCidades('');
+            this.renderDropdownClientes('');
         } catch (error) {
             console.error('Erro ao carregar dados do roteiro:', error);
         }

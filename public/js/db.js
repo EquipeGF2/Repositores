@@ -463,6 +463,27 @@ class TursoDatabase {
                     rot_aud_detalhes TEXT
                 )
             `);
+
+            // View para cidades distintas do roteiro
+            await this.mainClient.execute(`
+                CREATE VIEW IF NOT EXISTS vw_roteiro_cidades AS
+                SELECT DISTINCT rot_cidade as cidade
+                FROM rot_roteiro_cidade
+                WHERE rot_cidade IS NOT NULL AND rot_cidade != ''
+                ORDER BY rot_cidade
+            `);
+
+            // View para clientes do roteiro com cidade
+            await this.mainClient.execute(`
+                CREATE VIEW IF NOT EXISTS vw_roteiro_clientes AS
+                SELECT DISTINCT
+                    cli.rot_cliente_codigo as cliente,
+                    cid.rot_cidade as cidade
+                FROM rot_roteiro_cliente cli
+                INNER JOIN rot_roteiro_cidade cid ON cid.rot_cid_id = cli.rot_cid_id
+                WHERE cli.rot_cliente_codigo IS NOT NULL AND cli.rot_cliente_codigo != ''
+                ORDER BY cli.rot_cliente_codigo
+            `);
         } catch (error) {
             console.error('Erro ao garantir tabelas de roteiro:', error);
             throw error;
@@ -1355,14 +1376,25 @@ class TursoDatabase {
     // Buscar cidades do roteiro (banco principal)
     async getCidadesDoRoteiro() {
         try {
-            const resultado = await this.mainClient.execute({
-                sql: `
-                    SELECT DISTINCT rot_cidade as cidade
-                    FROM rot_roteiro_cidade
-                    WHERE rot_cidade IS NOT NULL AND rot_cidade != ''
-                    ORDER BY rot_cidade
-                `
-            });
+            // Tentar usar a view primeiro
+            let resultado;
+            try {
+                resultado = await this.mainClient.execute({
+                    sql: `SELECT cidade FROM vw_roteiro_cidades`
+                });
+            } catch (viewError) {
+                // Se a view não existir, usar query direta
+                console.log('View não encontrada, usando query direta');
+                resultado = await this.mainClient.execute({
+                    sql: `
+                        SELECT DISTINCT rot_cidade as cidade
+                        FROM rot_roteiro_cidade
+                        WHERE rot_cidade IS NOT NULL AND rot_cidade != ''
+                        ORDER BY rot_cidade
+                    `
+                });
+            }
+            console.log('Cidades do roteiro:', resultado.rows);
             return resultado.rows;
         } catch (error) {
             console.error('Erro ao buscar cidades do roteiro:', error);
@@ -1374,20 +1406,37 @@ class TursoDatabase {
     async getClientesDoRoteiro() {
         try {
             // Buscar códigos de clientes do roteiro
-            const resultado = await this.mainClient.execute({
-                sql: `
-                    SELECT DISTINCT cli.rot_cliente_codigo as cliente, cid.rot_cidade as cidade
-                    FROM rot_roteiro_cliente cli
-                    JOIN rot_roteiro_cidade cid ON cid.rot_cid_id = cli.rot_cid_id
-                    ORDER BY cli.rot_cliente_codigo
-                `
-            });
+            let resultado;
+            try {
+                resultado = await this.mainClient.execute({
+                    sql: `SELECT cliente, cidade FROM vw_roteiro_clientes`
+                });
+            } catch (viewError) {
+                // Se a view não existir, usar query direta
+                console.log('View de clientes não encontrada, usando query direta');
+                resultado = await this.mainClient.execute({
+                    sql: `
+                        SELECT DISTINCT
+                            cli.rot_cliente_codigo as cliente,
+                            cid.rot_cidade as cidade
+                        FROM rot_roteiro_cliente cli
+                        INNER JOIN rot_roteiro_cidade cid ON cid.rot_cid_id = cli.rot_cid_id
+                        WHERE cli.rot_cliente_codigo IS NOT NULL AND cli.rot_cliente_codigo != ''
+                        ORDER BY cli.rot_cliente_codigo
+                    `
+                });
+            }
 
             const clientes = resultado.rows;
+            console.log('Clientes do roteiro:', clientes);
+
+            if (clientes.length === 0) {
+                return [];
+            }
 
             // Tentar buscar nomes do banco comercial
             await this.connectComercial();
-            if (this.comercialClient && clientes.length > 0) {
+            if (this.comercialClient) {
                 const codigos = clientes.map(c => c.cliente);
                 const placeholders = codigos.map(() => '?').join(',');
 
