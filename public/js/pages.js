@@ -136,8 +136,12 @@ export const pages = {
             <!-- Modal Repositor -->
             <div class="modal modal-repositor" id="modalRepositor">
                 <div class="modal-content">
-                    <div class="modal-header">
+                    <div class="modal-header modal-header-with-actions">
                         <h3 id="modalRepositorTitle">Novo Repositor</h3>
+                        <div class="modal-header-actions">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="window.app.closeModalRepositor()">Cancelar</button>
+                            <button type="submit" form="formRepositor" class="btn btn-primary btn-sm" id="btnSubmitRepositor">Cadastrar</button>
+                        </div>
                         <button class="modal-close" onclick="window.app.closeModalRepositor()">&times;</button>
                     </div>
                     <div class="modal-body">
@@ -275,12 +279,6 @@ export const pages = {
                                     </div>
                                 </section>
 
-                                <div class="form-actions-inline">
-                                    <div class="modal-footer modal-footer-inline">
-                                        <button type="button" class="btn btn-secondary" onclick="window.app.closeModalRepositor()">Cancelar</button>
-                                        <button type="submit" class="btn btn-primary" id="btnSubmitRepositor">Cadastrar</button>
-                                    </div>
-                                </div>
                             </div>
                         </form>
                     </div>

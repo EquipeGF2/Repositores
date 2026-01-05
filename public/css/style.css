@@ -983,7 +983,29 @@ tbody td {
 }
 
 .modal-repositor .form-card .form-group {
-    margin-bottom: var(--spacing);
+    margin-bottom: var(--spacing-sm);
+}
+
+/* Cards mais compactos no modal repositor */
+.modal-repositor .form-card {
+    padding: var(--spacing);
+}
+
+.modal-repositor .form-card-header {
+    margin-bottom: var(--spacing-xs);
+}
+
+.modal-repositor .form-card-body {
+    gap: var(--spacing-xs);
+}
+
+.modal-repositor #cardJornadaTrabalho,
+.modal-repositor .alinhamento-card {
+    padding: var(--spacing);
+}
+
+.modal-repositor .helper-compact {
+    display: none;
 }
 
 .checkbox-inline {
@@ -1043,8 +1065,12 @@ tbody td {
 
 .resumo-repositor-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    grid-template-columns: repeat(4, 1fr);
     gap: var(--spacing);
+}
+
+.resumo-campo {
+    min-width: 0;
 }
 
 .resumo-campo small {
@@ -1056,6 +1082,20 @@ tbody td {
     margin: 0;
     font-weight: 600;
     color: var(--gray-800);
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+    .resumo-repositor-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 500px) {
+    .resumo-repositor-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .helper-compact {
@@ -1111,6 +1151,27 @@ tbody td {
     font-size: 1.25rem;
     font-weight: 600;
     color: var(--gray-900);
+}
+
+/* Header com botões de ação */
+.modal-header-with-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing);
+}
+
+.modal-header-with-actions h3 {
+    flex: 1;
+}
+
+.modal-header-actions {
+    display: flex;
+    gap: var(--spacing-sm);
+    align-items: center;
+}
+
+.modal-header-actions .btn {
+    white-space: nowrap;
 }
 
 .modal-close {
