@@ -1145,6 +1145,8 @@ export const pages = {
                                     <option value="EXCLUIR_CLIENTE">Excluir Cliente</option>
                                     <option value="ALTERAR_ORDEM">Alterar Ordem Cidade</option>
                                     <option value="ALTERAR_ORDEM_VISITA">Alterar Ordem Visita</option>
+                                    <option value="ALTERAR_RATEIO">Alterar Rateio</option>
+                                    <option value="ALTERAR_CENTRALIZACAO">Alterar Centralização</option>
                                 </select>
                             </div>
                             <div class="filter-group">
@@ -4552,14 +4554,14 @@ export const pages = {
     },
 
     'consulta-pesquisa': async () => {
-        const [supervisores, representantes] = await Promise.all([
-            db.getSupervisoresComercial(),
-            db.getRepresentantesComercial()
+        const [repositores, cidadesRoteiro, clientesRoteiro] = await Promise.all([
+            db.getAllRepositors(),
+            db.getCidadesDoRoteiro(),
+            db.getClientesDoRoteiro()
         ]);
 
-        const supervisorOptions = supervisores.map(sup => `<option value="${sup}">${sup}</option>`).join('');
-        const representanteOptions = representantes.map(rep => `
-            <option value="${rep.representante}">${rep.representante} - ${rep.desc_representante}</option>
+        const repositorOptions = repositores.map(repo => `
+            <option value="${repo.repo_cod}">${repo.repo_cod} - ${repo.repo_nome}</option>
         `).join('');
 
         return `
@@ -4586,23 +4588,56 @@ export const pages = {
                                     <option value="">Todas</option>
                                 </select>
                             </div>
-                            <div class="col" style="flex: 1; min-width: 150px;">
-                                <label for="filtroConsultaSupervisor" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Supervisor</label>
-                                <select id="filtroConsultaSupervisor" class="form-control" style="width: 100%;">
-                                    <option value="">Todos</option>
-                                    ${supervisorOptions}
-                                </select>
-                            </div>
-                            <div class="col" style="flex: 1; min-width: 180px;">
-                                <label for="filtroConsultaRepresentante" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Representante</label>
-                                <select id="filtroConsultaRepresentante" class="form-control" style="width: 100%;">
-                                    <option value="">Todos</option>
-                                    ${representanteOptions}
-                                </select>
-                            </div>
                             <div class="col" style="flex: 1; min-width: 180px;">
                                 <label for="filtroConsultaRepositor" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Repositor</label>
-                                <input type="text" id="filtroConsultaRepositor" class="form-control" placeholder="Código ou nome..." style="width: 100%;">
+                                <select id="filtroConsultaRepositor" class="form-control" style="width: 100%;">
+                                    <option value="">Todos</option>
+                                    ${repositorOptions}
+                                </select>
+                            </div>
+                            <div class="col" style="flex: 1; min-width: 180px;">
+                                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Cidades</label>
+                                <div class="dropdown-multiselect" id="filtroConsultaCidadesWrapper">
+                                    <button type="button" class="dropdown-multiselect-btn form-control" onclick="window.app.toggleDropdownConsultaPesquisa('cidades')">
+                                        <span id="filtroConsultaCidadesLabel">Todas</span>
+                                        <span class="dropdown-arrow">▼</span>
+                                    </button>
+                                    <div class="dropdown-multiselect-menu" id="filtroConsultaCidadesMenu" style="display: none;">
+                                        <div class="dropdown-multiselect-search">
+                                            <input type="text" placeholder="Buscar cidade..." oninput="window.app.filtrarDropdownConsultaPesquisa('cidades', this.value)">
+                                        </div>
+                                        <div class="dropdown-multiselect-items" id="filtroConsultaCidadesItems">
+                                            ${cidadesRoteiro.map(c => `
+                                                <label class="dropdown-multiselect-item">
+                                                    <input type="checkbox" value="${c.cidade}" onchange="window.app.atualizarSelecaoConsultaPesquisa('cidades')">
+                                                    <span>${c.cidade}</span>
+                                                </label>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col" style="flex: 1; min-width: 180px;">
+                                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Clientes</label>
+                                <div class="dropdown-multiselect" id="filtroConsultaClientesWrapper">
+                                    <button type="button" class="dropdown-multiselect-btn form-control" onclick="window.app.toggleDropdownConsultaPesquisa('clientes')">
+                                        <span id="filtroConsultaClientesLabel">Todos</span>
+                                        <span class="dropdown-arrow">▼</span>
+                                    </button>
+                                    <div class="dropdown-multiselect-menu" id="filtroConsultaClientesMenu" style="display: none;">
+                                        <div class="dropdown-multiselect-search">
+                                            <input type="text" placeholder="Buscar cliente..." oninput="window.app.filtrarDropdownConsultaPesquisa('clientes', this.value)">
+                                        </div>
+                                        <div class="dropdown-multiselect-items" id="filtroConsultaClientesItems">
+                                            ${clientesRoteiro.map(c => `
+                                                <label class="dropdown-multiselect-item">
+                                                    <input type="checkbox" value="${c.cliente}" onchange="window.app.atualizarSelecaoConsultaPesquisa('clientes')">
+                                                    <span>${c.cliente}${c.nome ? ' - ' + c.nome : ''}</span>
+                                                </label>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                             <div class="col" style="flex: 0 0 130px;">
                                 <label for="filtroConsultaDataInicio" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Data Início</label>
@@ -4640,6 +4675,68 @@ export const pages = {
             </div>
 
             <style>
+                .dropdown-multiselect {
+                    position: relative;
+                }
+                .dropdown-multiselect-btn {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    cursor: pointer;
+                    text-align: left;
+                    background: #fff;
+                }
+                .dropdown-multiselect-btn .dropdown-arrow {
+                    font-size: 0.7rem;
+                    color: #6b7280;
+                }
+                .dropdown-multiselect-menu {
+                    position: absolute;
+                    top: 100%;
+                    left: 0;
+                    right: 0;
+                    z-index: 1000;
+                    background: #fff;
+                    border: 1px solid #d1d5db;
+                    border-radius: 6px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                    margin-top: 4px;
+                    max-height: 250px;
+                    display: flex;
+                    flex-direction: column;
+                }
+                .dropdown-multiselect-search {
+                    padding: 8px;
+                    border-bottom: 1px solid #e5e7eb;
+                }
+                .dropdown-multiselect-search input {
+                    width: 100%;
+                    padding: 6px 10px;
+                    border: 1px solid #d1d5db;
+                    border-radius: 4px;
+                    font-size: 0.85rem;
+                }
+                .dropdown-multiselect-items {
+                    overflow-y: auto;
+                    flex: 1;
+                    max-height: 180px;
+                }
+                .dropdown-multiselect-item {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 8px 12px;
+                    cursor: pointer;
+                    font-size: 0.85rem;
+                }
+                .dropdown-multiselect-item:hover {
+                    background: #f3f4f6;
+                }
+                .dropdown-multiselect-item input[type="checkbox"] {
+                    width: 16px;
+                    height: 16px;
+                }
+
                 .consulta-pesquisa-resultado {
                     min-height: 200px;
                 }

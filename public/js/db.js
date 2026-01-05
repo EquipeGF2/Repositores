@@ -4029,7 +4029,9 @@ class TursoDatabase {
                 SELECT p.*,
                     (SELECT COUNT(*) FROM cc_pesquisa_repositores WHERE per_pes_id = p.pes_id) as total_repositores,
                     (SELECT COUNT(*) FROM cc_pesquisa_campos WHERE pca_pes_id = p.pes_id) as total_campos,
-                    (SELECT COUNT(*) FROM cc_pesquisa_respostas WHERE res_pes_id = p.pes_id) as total_respostas
+                    (SELECT COUNT(*) FROM cc_pesquisa_respostas WHERE res_pes_id = p.pes_id) as total_respostas,
+                    (SELECT COUNT(*) FROM cc_pesquisa_cidades WHERE peci_pes_id = p.pes_id) as total_cidades,
+                    (SELECT COUNT(*) FROM cc_pesquisa_clientes WHERE pecl_pes_id = p.pes_id) as total_clientes
                 FROM cc_pesquisas p
                 WHERE 1=1
             `;
@@ -4464,14 +4466,37 @@ class TursoDatabase {
             `;
             const args = [];
 
-            if (filtros.pesId) {
+            // Filtro por pesquisa (aceita pesId ou pesquisaId)
+            if (filtros.pesId || filtros.pesquisaId) {
                 sql += ` AND r.res_pes_id = ?`;
-                args.push(filtros.pesId);
+                args.push(filtros.pesId || filtros.pesquisaId);
             }
 
-            if (filtros.repId) {
+            // Filtro por repositor (aceita repId ou repositor)
+            if (filtros.repId || filtros.repositor) {
                 sql += ` AND r.res_rep_id = ?`;
-                args.push(filtros.repId);
+                args.push(filtros.repId || filtros.repositor);
+            }
+
+            // Filtro por cidades (via roteiro do repositor)
+            if (filtros.cidades && filtros.cidades.length > 0) {
+                const placeholders = filtros.cidades.map(() => '?').join(',');
+                sql += ` AND r.res_rep_id IN (
+                    SELECT DISTINCT rot_repositor_id FROM rot_roteiro_cidade WHERE rot_cidade IN (${placeholders})
+                )`;
+                args.push(...filtros.cidades);
+            }
+
+            // Filtro por clientes (via cliente da resposta ou roteiro)
+            if (filtros.clientes && filtros.clientes.length > 0) {
+                const placeholders = filtros.clientes.map(() => '?').join(',');
+                sql += ` AND (r.res_cliente_codigo IN (${placeholders}) OR r.res_rep_id IN (
+                    SELECT DISTINCT rc.rot_repositor_id
+                    FROM rot_roteiro_cidade rc
+                    JOIN rot_roteiro_cliente cli ON cli.rot_cid_id = rc.rot_cid_id
+                    WHERE cli.rot_cliente_codigo IN (${placeholders})
+                ))`;
+                args.push(...filtros.clientes, ...filtros.clientes);
             }
 
             if (filtros.dataInicio) {

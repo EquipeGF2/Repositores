@@ -11733,12 +11733,9 @@ class App {
             return;
         }
 
-        this.campanhaViewState = this.campanhaViewState || { sizeMode: 'md', layoutMode: 'blocos' };
+        // Sempre usar tamanho médio e layout blocos
+        this.campanhaViewState = { sizeMode: 'md', layoutMode: 'blocos' };
         this.campanhaGrupoSelecionado = grupo;
-        if (this.estaNoModoMobile()) {
-            this.campanhaViewState = { sizeMode: 'sm', layoutMode: 'blocos' };
-        }
-        this.normalizarCampanhaViewState();
         this.resetarSelecaoCampanha();
 
         const modalHtml = `
@@ -11755,18 +11752,6 @@ class App {
                     </div>
                     <div class="campanha-modal-body">
                         <div class="campanha-control-bar" data-mobile-control="${this.estaNoModoMobile()}">
-                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                                <span style="font-weight:700; color:#374151;">Tamanho:</span>
-                                <button class="toggle-chip" data-campanha-size="sm">Pequenas</button>
-                                <button class="toggle-chip" data-campanha-size="md">Médias</button>
-                            </div>
-                            ${this.estaNoModoMobile() ? '' : `
-                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                                <span style="font-weight:700; color:#374151;">Layout:</span>
-                                <button class="toggle-chip" data-campanha-layout="lista">Lista</button>
-                                <button class="toggle-chip" data-campanha-layout="detalhes">Detalhes</button>
-                                <button class="toggle-chip" data-campanha-layout="blocos">Blocos</button>
-                            </div>`}
                             <div class="campanha-selecao-bar">
                                 <span class="campanha-contador">Selecionadas: <strong id="campanhaSelecionadasCount">0</strong></span>
                                 <button id="btnCampanhaLimparSelecao" class="btn btn-secondary" disabled>🧹 Limpar seleção</button>
@@ -11933,7 +11918,21 @@ class App {
             loading.style.display = 'none';
 
             grid.querySelectorAll('[data-campanha-index]').forEach(card => {
-                card.onclick = () => {
+                card.onclick = (event) => {
+                    // Clique em qualquer lugar do card (exceto links) faz a seleção
+                    if (event.target.tagName === 'A') return;
+
+                    const fotoId = card.dataset.campanhaId;
+                    const checkbox = card.querySelector(`[data-campanha-checkbox="${fotoId}"]`);
+                    if (checkbox) {
+                        checkbox.checked = !checkbox.checked;
+                        this.toggleSelecaoCampanha(fotoId, checkbox.checked);
+                        card.classList.toggle('selecionada', checkbox.checked);
+                    }
+                };
+
+                // Duplo clique abre o viewer
+                card.ondblclick = () => {
                     const idx = parseInt(card.dataset.campanhaIndex, 10);
                     const imagem = grupo.imagens[idx];
                     if (imagem) {
@@ -12601,6 +12600,14 @@ class App {
                             <div class="pesquisa-info-item">
                                 <span>👥</span>
                                 <span><strong>${p.total_repositores || 0}</strong> repositores</span>
+                            </div>
+                            <div class="pesquisa-info-item">
+                                <span>🏙️</span>
+                                <span><strong>${p.total_cidades || 0}</strong> cidades</span>
+                            </div>
+                            <div class="pesquisa-info-item">
+                                <span>🏢</span>
+                                <span><strong>${p.total_clientes || 0}</strong> clientes</span>
                             </div>
                             <div class="pesquisa-info-item">
                                 <span>✅</span>
@@ -13314,6 +13321,60 @@ class App {
     }
 
     respostasPesquisaAtual = [];
+    consultaPesquisaCidadesSelecionadas = [];
+    consultaPesquisaClientesSelecionados = [];
+
+    // Funções para dropdown multiselect na consulta de pesquisas
+    toggleDropdownConsultaPesquisa(tipo) {
+        const menuId = tipo === 'cidades' ? 'filtroConsultaCidadesMenu' : 'filtroConsultaClientesMenu';
+        const menu = document.getElementById(menuId);
+        if (!menu) return;
+
+        const isVisible = menu.style.display !== 'none';
+        // Fechar todos os menus primeiro
+        document.querySelectorAll('.dropdown-multiselect-menu').forEach(m => m.style.display = 'none');
+
+        if (!isVisible) {
+            menu.style.display = 'flex';
+        }
+    }
+
+    filtrarDropdownConsultaPesquisa(tipo, termo) {
+        const containerId = tipo === 'cidades' ? 'filtroConsultaCidadesItems' : 'filtroConsultaClientesItems';
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        const termoLower = termo.toLowerCase();
+        container.querySelectorAll('.dropdown-multiselect-item').forEach(item => {
+            const texto = item.textContent.toLowerCase();
+            item.style.display = texto.includes(termoLower) ? '' : 'none';
+        });
+    }
+
+    atualizarSelecaoConsultaPesquisa(tipo) {
+        const containerId = tipo === 'cidades' ? 'filtroConsultaCidadesItems' : 'filtroConsultaClientesItems';
+        const labelId = tipo === 'cidades' ? 'filtroConsultaCidadesLabel' : 'filtroConsultaClientesLabel';
+        const container = document.getElementById(containerId);
+        const label = document.getElementById(labelId);
+        if (!container || !label) return;
+
+        const checkboxes = container.querySelectorAll('input[type="checkbox"]:checked');
+        const valores = Array.from(checkboxes).map(cb => cb.value);
+
+        if (tipo === 'cidades') {
+            this.consultaPesquisaCidadesSelecionadas = valores;
+        } else {
+            this.consultaPesquisaClientesSelecionados = valores;
+        }
+
+        if (valores.length === 0) {
+            label.textContent = tipo === 'cidades' ? 'Todas' : 'Todos';
+        } else if (valores.length === 1) {
+            label.textContent = valores[0];
+        } else {
+            label.textContent = `${valores.length} selecionado(s)`;
+        }
+    }
 
     async buscarRespostasPesquisa() {
         const container = document.getElementById('consultaPesquisaResultado');
@@ -13324,9 +13385,9 @@ class App {
         try {
             const filtros = {
                 pesquisaId: document.getElementById('filtroConsultaPesquisa')?.value || null,
-                supervisor: document.getElementById('filtroConsultaSupervisor')?.value || null,
-                representante: document.getElementById('filtroConsultaRepresentante')?.value || null,
                 repositor: document.getElementById('filtroConsultaRepositor')?.value || null,
+                cidades: this.consultaPesquisaCidadesSelecionadas.length > 0 ? this.consultaPesquisaCidadesSelecionadas : null,
+                clientes: this.consultaPesquisaClientesSelecionados.length > 0 ? this.consultaPesquisaClientesSelecionados : null,
                 dataInicio: document.getElementById('filtroConsultaDataInicio')?.value || null,
                 dataFim: document.getElementById('filtroConsultaDataFim')?.value || null
             };
