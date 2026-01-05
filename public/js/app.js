@@ -2510,6 +2510,14 @@ class App {
             container.innerHTML = '';
             this.resetarFormularioClienteRoteiro();
             if (mensagem) mensagem.textContent = 'Cadastre uma cidade para este dia para visualizar os clientes.';
+
+            // Sempre inicializar ordem como 1 quando não há cidades no dia
+            const campoOrdemCidade = document.getElementById('roteiroCidadeOrdem');
+            if (campoOrdemCidade) {
+                campoOrdemCidade.value = '1';
+                campoOrdemCidade.dataset.diaCadastro = dia;
+            }
+
             await this.carregarClientesRoteiro();
             return;
         }
