@@ -1902,10 +1902,6 @@ class App {
                 return;
             }
 
-            if (repositor.repo_vinculo === 'agencia') {
-                this.showNotification('Agências não utilizam roteiro por dia da semana. Será exibido um aviso.', 'warning');
-            }
-
             this.contextoRoteiro = repositor;
             this.estadoRoteiro = {
                 diaSelecionado: null,
@@ -2145,10 +2141,6 @@ class App {
 
         if (!repositor) {
             await this.inicializarSelecaoRoteiro();
-            return;
-        }
-
-        if (repositor.repo_vinculo === 'agencia') {
             return;
         }
 

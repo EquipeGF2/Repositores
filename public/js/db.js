@@ -1041,11 +1041,11 @@ class TursoDatabase {
     }
 
     obterDiasTrabalho(repo) {
-        if (repo?.repo_vinculo === 'agencia') return [];
         const dias = (repo?.dias_trabalhados || '')
             .split(',')
             .map(d => d.trim())
             .filter(Boolean);
+        // Se não tem dias definidos, usar padrão (seg a sex)
         if (dias.length === 0) return ['seg', 'ter', 'qua', 'qui', 'sex'];
         return dias;
     }
