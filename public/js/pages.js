@@ -135,7 +135,7 @@ export const pages = {
 
             <!-- Modal Repositor -->
             <div class="modal modal-repositor" id="modalRepositor">
-                <div class="modal-content" style="max-width: 1100px; max-height: 90vh; overflow-y: auto;">
+                <div class="modal-content">
                     <div class="modal-header">
                         <h3 id="modalRepositorTitle">Novo Repositor</h3>
                         <button class="modal-close" onclick="window.app.closeModalRepositor()">&times;</button>
@@ -288,7 +288,7 @@ export const pages = {
             </div>
 
             <div class="modal" id="modalResumoRepositor">
-                <div class="modal-content" style="max-width: 960px;">
+                <div class="modal-content" style="max-width: 1100px;">
                     <div class="modal-header">
                         <h3>Cadastro do Repositor</h3>
                         <button class="modal-close" onclick="window.app.fecharResumoRepositor()">&times;</button>

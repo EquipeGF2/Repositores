@@ -730,9 +730,9 @@ tbody td {
 }
 
 .modal-repositor .modal-content {
-    max-width: 1300px;
+    max-width: 1500px;
     width: 98%;
-    max-height: calc(100vh - 40px);
+    max-height: calc(100vh - 20px);
     height: auto;
     display: flex;
     flex-direction: column;
@@ -857,8 +857,49 @@ tbody td {
 
 .repositor-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    grid-template-columns: 1fr 1fr;
     gap: var(--spacing);
+}
+
+/* Cards Rotina e Contato Comercial lado a lado com layout horizontal */
+.repositor-grid #cardJornadaTrabalho,
+.repositor-grid .alinhamento-card {
+    min-width: 0;
+}
+
+.repositor-grid #cardJornadaTrabalho .rotina-card-body {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: var(--spacing);
+    align-items: flex-start;
+}
+
+.repositor-grid #cardJornadaTrabalho .rotina-card-body .form-group.full-width {
+    flex: 1 1 auto;
+    min-width: 200px;
+}
+
+.repositor-grid #cardJornadaTrabalho .dias-trabalho-grid.compact {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+}
+
+.repositor-grid .alinhamento-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing);
+}
+
+@media (max-width: 1200px) {
+    .repositor-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .repositor-grid .alinhamento-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .card-span-2 {
