@@ -8886,8 +8886,9 @@ class App {
             );
 
             if (!validacao.valido) {
-                this.showNotification(validacao.aviso, 'warning');
-                // Não bloqueia, apenas avisa o repositor
+                this.showNotification(validacao.aviso, 'error');
+                // Bloqueia o checkin se a validação falhar
+                return;
             }
         }
 
@@ -9113,9 +9114,26 @@ class App {
     }
 
     async obterCoordenadasPorEndereco(endereco) {
+        if (!endereco || typeof endereco !== 'string') return null;
+
         try {
-            // Usando API do OpenStreetMap Nominatim (gratuita) para geocodificação
-            const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(endereco)}&format=json&limit=1`;
+            // Limpar e formatar o endereço para melhor resultado
+            // Formato esperado: "CIDADE/UF - Rua X, Bairro" ou similar
+            let enderecoFormatado = endereco
+                .replace(/\s*-\s*/g, ', ')  // Trocar " - " por ", "
+                .replace(/\//g, ', ')        // Trocar "/" por ", "
+                .replace(/\s+/g, ' ')        // Remover espaços extras
+                .trim();
+
+            // Adicionar ", Brasil" se não tiver
+            if (!enderecoFormatado.toLowerCase().includes('brasil')) {
+                enderecoFormatado += ', Brasil';
+            }
+
+            console.log('Geocodificando endereço:', enderecoFormatado);
+
+            // Tentar com o endereço completo formatado
+            const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(enderecoFormatado)}&format=json&limit=1&countrycodes=br`;
             const data = await fetchJson(url, {
                 headers: {
                     'User-Agent': 'RepositorApp/1.0'
@@ -9123,12 +9141,36 @@ class App {
             });
 
             if (data && data.length > 0) {
+                console.log('Geocodificação OK:', data[0].display_name);
                 return {
                     lat: parseFloat(data[0].lat),
                     lng: parseFloat(data[0].lon)
                 };
             }
 
+            // Se não encontrou, tentar apenas com cidade/UF
+            const matchCidadeUF = endereco.match(/^([^\/\-]+)[\/-]?\s*([A-Z]{2})?/i);
+            if (matchCidadeUF) {
+                const cidadeUF = matchCidadeUF[0].trim() + ', Brasil';
+                console.log('Tentando apenas cidade:', cidadeUF);
+
+                const urlCidade = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cidadeUF)}&format=json&limit=1&countrycodes=br`;
+                const dataCidade = await fetchJson(urlCidade, {
+                    headers: {
+                        'User-Agent': 'RepositorApp/1.0'
+                    }
+                });
+
+                if (dataCidade && dataCidade.length > 0) {
+                    console.log('Geocodificação por cidade OK:', dataCidade[0].display_name);
+                    return {
+                        lat: parseFloat(dataCidade[0].lat),
+                        lng: parseFloat(dataCidade[0].lon)
+                    };
+                }
+            }
+
+            console.warn('Não foi possível geocodificar:', endereco);
             return null;
         } catch (error) {
             console.error('Erro ao buscar coordenadas:', error);
@@ -9158,9 +9200,13 @@ class App {
             const coordsCliente = await this.obterCoordenadasPorEndereco(enderecoCliente);
 
             if (!coordsCliente) {
-                // Se não conseguiu geocodificar, apenas avisa mas permite o checkin
+                // Se não conseguiu geocodificar, BLOQUEIA o checkin
                 console.warn('Não foi possível validar distância - endereço não geocodificado');
-                return { valido: true, distancia: null, aviso: 'Não foi possível validar a distância do estabelecimento' };
+                return {
+                    valido: false,
+                    distancia: null,
+                    aviso: '⚠️ Não foi possível validar a localização. Verifique se o endereço do cliente está cadastrado corretamente.'
+                };
             }
 
             // Calcula distância em metros
@@ -9171,7 +9217,7 @@ class App {
                 coordsCliente.lng
             );
 
-            const DISTANCIA_MAXIMA = 100000; // 100km
+            const DISTANCIA_MAXIMA = 30000; // 30km
 
             if (distancia > DISTANCIA_MAXIMA) {
                 const distanciaKm = (distancia / 1000).toFixed(1);
@@ -9182,6 +9228,9 @@ class App {
                     aviso: `⚠️ ATENÇÃO: Você está a ${distanciaKm}km do estabelecimento cadastrado. O limite é de ${limiteKm}km.`
                 };
             }
+
+            const distanciaKm = (distancia / 1000).toFixed(1);
+            console.log(`Distância validada: ${distanciaKm}km do estabelecimento`);
 
             return {
                 valido: true,
