@@ -2178,19 +2178,31 @@ class App {
             btnAddCidade.onclick = () => this.adicionarCidadeRoteiro();
         }
 
-        const btnReplicarRoteiro = document.getElementById('btnReplicarRoteiro');
-        if (btnReplicarRoteiro) {
-            btnReplicarRoteiro.onclick = () => this.abrirModalReplicarRoteiro();
+        // Botão Copiar Roteiro
+        const btnCopiarRoteiro = document.getElementById('btnCopiarRoteiro');
+        if (btnCopiarRoteiro) {
+            btnCopiarRoteiro.onclick = () => this.abrirModalCopiarRoteiro();
         }
 
-        const btnConfirmarReplicacao = document.getElementById('btnConfirmarReplicacao');
-        if (btnConfirmarReplicacao) {
-            btnConfirmarReplicacao.onclick = () => this.confirmarReplicacaoRoteiro();
+        const btnConfirmarCopia = document.getElementById('btnConfirmarCopiaRoteiro');
+        if (btnConfirmarCopia) {
+            btnConfirmarCopia.onclick = () => this.confirmarCopiaRoteiro();
         }
 
-        const selectDiaReplicacao = document.getElementById('diaOrigemReplicacao');
-        if (selectDiaReplicacao) {
-            selectDiaReplicacao.addEventListener('change', () => this.atualizarPreviewReplicacao());
+        // Listeners do modal de cópia
+        const radiosOrigem = document.querySelectorAll('input[name="origemRoteiro"]');
+        radiosOrigem.forEach(radio => {
+            radio.addEventListener('change', () => this.alternarOrigemRoteiro());
+        });
+
+        const selectRepositorOrigem = document.getElementById('copiaRepositorOrigem');
+        if (selectRepositorOrigem) {
+            selectRepositorOrigem.addEventListener('change', () => this.carregarDiasOrigemCopia());
+        }
+
+        const selectDiaOrigem = document.getElementById('copiaDiaOrigem');
+        if (selectDiaOrigem) {
+            selectDiaOrigem.addEventListener('change', () => this.atualizarPreviewCopiaRoteiro());
         }
 
         const btnAddCliente = document.getElementById('btnAdicionarClienteRoteiro');
@@ -2619,9 +2631,6 @@ class App {
             }
         }
 
-        // Verificar se deve mostrar botão de replicar roteiro
-        await this.verificarBotaoReplicarRoteiro();
-
         console.log('[ROTEIRO] Cidades renderizadas com sucesso! Total:', cidades.length);
         if (mensagem) mensagem.textContent = '';
         await this.carregarClientesRoteiro();
@@ -2668,196 +2677,305 @@ class App {
         }
     }
 
-    // ==================== REPLICAÇÃO DE ROTEIRO ====================
+    // ==================== CÓPIA DE ROTEIRO ====================
 
-    async verificarBotaoReplicarRoteiro() {
-        const btnReplicar = document.getElementById('btnReplicarRoteiro');
-        if (!btnReplicar) return;
+    nomesDiasSemana = {
+        seg: 'Segunda-feira',
+        ter: 'Terça-feira',
+        qua: 'Quarta-feira',
+        qui: 'Quinta-feira',
+        sex: 'Sexta-feira',
+        sab: 'Sábado',
+        dom: 'Domingo'
+    };
 
-        const diaAtual = this.estadoRoteiro.diaSelecionado;
-        const repId = this.contextoRoteiro?.repo_cod;
+    async abrirModalCopiarRoteiro() {
+        const repIdAtual = this.contextoRoteiro?.repo_cod;
 
-        if (!diaAtual || !repId) {
-            btnReplicar.style.display = 'none';
+        if (!repIdAtual) {
+            this.showNotification('Selecione um repositor primeiro', 'warning');
             return;
         }
 
-        // Verificar se existem roteiros em outros dias
-        const diasComRoteiro = [];
-        for (const dia of this.diasRoteiroDisponiveis) {
-            if (dia === diaAtual) continue;
+        // Resetar para "Mesmo repositor"
+        const radioMesmo = document.querySelector('input[name="origemRoteiro"][value="mesmo"]');
+        if (radioMesmo) radioMesmo.checked = true;
 
-            const roteiroDia = await db.getRoteiroCidades(repId, dia);
-            if (roteiroDia && roteiroDia.length > 0) {
-                diasComRoteiro.push(dia);
-            }
-        }
+        const selecaoOutro = document.getElementById('selecaoOutroRepositor');
+        if (selecaoOutro) selecaoOutro.style.display = 'none';
 
-        // Mostrar botão apenas se houver roteiros em outros dias
-        btnReplicar.style.display = diasComRoteiro.length > 0 ? 'inline-block' : 'none';
+        // Carregar lista de repositores para o select (caso mude para outro)
+        await this.carregarRepositoresParaCopia();
+
+        // Carregar dias de origem do repositor atual
+        await this.carregarDiasOrigemCopia();
+
+        // Carregar checkboxes dos dias de destino
+        this.renderDiasDestinoCopia();
+
+        // Limpar preview
+        const previewDiv = document.getElementById('previewCopiaRoteiro');
+        if (previewDiv) previewDiv.style.display = 'none';
+
+        // Abrir modal
+        const modal = document.getElementById('modalCopiarRoteiro');
+        if (modal) modal.classList.add('active');
     }
 
-    async abrirModalReplicarRoteiro() {
-        const diaAtual = this.estadoRoteiro.diaSelecionado;
-        const repId = this.contextoRoteiro?.repo_cod;
+    fecharModalCopiarRoteiro() {
+        const modal = document.getElementById('modalCopiarRoteiro');
+        if (modal) modal.classList.remove('active');
+    }
 
-        if (!diaAtual || !repId) {
-            this.showNotification('Selecione um dia para replicar o roteiro', 'warning');
-            return;
-        }
+    async carregarRepositoresParaCopia() {
+        const select = document.getElementById('copiaRepositorOrigem');
+        if (!select) return;
 
-        // Verificar se o dia atual já tem roteiro
-        const roteiroAtual = await db.getRoteiroCidades(repId, diaAtual);
-        if (roteiroAtual && roteiroAtual.length > 0) {
-            if (!confirm('Este dia já possui roteiro cadastrado. Deseja substituí-lo?')) {
-                return;
+        try {
+            const repositores = await db.getRepositoresDetalhados({ status: 'ativos' });
+            const repIdAtual = this.contextoRoteiro?.repo_cod;
+
+            select.innerHTML = '<option value="">Selecione um repositor</option>';
+
+            for (const repo of repositores) {
+                if (repo.repo_cod === repIdAtual) continue; // Não mostrar o repositor atual
+
+                const option = document.createElement('option');
+                option.value = repo.repo_cod;
+                option.textContent = `${repo.repo_cod} - ${repo.repo_nome}`;
+                option.dataset.diasTrabalho = JSON.stringify(db.obterDiasTrabalho(repo));
+                select.appendChild(option);
             }
+        } catch (error) {
+            console.error('Erro ao carregar repositores:', error);
+            select.innerHTML = '<option value="">Erro ao carregar</option>';
+        }
+    }
+
+    alternarOrigemRoteiro() {
+        const radioOutro = document.querySelector('input[name="origemRoteiro"][value="outro"]');
+        const selecaoOutro = document.getElementById('selecaoOutroRepositor');
+
+        if (selecaoOutro) {
+            selecaoOutro.style.display = radioOutro?.checked ? 'block' : 'none';
         }
 
-        // Carregar dias disponíveis para replicar
-        const selectDia = document.getElementById('diaOrigemReplicacao');
+        // Recarregar dias de origem
+        this.carregarDiasOrigemCopia();
+    }
+
+    async carregarDiasOrigemCopia() {
+        const selectDia = document.getElementById('copiaDiaOrigem');
         if (!selectDia) return;
 
-        const nomesDias = {
-            seg: 'Segunda-feira',
-            ter: 'Terça-feira',
-            qua: 'Quarta-feira',
-            qui: 'Quinta-feira',
-            sex: 'Sexta-feira',
-            sab: 'Sábado',
-            dom: 'Domingo'
-        };
+        const radioOutro = document.querySelector('input[name="origemRoteiro"][value="outro"]');
+        const selectRepositor = document.getElementById('copiaRepositorOrigem');
+
+        let repIdOrigem;
+        let diasDisponiveis;
+
+        if (radioOutro?.checked && selectRepositor?.value) {
+            // Outro repositor selecionado
+            repIdOrigem = Number(selectRepositor.value);
+            const option = selectRepositor.options[selectRepositor.selectedIndex];
+            diasDisponiveis = JSON.parse(option.dataset.diasTrabalho || '[]');
+        } else {
+            // Mesmo repositor
+            repIdOrigem = this.contextoRoteiro?.repo_cod;
+            diasDisponiveis = this.diasRoteiroDisponiveis || [];
+        }
 
         selectDia.innerHTML = '<option value="">Selecione um dia</option>';
 
-        for (const dia of this.diasRoteiroDisponiveis) {
-            if (dia === diaAtual) continue;
+        if (!repIdOrigem || diasDisponiveis.length === 0) {
+            this.atualizarPreviewCopiaRoteiro();
+            return;
+        }
 
-            const roteiroDia = await db.getRoteiroCidades(repId, dia);
+        for (const dia of diasDisponiveis) {
+            const roteiroDia = await db.getRoteiroCidades(repIdOrigem, dia);
             if (roteiroDia && roteiroDia.length > 0) {
                 const option = document.createElement('option');
                 option.value = dia;
-                option.textContent = `${nomesDias[dia]} (${roteiroDia.length} cidade${roteiroDia.length > 1 ? 's' : ''})`;
+                option.textContent = `${this.nomesDiasSemana[dia]} (${roteiroDia.length} cidade${roteiroDia.length > 1 ? 's' : ''})`;
                 option.dataset.qtdCidades = roteiroDia.length;
+                option.dataset.repId = repIdOrigem;
                 selectDia.appendChild(option);
             }
         }
 
-        // Limpar preview
-        const previewDiv = document.getElementById('previewReplicacao');
-        if (previewDiv) {
-            previewDiv.style.display = 'none';
-        }
-
-        // Abrir modal
-        const modal = document.getElementById('modalReplicarRoteiro');
-        if (modal) {
-            modal.classList.add('active');
-        }
+        this.atualizarPreviewCopiaRoteiro();
     }
 
-    fecharModalReplicarRoteiro() {
-        const modal = document.getElementById('modalReplicarRoteiro');
-        if (modal) {
-            modal.classList.remove('active');
-        }
+    renderDiasDestinoCopia() {
+        const container = document.getElementById('copiaDiasDestino');
+        if (!container) return;
+
+        const diasDisponiveis = this.diasRoteiroDisponiveis || [];
+
+        container.innerHTML = diasDisponiveis.map(dia => `
+            <label class="checkbox-inline" style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                <input type="checkbox" class="dia-destino-check" value="${dia}" style="width: auto; margin: 0;">
+                <span>${this.nomesDiasSemana[dia]}</span>
+            </label>
+        `).join('');
+
+        // Adicionar listeners para atualizar preview
+        container.querySelectorAll('.dia-destino-check').forEach(checkbox => {
+            checkbox.addEventListener('change', () => this.atualizarPreviewCopiaRoteiro());
+        });
     }
 
-    async atualizarPreviewReplicacao() {
-        const selectDia = document.getElementById('diaOrigemReplicacao');
-        const previewDiv = document.getElementById('previewReplicacao');
-        const infoP = document.getElementById('infoReplicacao');
+    async atualizarPreviewCopiaRoteiro() {
+        const previewDiv = document.getElementById('previewCopiaRoteiro');
+        const infoP = document.getElementById('infoCopiaRoteiro');
+        const selectDia = document.getElementById('copiaDiaOrigem');
 
-        if (!selectDia || !previewDiv || !infoP) return;
+        if (!previewDiv || !infoP) return;
 
-        const diaOrigem = selectDia.value;
-        if (!diaOrigem) {
+        const diaOrigem = selectDia?.value;
+        const diasDestino = Array.from(document.querySelectorAll('.dia-destino-check:checked')).map(cb => cb.value);
+
+        if (!diaOrigem || diasDestino.length === 0) {
             previewDiv.style.display = 'none';
             return;
         }
 
-        const repId = this.contextoRoteiro?.repo_cod;
-        const roteiroDia = await db.getRoteiroCidades(repId, diaOrigem);
+        // Verificar origem
+        const radioOutro = document.querySelector('input[name="origemRoteiro"][value="outro"]');
+        const selectRepositor = document.getElementById('copiaRepositorOrigem');
 
+        let repIdOrigem = this.contextoRoteiro?.repo_cod;
+        let nomeRepositorOrigem = this.contextoRoteiro?.repo_nome || 'Repositor atual';
+
+        if (radioOutro?.checked && selectRepositor?.value) {
+            repIdOrigem = Number(selectRepositor.value);
+            nomeRepositorOrigem = selectRepositor.options[selectRepositor.selectedIndex].textContent;
+        }
+
+        // Contar cidades e clientes
+        const roteiroDia = await db.getRoteiroCidades(repIdOrigem, diaOrigem);
         let totalClientes = 0;
         for (const cidade of roteiroDia) {
             const clientes = await db.getRoteiroClientes(cidade.rot_cid_id);
             totalClientes += clientes.length;
         }
 
-        const nomesDias = {
-            seg: 'Segunda-feira',
-            ter: 'Terça-feira',
-            qua: 'Quarta-feira',
-            qui: 'Quinta-feira',
-            sex: 'Sexta-feira',
-            sab: 'Sábado',
-            dom: 'Domingo'
-        };
+        const diasDestinoNomes = diasDestino.map(d => this.nomesDiasSemana[d]).join(', ');
 
-        const diaDestino = this.estadoRoteiro.diaSelecionado;
-        infoP.textContent = `Será copiado o roteiro de ${nomesDias[diaOrigem]} para ${nomesDias[diaDestino]}: ${roteiroDia.length} cidade${roteiroDia.length > 1 ? 's' : ''} e ${totalClientes} cliente${totalClientes > 1 ? 's' : ''}.`;
+        infoP.innerHTML = `
+            <strong>Origem:</strong> ${this.nomesDiasSemana[diaOrigem]} de "${nomeRepositorOrigem}"<br>
+            <strong>Destino:</strong> ${diasDestinoNomes}<br>
+            <strong>Conteúdo:</strong> ${roteiroDia.length} cidade${roteiroDia.length > 1 ? 's' : ''} e ${totalClientes} cliente${totalClientes > 1 ? 's' : ''}
+        `;
 
         previewDiv.style.display = 'block';
     }
 
-    async confirmarReplicacaoRoteiro() {
-        const selectDia = document.getElementById('diaOrigemReplicacao');
-        if (!selectDia || !selectDia.value) {
-            this.showNotification('Selecione um dia de origem para replicar', 'warning');
+    async confirmarCopiaRoteiro() {
+        const selectDia = document.getElementById('copiaDiaOrigem');
+        const diasDestino = Array.from(document.querySelectorAll('.dia-destino-check:checked')).map(cb => cb.value);
+
+        if (!selectDia?.value) {
+            this.showNotification('Selecione um dia de origem', 'warning');
+            return;
+        }
+
+        if (diasDestino.length === 0) {
+            this.showNotification('Selecione pelo menos um dia de destino', 'warning');
             return;
         }
 
         const diaOrigem = selectDia.value;
-        const diaDestino = this.estadoRoteiro.diaSelecionado;
-        const repId = this.contextoRoteiro?.repo_cod;
+
+        // Verificar origem
+        const radioOutro = document.querySelector('input[name="origemRoteiro"][value="outro"]');
+        const selectRepositor = document.getElementById('copiaRepositorOrigem');
+
+        let repIdOrigem = this.contextoRoteiro?.repo_cod;
+        if (radioOutro?.checked && selectRepositor?.value) {
+            repIdOrigem = Number(selectRepositor.value);
+        }
+
+        const repIdDestino = this.contextoRoteiro?.repo_cod;
+        const usuario = this.usuarioLogado?.username || 'desconhecido';
+
+        // Confirmar substituição se algum dia destino já tem roteiro
+        const diasComRoteiro = [];
+        for (const dia of diasDestino) {
+            const roteiroExistente = await db.getRoteiroCidades(repIdDestino, dia);
+            if (roteiroExistente && roteiroExistente.length > 0) {
+                diasComRoteiro.push(this.nomesDiasSemana[dia]);
+            }
+        }
+
+        if (diasComRoteiro.length > 0) {
+            if (!confirm(`Os dias ${diasComRoteiro.join(', ')} já possuem roteiro. Deseja substituí-los?`)) {
+                return;
+            }
+        }
 
         try {
-            // Primeiro, remover o roteiro do dia de destino se existir
-            const roteiroDestino = await db.getRoteiroCidades(repId, diaDestino);
-            for (const cidade of roteiroDestino) {
-                await db.removerCidadeRoteiro(cidade.rot_cid_id, this.usuarioLogado?.username || 'desconhecido');
+            const btnConfirmar = document.getElementById('btnConfirmarCopiaRoteiro');
+            if (btnConfirmar) {
+                btnConfirmar.disabled = true;
+                btnConfirmar.textContent = 'Copiando...';
             }
 
-            // Copiar roteiro do dia de origem
-            const roteiroOrigem = await db.getRoteiroCidades(repId, diaOrigem);
+            // Carregar roteiro de origem
+            const roteiroOrigem = await db.getRoteiroCidades(repIdOrigem, diaOrigem);
 
-            for (const cidadeOrigem of roteiroOrigem) {
-                // Adicionar cidade ao dia de destino
-                await db.adicionarCidadeRoteiro(
-                    repId,
-                    diaDestino,
-                    cidadeOrigem.rot_cidade,
-                    this.usuarioLogado?.username || 'desconhecido',
-                    cidadeOrigem.rot_ordem_cidade
-                );
+            for (const diaDestino of diasDestino) {
+                // Remover roteiro existente do dia de destino
+                const roteiroDestino = await db.getRoteiroCidades(repIdDestino, diaDestino);
+                for (const cidade of roteiroDestino) {
+                    await db.removerCidadeRoteiro(cidade.rot_cid_id, usuario);
+                }
 
-                // Buscar a cidade recém-criada
-                const cidadesDestino = await db.getRoteiroCidades(repId, diaDestino);
-                const cidadeDestino = cidadesDestino.find(c => c.rot_cidade === cidadeOrigem.rot_cidade);
+                // Copiar cidades e clientes
+                for (const cidadeOrigem of roteiroOrigem) {
+                    // Adicionar cidade
+                    await db.adicionarCidadeRoteiro(
+                        repIdDestino,
+                        diaDestino,
+                        cidadeOrigem.rot_cidade,
+                        usuario,
+                        cidadeOrigem.rot_ordem_cidade
+                    );
 
-                if (cidadeDestino) {
-                    // Copiar clientes
-                    const clientesOrigem = await db.getRoteiroClientes(cidadeOrigem.rot_cid_id);
+                    // Buscar cidade recém-criada
+                    const cidadesDestino = await db.getRoteiroCidades(repIdDestino, diaDestino);
+                    const cidadeDestinoCriada = cidadesDestino.find(c => c.rot_cidade === cidadeOrigem.rot_cidade);
 
-                    for (const cliente of clientesOrigem) {
-                        await db.adicionarClienteRoteiro(
-                            cidadeDestino.rot_cid_id,
-                            cliente.rot_cliente_codigo,
-                            this.usuarioLogado?.username || 'desconhecido',
-                            { ordemVisita: cliente.rot_ordem_visita }
-                        );
+                    if (cidadeDestinoCriada) {
+                        // Copiar clientes
+                        const clientesOrigem = await db.getRoteiroClientes(cidadeOrigem.rot_cid_id);
+
+                        for (const cliente of clientesOrigem) {
+                            await db.adicionarClienteRoteiro(
+                                cidadeDestinoCriada.rot_cid_id,
+                                cliente.rot_cliente_codigo,
+                                usuario,
+                                { ordemVisita: cliente.rot_ordem_visita }
+                            );
+                        }
                     }
                 }
             }
 
-            this.fecharModalReplicarRoteiro();
+            this.fecharModalCopiarRoteiro();
             await this.carregarCidadesRoteiro();
             this.marcarRoteiroPendente();
-            this.showNotification('Roteiro replicado com sucesso!', 'success');
+            this.showNotification(`Roteiro copiado com sucesso para ${diasDestino.length} dia${diasDestino.length > 1 ? 's' : ''}!`, 'success');
         } catch (error) {
-            console.error('Erro ao replicar roteiro:', error);
-            this.showNotification('Erro ao replicar roteiro: ' + error.message, 'error');
+            console.error('Erro ao copiar roteiro:', error);
+            this.showNotification('Erro ao copiar roteiro: ' + error.message, 'error');
+        } finally {
+            const btnConfirmar = document.getElementById('btnConfirmarCopiaRoteiro');
+            if (btnConfirmar) {
+                btnConfirmar.disabled = false;
+                btnConfirmar.textContent = 'Copiar Roteiro';
+            }
         }
     }
 

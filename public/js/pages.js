@@ -708,7 +708,7 @@ export const pages = {
                                 <input type="number" id="roteiroCidadeOrdem" min="1" step="1" value="1" aria-label="Ordem da cidade">
                             </div>
                             <button class="btn btn-primary btn-sm btn-compact btn-add-cidade" id="btnAdicionarCidade">+ Adicionar</button>
-                            <button class="btn btn-secondary btn-sm btn-compact" id="btnReplicarRoteiro" style="display:none;">📋 Replicar Roteiro</button>
+                            <button class="btn btn-secondary btn-sm btn-compact" id="btnCopiarRoteiro">📋 Copiar Roteiro</button>
                         </div>
 
                         <div id="roteiroCidadesMensagem" class="roteiro-hint"></div>
@@ -768,30 +768,70 @@ export const pages = {
                 </div>
             </div>
 
-            <div class="modal" id="modalReplicarRoteiro">
-                <div class="modal-content" style="max-width: 500px;">
+            <div class="modal" id="modalCopiarRoteiro">
+                <div class="modal-content" style="max-width: 650px;">
                     <div class="modal-header">
-                        <h3>Replicar Roteiro</h3>
-                        <button class="modal-close" onclick="window.app.fecharModalReplicarRoteiro()">&times;</button>
+                        <h3>Copiar Roteiro</h3>
+                        <button class="modal-close" onclick="window.app.fecharModalCopiarRoteiro()">&times;</button>
                     </div>
                     <div class="modal-body">
                         <p style="margin-bottom: 16px; color: #6b7280;">
-                            Selecione o dia da semana que deseja usar como base para replicar o roteiro:
+                            Copie o roteiro de um dia para outro ou de outro repositor.
                         </p>
-                        <div class="form-group">
-                            <label for="diaOrigemReplicacao">Copiar roteiro de:</label>
-                            <select id="diaOrigemReplicacao" class="form-control" style="width: 100%;">
+
+                        <!-- Origem do Roteiro -->
+                        <div class="form-group" style="margin-bottom: 16px;">
+                            <label style="font-weight: 600; margin-bottom: 8px; display: block;">Origem do Roteiro</label>
+                            <div class="radio-group" style="display: flex; gap: 16px;">
+                                <label class="checkbox-inline" style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                    <input type="radio" name="origemRoteiro" value="mesmo" checked style="width: auto; margin: 0;">
+                                    <span>Mesmo repositor</span>
+                                </label>
+                                <label class="checkbox-inline" style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                    <input type="radio" name="origemRoteiro" value="outro" style="width: auto; margin: 0;">
+                                    <span>Outro repositor</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Seleção de Outro Repositor (inicialmente oculto) -->
+                        <div id="selecaoOutroRepositor" style="display: none; margin-bottom: 16px; padding: 12px; background: #f9fafb; border-radius: 6px;">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="copiaRepositorOrigem">Selecione o repositor de origem:</label>
+                                <select id="copiaRepositorOrigem" class="form-control" style="width: 100%;">
+                                    <option value="">Carregando repositores...</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Dia de Origem -->
+                        <div class="form-group" style="margin-bottom: 16px;">
+                            <label for="copiaDiaOrigem" style="font-weight: 600;">Dia de origem (copiar DE):</label>
+                            <select id="copiaDiaOrigem" class="form-control" style="width: 100%;">
                                 <option value="">Selecione um dia</option>
                             </select>
                         </div>
-                        <div id="previewReplicacao" style="margin-top: 16px; padding: 12px; background: #f9fafb; border-radius: 6px; display: none;">
-                            <p style="font-size: 14px; color: #374151; margin-bottom: 8px;"><strong>Prévia:</strong></p>
-                            <p id="infoReplicacao" style="font-size: 13px; color: #6b7280; margin: 0;"></p>
+
+                        <!-- Dias de Destino -->
+                        <div class="form-group" style="margin-bottom: 16px;">
+                            <label style="font-weight: 600; margin-bottom: 8px; display: block;">Dias de destino (copiar PARA):</label>
+                            <div id="copiaDiasDestino" class="dias-destino-checkboxes" style="display: flex; flex-wrap: wrap; gap: 8px 16px;">
+                                <!-- Checkboxes serão inseridos via JS -->
+                            </div>
+                            <small class="text-muted" style="display: block; margin-top: 8px;">
+                                Selecione um ou mais dias. Roteiros existentes serão substituídos.
+                            </small>
+                        </div>
+
+                        <!-- Preview -->
+                        <div id="previewCopiaRoteiro" style="margin-top: 16px; padding: 12px; background: #fef3c7; border-radius: 6px; border-left: 4px solid #f59e0b; display: none;">
+                            <p style="font-size: 14px; color: #92400e; margin-bottom: 8px;"><strong>Prévia da cópia:</strong></p>
+                            <p id="infoCopiaRoteiro" style="font-size: 13px; color: #78350f; margin: 0;"></p>
                         </div>
                     </div>
                     <div class="modal-footer">
-                        <button class="btn btn-secondary" onclick="window.app.fecharModalReplicarRoteiro()">Cancelar</button>
-                        <button class="btn btn-primary" id="btnConfirmarReplicacao">Replicar</button>
+                        <button class="btn btn-secondary" onclick="window.app.fecharModalCopiarRoteiro()">Cancelar</button>
+                        <button class="btn btn-primary" id="btnConfirmarCopiaRoteiro">Copiar Roteiro</button>
                     </div>
                 </div>
             </div>
