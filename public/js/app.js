@@ -12520,6 +12520,8 @@ class App {
 
     pesquisaCampos = [];
     pesquisaRepositoresSelecionados = [];
+    pesquisaGruposSelecionados = [];
+    pesquisaClientesSelecionados = [];
 
     async inicializarPaginaPesquisas() {
         await this.carregarListaPesquisas();
@@ -12633,9 +12635,14 @@ class App {
         document.getElementById('pes_id').value = '';
         this.pesquisaCampos = [];
         this.pesquisaRepositoresSelecionados = [];
+        this.pesquisaGruposSelecionados = [];
+        this.pesquisaClientesSelecionados = [];
 
-        // Carregar repositores para o select
-        await this.carregarRepositoresParaPesquisa();
+        // Carregar repositores e grupos para os selects
+        await Promise.all([
+            this.carregarRepositoresParaPesquisa(),
+            this.carregarGruposParaPesquisa()
+        ]);
 
         if (pesquisaId) {
             title.textContent = 'Editar Pesquisa';
@@ -12644,6 +12651,8 @@ class App {
             title.textContent = 'Nova Pesquisa';
             this.renderCamposPesquisa();
             this.renderRepositoresSelecionados();
+            this.renderGruposSelecionados();
+            this.renderClientesSelecionados();
         }
 
         modal.classList.add('active');
@@ -12710,6 +12719,139 @@ class App {
             <span class="repositor-tag">
                 ${r.codigo} - ${r.nome}
                 <button type="button" class="repositor-tag-remove" onclick="window.app.removerRepositorPesquisa('${r.codigo}')">&times;</button>
+            </span>
+        `).join('');
+    }
+
+    // Funções para Grupos de Clientes
+    async carregarGruposParaPesquisa() {
+        const select = document.getElementById('pes_grupo_select');
+        if (!select) return;
+
+        try {
+            const grupos = await db.getGruposClientes();
+            select.innerHTML = '<option value="">Selecione um grupo...</option>';
+            grupos.forEach(g => {
+                const option = document.createElement('option');
+                option.value = g.grupo_desc;
+                option.textContent = g.grupo_desc;
+                select.appendChild(option);
+            });
+
+            // Event listener para adicionar grupo
+            select.onchange = () => {
+                if (select.value) {
+                    this.adicionarGrupoPesquisa(select.value);
+                    select.value = '';
+                }
+            };
+        } catch (error) {
+            console.error('Erro ao carregar grupos:', error);
+        }
+    }
+
+    adicionarGrupoPesquisa(grupoDesc) {
+        if (this.pesquisaGruposSelecionados.includes(grupoDesc)) {
+            return; // Já adicionado
+        }
+        this.pesquisaGruposSelecionados.push(grupoDesc);
+        this.renderGruposSelecionados();
+    }
+
+    removerGrupoPesquisa(grupoDesc) {
+        this.pesquisaGruposSelecionados = this.pesquisaGruposSelecionados.filter(g => g !== grupoDesc);
+        this.renderGruposSelecionados();
+    }
+
+    renderGruposSelecionados() {
+        const container = document.getElementById('pesquisaGruposLista');
+        if (!container) return;
+
+        if (this.pesquisaGruposSelecionados.length === 0) {
+            container.innerHTML = '<span class="text-muted" style="font-size: 0.85rem;">Nenhum grupo selecionado</span>';
+            return;
+        }
+
+        container.innerHTML = this.pesquisaGruposSelecionados.map(g => `
+            <span class="grupo-tag">
+                ${g}
+                <button type="button" class="grupo-tag-remove" onclick="window.app.removerGrupoPesquisa('${g.replace(/'/g, "\\'")}')">&times;</button>
+            </span>
+        `).join('');
+    }
+
+    // Funções para Clientes
+    async buscarClientePesquisa() {
+        const busca = document.getElementById('pes_cliente_busca')?.value;
+        const select = document.getElementById('pes_cliente_select');
+
+        if (!busca || busca.length < 2 || !select) {
+            this.showNotification('Digite pelo menos 2 caracteres para buscar', 'warning');
+            return;
+        }
+
+        try {
+            const clientes = await db.buscarClientesComercial(busca, 50);
+
+            if (clientes.length === 0) {
+                this.showNotification('Nenhum cliente encontrado', 'info');
+                select.style.display = 'none';
+                return;
+            }
+
+            select.innerHTML = '<option value="">Selecione um cliente...</option>';
+            clientes.forEach(c => {
+                const option = document.createElement('option');
+                option.value = c.cliente;
+                option.textContent = `${c.cliente} - ${c.nome || c.fantasia}`;
+                option.dataset.nome = c.nome || c.fantasia;
+                select.appendChild(option);
+            });
+
+            select.style.display = 'block';
+
+            // Event listener para adicionar cliente
+            select.onchange = () => {
+                if (select.value) {
+                    const option = select.selectedOptions[0];
+                    this.adicionarClientePesquisa(select.value, option.dataset.nome);
+                    select.value = '';
+                    select.style.display = 'none';
+                    document.getElementById('pes_cliente_busca').value = '';
+                }
+            };
+        } catch (error) {
+            console.error('Erro ao buscar clientes:', error);
+            this.showNotification('Erro ao buscar clientes', 'error');
+        }
+    }
+
+    adicionarClientePesquisa(codigo, nome) {
+        if (this.pesquisaClientesSelecionados.find(c => c.codigo === codigo)) {
+            return; // Já adicionado
+        }
+        this.pesquisaClientesSelecionados.push({ codigo, nome });
+        this.renderClientesSelecionados();
+    }
+
+    removerClientePesquisa(codigo) {
+        this.pesquisaClientesSelecionados = this.pesquisaClientesSelecionados.filter(c => c.codigo !== codigo);
+        this.renderClientesSelecionados();
+    }
+
+    renderClientesSelecionados() {
+        const container = document.getElementById('pesquisaClientesLista');
+        if (!container) return;
+
+        if (this.pesquisaClientesSelecionados.length === 0) {
+            container.innerHTML = '<span class="text-muted" style="font-size: 0.85rem;">Nenhum cliente selecionado</span>';
+            return;
+        }
+
+        container.innerHTML = this.pesquisaClientesSelecionados.map(c => `
+            <span class="cliente-tag">
+                ${c.codigo} - ${c.nome}
+                <button type="button" class="cliente-tag-remove" onclick="window.app.removerClientePesquisa('${c.codigo}')">&times;</button>
             </span>
         `).join('');
     }
@@ -12849,6 +12991,17 @@ class App {
             }));
             this.renderRepositoresSelecionados();
 
+            // Carregar grupos vinculados
+            this.pesquisaGruposSelecionados = (pesquisa.grupos || []).map(g => g.peg_grupo_desc);
+            this.renderGruposSelecionados();
+
+            // Carregar clientes vinculados
+            this.pesquisaClientesSelecionados = (pesquisa.clientes || []).map(c => ({
+                codigo: c.pecl_cliente_codigo,
+                nome: c.cliente_nome || c.pecl_cliente_codigo
+            }));
+            this.renderClientesSelecionados();
+
         } catch (error) {
             console.error('Erro ao carregar dados da pesquisa:', error);
             this.showNotification('Erro ao carregar pesquisa', 'error');
@@ -12892,7 +13045,9 @@ class App {
                 max: c.tipo === 'numero' ? c.max : null,
                 ordem: i + 1
             })),
-            repositores: this.pesquisaRepositoresSelecionados.map(r => r.codigo)
+            repositores: this.pesquisaRepositoresSelecionados.map(r => r.codigo),
+            grupos: this.pesquisaGruposSelecionados,
+            clientes: this.pesquisaClientesSelecionados.map(c => c.codigo)
         };
 
         try {
@@ -13194,7 +13349,8 @@ class App {
 
     async verificarPesquisasObrigatoriasPendentes(repId, clienteId, dataVisita) {
         try {
-            const pesquisas = await db.getPesquisasPendentesRepositor(repId);
+            // Passa o clienteId para filtrar pesquisas por cliente/grupo
+            const pesquisas = await db.getPesquisasPendentesRepositor(repId, clienteId);
             const hoje = new Date().toISOString().split('T')[0];
 
             // Filtrar pesquisas obrigatórias que ainda não foram respondidas

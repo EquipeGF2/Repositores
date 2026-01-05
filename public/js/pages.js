@@ -4010,17 +4010,63 @@ export const pages = {
                                     </div>
                                 </section>
 
+                                <!-- Clientes/Grupos Vinculados -->
+                                <section class="form-card" style="grid-column: 1 / -1;">
+                                    <div class="form-card-header">
+                                        <div>
+                                            <p class="form-card-eyebrow">Vincular (opcional)</p>
+                                            <h4 class="form-card-title-inline">Clientes ou Grupos de Clientes</h4>
+                                        </div>
+                                    </div>
+                                    <div class="form-card-body">
+                                        <p class="text-muted" style="margin-bottom: 10px; font-size: 0.85rem;">
+                                            Selecione grupos ou clientes específicos. Todos os repositores que atendem esses clientes terão acesso à pesquisa.
+                                        </p>
+                                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                                            <div class="form-group">
+                                                <label style="font-weight: 500; margin-bottom: 6px; display: block;">Grupo de Clientes</label>
+                                                <select id="pes_grupo_select" class="form-control">
+                                                    <option value="">Selecione um grupo...</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label style="font-weight: 500; margin-bottom: 6px; display: block;">Cliente Individual</label>
+                                                <div style="display: flex; gap: 8px;">
+                                                    <input type="text" id="pes_cliente_busca" class="form-control" placeholder="Buscar cliente..." style="flex: 1;">
+                                                    <button type="button" class="btn btn-secondary btn-sm" onclick="window.app.buscarClientePesquisa()">Buscar</button>
+                                                </div>
+                                                <select id="pes_cliente_select" class="form-control" style="margin-top: 8px; display: none;">
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px;">
+                                            <div>
+                                                <label style="font-weight: 500; margin-bottom: 6px; display: block; font-size: 0.85rem;">Grupos selecionados:</label>
+                                                <div id="pesquisaGruposLista" class="grupos-vinculados-lista">
+                                                    <span class="text-muted" style="font-size: 0.85rem;">Nenhum grupo selecionado</span>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label style="font-weight: 500; margin-bottom: 6px; display: block; font-size: 0.85rem;">Clientes selecionados:</label>
+                                                <div id="pesquisaClientesLista" class="clientes-vinculados-lista">
+                                                    <span class="text-muted" style="font-size: 0.85rem;">Nenhum cliente selecionado</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </section>
+
                                 <!-- Repositores Vinculados -->
                                 <section class="form-card" style="grid-column: 1 / -1;">
                                     <div class="form-card-header">
                                         <div>
                                             <p class="form-card-eyebrow">Vincular (opcional)</p>
-                                            <h4 class="form-card-title-inline">Repositores</h4>
+                                            <h4 class="form-card-title-inline">Repositores Específicos</h4>
                                         </div>
                                     </div>
                                     <div class="form-card-body">
                                         <p class="text-muted" style="margin-bottom: 10px; font-size: 0.85rem;">
-                                            Deixe vazio para disponibilizar para todos os repositores, ou selecione repositores específicos.
+                                            Deixe vazio para habilitar para todos os repositores que atendem os clientes/grupos acima.
                                         </p>
                                         <div class="form-group">
                                             <select id="pes_repositor_select" class="form-control">
@@ -4280,6 +4326,56 @@ export const pages = {
                     font-size: 14px;
                     padding: 0;
                     line-height: 1;
+                }
+
+                .grupos-vinculados-lista,
+                .clientes-vinculados-lista {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                    min-height: 32px;
+                }
+
+                .grupo-tag {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    padding: 6px 12px;
+                    background: #fef3c7;
+                    border: 1px solid #fcd34d;
+                    border-radius: 20px;
+                    font-size: 0.85rem;
+                    color: #92400e;
+                }
+
+                .cliente-tag {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    padding: 6px 12px;
+                    background: #d1fae5;
+                    border: 1px solid #6ee7b7;
+                    border-radius: 20px;
+                    font-size: 0.85rem;
+                    color: #065f46;
+                }
+
+                .grupo-tag-remove,
+                .cliente-tag-remove {
+                    background: none;
+                    border: none;
+                    cursor: pointer;
+                    font-size: 14px;
+                    padding: 0;
+                    line-height: 1;
+                }
+
+                .grupo-tag-remove {
+                    color: #b45309;
+                }
+
+                .cliente-tag-remove {
+                    color: #047857;
                 }
 
                 .repositor-tag-remove:hover {

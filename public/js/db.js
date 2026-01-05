@@ -641,6 +641,16 @@ class TursoDatabase {
                 )
             `);
 
+            // Grupos de clientes vinculados à pesquisa
+            await this.mainClient.execute(`
+                CREATE TABLE IF NOT EXISTS cc_pesquisa_grupos (
+                    peg_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    peg_pes_id INTEGER NOT NULL,
+                    peg_grupo_desc TEXT NOT NULL,
+                    FOREIGN KEY (peg_pes_id) REFERENCES cc_pesquisas(pes_id) ON DELETE CASCADE
+                )
+            `);
+
             // Repositores vinculados à pesquisa
             await this.mainClient.execute(`
                 CREATE TABLE IF NOT EXISTS cc_pesquisa_repositores (
@@ -1288,6 +1298,47 @@ class TursoDatabase {
             }));
         } catch (error) {
             console.error('Erro ao buscar clientes por cidade:', error);
+            return [];
+        }
+    }
+
+    async getGruposClientes() {
+        await this.connectComercial();
+        if (!this.comercialClient) return [];
+
+        try {
+            const resultado = await this.comercialClient.execute({
+                sql: `
+                    SELECT DISTINCT grupo, grupo_desc
+                    FROM tab_cliente
+                    WHERE grupo_desc IS NOT NULL AND grupo_desc != ''
+                    ORDER BY grupo_desc
+                `
+            });
+            return resultado.rows;
+        } catch (error) {
+            console.error('Erro ao buscar grupos de clientes:', error);
+            return [];
+        }
+    }
+
+    async buscarClientesPorGrupo(grupoDesc) {
+        await this.connectComercial();
+        if (!this.comercialClient || !grupoDesc) return [];
+
+        try {
+            const resultado = await this.comercialClient.execute({
+                sql: `
+                    SELECT cliente, nome, fantasia, cidade, estado, grupo_desc
+                    FROM tab_cliente
+                    WHERE grupo_desc = ?
+                    ORDER BY nome
+                `,
+                args: [grupoDesc]
+            });
+            return resultado.rows;
+        } catch (error) {
+            console.error('Erro ao buscar clientes por grupo:', error);
             return [];
         }
     }
@@ -3787,6 +3838,20 @@ class TursoDatabase {
             });
             pesquisa.repositores = repositores.rows;
 
+            // Buscar grupos vinculados
+            const grupos = await this.mainClient.execute({
+                sql: `SELECT peg_grupo_desc FROM cc_pesquisa_grupos WHERE peg_pes_id = ?`,
+                args: [pesId]
+            });
+            pesquisa.grupos = grupos.rows.map(g => g.peg_grupo_desc);
+
+            // Buscar clientes vinculados
+            const clientes = await this.mainClient.execute({
+                sql: `SELECT pecl_cliente_codigo FROM cc_pesquisa_clientes WHERE pecl_pes_id = ?`,
+                args: [pesId]
+            });
+            pesquisa.clientes = clientes.rows.map(c => c.pecl_cliente_codigo);
+
             return pesquisa;
         } catch (error) {
             console.error('Erro ao buscar pesquisa:', error);
@@ -3796,7 +3861,7 @@ class TursoDatabase {
 
     async criarPesquisa(dados) {
         try {
-            const { titulo, descricao, obrigatorio, fotoObrigatoria, dataInicio, dataFim, campos, repositores } = dados;
+            const { titulo, descricao, obrigatorio, fotoObrigatoria, dataInicio, dataFim, campos, repositores, grupos, clientes } = dados;
 
             // Criar pesquisa
             const result = await this.mainClient.execute({
@@ -3833,6 +3898,26 @@ class TursoDatabase {
                 }
             }
 
+            // Vincular grupos de clientes
+            if (grupos && grupos.length > 0) {
+                for (const grupoDesc of grupos) {
+                    await this.mainClient.execute({
+                        sql: `INSERT INTO cc_pesquisa_grupos (peg_pes_id, peg_grupo_desc) VALUES (?, ?)`,
+                        args: [pesId, grupoDesc]
+                    });
+                }
+            }
+
+            // Vincular clientes individuais
+            if (clientes && clientes.length > 0) {
+                for (const clienteCodigo of clientes) {
+                    await this.mainClient.execute({
+                        sql: `INSERT INTO cc_pesquisa_clientes (pecl_pes_id, pecl_cliente_codigo) VALUES (?, ?)`,
+                        args: [pesId, clienteCodigo]
+                    });
+                }
+            }
+
             return { success: true, id: pesId };
         } catch (error) {
             console.error('Erro ao criar pesquisa:', error);
@@ -3842,7 +3927,7 @@ class TursoDatabase {
 
     async atualizarPesquisa(pesId, dados) {
         try {
-            const { titulo, descricao, obrigatorio, fotoObrigatoria, dataInicio, dataFim, ativa, campos, repositores } = dados;
+            const { titulo, descricao, obrigatorio, fotoObrigatoria, dataInicio, dataFim, ativa, campos, repositores, grupos, clientes } = dados;
 
             await this.mainClient.execute({
                 sql: `
@@ -3888,6 +3973,36 @@ class TursoDatabase {
                 }
             }
 
+            // Atualizar grupos vinculados
+            if (grupos !== undefined) {
+                await this.mainClient.execute({
+                    sql: `DELETE FROM cc_pesquisa_grupos WHERE peg_pes_id = ?`,
+                    args: [pesId]
+                });
+
+                for (const grupoDesc of grupos) {
+                    await this.mainClient.execute({
+                        sql: `INSERT INTO cc_pesquisa_grupos (peg_pes_id, peg_grupo_desc) VALUES (?, ?)`,
+                        args: [pesId, grupoDesc]
+                    });
+                }
+            }
+
+            // Atualizar clientes vinculados
+            if (clientes !== undefined) {
+                await this.mainClient.execute({
+                    sql: `DELETE FROM cc_pesquisa_clientes WHERE pecl_pes_id = ?`,
+                    args: [pesId]
+                });
+
+                for (const clienteCodigo of clientes) {
+                    await this.mainClient.execute({
+                        sql: `INSERT INTO cc_pesquisa_clientes (pecl_pes_id, pecl_cliente_codigo) VALUES (?, ?)`,
+                        args: [pesId, clienteCodigo]
+                    });
+                }
+            }
+
             return { success: true };
         } catch (error) {
             console.error('Erro ao atualizar pesquisa:', error);
@@ -3909,9 +4024,28 @@ class TursoDatabase {
         }
     }
 
-    async getPesquisasPendentesRepositor(repId) {
+    async getPesquisasPendentesRepositor(repId, clienteCodigo = null) {
         try {
             const hoje = new Date().toISOString().split('T')[0];
+
+            // Se um cliente for fornecido, buscar seu grupo
+            let clienteGrupo = null;
+            if (clienteCodigo) {
+                await this.connectComercial();
+                if (this.comercialClient) {
+                    try {
+                        const clienteResult = await this.comercialClient.execute({
+                            sql: `SELECT grupo_desc FROM tab_cliente WHERE codigo = ?`,
+                            args: [clienteCodigo]
+                        });
+                        if (clienteResult.rows.length > 0) {
+                            clienteGrupo = clienteResult.rows[0].grupo_desc;
+                        }
+                    } catch (e) {
+                        console.warn('Erro ao buscar grupo do cliente:', e);
+                    }
+                }
+            }
 
             // Buscar pesquisas ativas para este repositor (ou para todos se não tiver vínculo específico)
             const result = await this.mainClient.execute({
@@ -3931,14 +4065,68 @@ class TursoDatabase {
                 args: [hoje, hoje, repId]
             });
 
-            // Para cada pesquisa, buscar campos
+            // Para cada pesquisa, verificar restrições de cliente/grupo e buscar campos
             const pesquisas = [];
             for (const pes of result.rows) {
-                const campos = await this.mainClient.execute({
-                    sql: `SELECT * FROM cc_pesquisa_campos WHERE pca_pes_id = ? ORDER BY pca_ordem`,
+                // Verificar se a pesquisa tem restrições de cliente/grupo
+                const temRestricaoGrupo = await this.mainClient.execute({
+                    sql: `SELECT COUNT(*) as count FROM cc_pesquisa_grupos WHERE peg_pes_id = ?`,
                     args: [pes.pes_id]
                 });
-                pesquisas.push({ ...pes, campos: campos.rows });
+                const temRestricaoCliente = await this.mainClient.execute({
+                    sql: `SELECT COUNT(*) as count FROM cc_pesquisa_clientes WHERE pecl_pes_id = ?`,
+                    args: [pes.pes_id]
+                });
+
+                const qtdGrupos = Number(temRestricaoGrupo.rows[0].count);
+                const qtdClientes = Number(temRestricaoCliente.rows[0].count);
+
+                // Se não tem restrições de cliente/grupo, incluir a pesquisa
+                if (qtdGrupos === 0 && qtdClientes === 0) {
+                    const campos = await this.mainClient.execute({
+                        sql: `SELECT * FROM cc_pesquisa_campos WHERE pca_pes_id = ? ORDER BY pca_ordem`,
+                        args: [pes.pes_id]
+                    });
+                    pesquisas.push({ ...pes, campos: campos.rows });
+                    continue;
+                }
+
+                // Se tem restrições e não foi passado cliente, pular a pesquisa
+                if (!clienteCodigo) {
+                    continue;
+                }
+
+                // Verificar se o cliente está diretamente vinculado
+                let clientePermitido = false;
+                if (qtdClientes > 0) {
+                    const clienteVinculado = await this.mainClient.execute({
+                        sql: `SELECT 1 FROM cc_pesquisa_clientes WHERE pecl_pes_id = ? AND pecl_cliente_codigo = ?`,
+                        args: [pes.pes_id, clienteCodigo]
+                    });
+                    if (clienteVinculado.rows.length > 0) {
+                        clientePermitido = true;
+                    }
+                }
+
+                // Verificar se o grupo do cliente está vinculado
+                if (!clientePermitido && qtdGrupos > 0 && clienteGrupo) {
+                    const grupoVinculado = await this.mainClient.execute({
+                        sql: `SELECT 1 FROM cc_pesquisa_grupos WHERE peg_pes_id = ? AND peg_grupo_desc = ?`,
+                        args: [pes.pes_id, clienteGrupo]
+                    });
+                    if (grupoVinculado.rows.length > 0) {
+                        clientePermitido = true;
+                    }
+                }
+
+                // Se o cliente/grupo está permitido, incluir a pesquisa
+                if (clientePermitido) {
+                    const campos = await this.mainClient.execute({
+                        sql: `SELECT * FROM cc_pesquisa_campos WHERE pca_pes_id = ? ORDER BY pca_ordem`,
+                        args: [pes.pes_id]
+                    });
+                    pesquisas.push({ ...pes, campos: campos.rows });
+                }
             }
 
             return pesquisas;
