@@ -2606,6 +2606,45 @@ export const pages = {
         `;
     },
 
+    'configuracoes-sistema': async () => {
+        // Carregar configurações salvas
+        const configSalva = localStorage.getItem('configSistema');
+        const config = configSalva ? JSON.parse(configSalva) : {};
+        const distanciaMaxima = config.distanciaMaximaCheckin || 30;
+
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">Configurações do Sistema</h3>
+                        <p class="text-muted" style="margin: 4px 0 0;">Defina parâmetros gerais do sistema.</p>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="config-section">
+                        <h4 style="margin-bottom: 16px; color: var(--text-primary);">Validação de Check-in</h4>
+
+                        <div class="form-group" style="max-width: 400px;">
+                            <label for="configDistanciaMaxima">Distância máxima para check-in (km)</label>
+                            <input type="number" id="configDistanciaMaxima"
+                                   value="${distanciaMaxima}"
+                                   min="1" max="500" step="1"
+                                   style="width: 100%;">
+                            <small class="text-muted" style="display: block; margin-top: 4px;">
+                                Define a distância máxima permitida entre o repositor e o cliente para realizar check-in.
+                                O check-in será bloqueado se a distância for maior que este valor.
+                            </small>
+                        </div>
+                    </div>
+
+                    <div class="modal-footer" style="justify-content: flex-end; margin-top: 24px;">
+                        <button type="button" class="btn btn-primary" id="btnSalvarConfigSistema">Salvar Configurações</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
     'controle-acessos': async () => {
         return `
             <div class="card">
@@ -4813,6 +4852,7 @@ export const pageTitles = {
     'consulta-roteiro': 'Consulta de Roteiro',
     'custos-repositor': 'Custos por Repositor',
     'estrutura-banco-comercial': 'Estrutura do Banco Comercial',
+    'configuracoes-sistema': 'Configurações do Sistema',
     'controle-acessos': 'Controle de Acessos',
     'gestao-usuarios': 'Gestão de Usuários',
     'roteiro-repositor': 'Roteiro do Repositor',

@@ -1114,6 +1114,40 @@ class App {
         `;
     }
 
+    async inicializarConfiguracoesSistema() {
+        const btnSalvar = document.getElementById('btnSalvarConfigSistema');
+        const inputDistancia = document.getElementById('configDistanciaMaxima');
+
+        if (btnSalvar) {
+            btnSalvar.addEventListener('click', () => {
+                const distancia = parseInt(inputDistancia?.value, 10) || 30;
+
+                // Validar limites
+                if (distancia < 1 || distancia > 500) {
+                    this.showNotification('A distância deve estar entre 1 e 500 km.', 'error');
+                    return;
+                }
+
+                // Salvar no localStorage
+                const config = {
+                    distanciaMaximaCheckin: distancia
+                };
+                localStorage.setItem('configSistema', JSON.stringify(config));
+
+                this.showNotification('Configurações salvas com sucesso!', 'success');
+            });
+        }
+    }
+
+    getConfigSistema() {
+        try {
+            const configSalva = localStorage.getItem('configSistema');
+            return configSalva ? JSON.parse(configSalva) : {};
+        } catch {
+            return {};
+        }
+    }
+
     async inicializarControleAcessos() {
         const seletorUsuario = document.getElementById('controleAcessoUsuario');
         const matrizPermissoes = document.getElementById('controleAcessoMatriz');
@@ -1629,6 +1663,8 @@ class App {
 
             if (pageName === 'cadastro-repositor') {
                 await this.aplicarFiltrosCadastroRepositores();
+            } else if (pageName === 'configuracoes-sistema') {
+                await this.inicializarConfiguracoesSistema();
             } else if (pageName === 'controle-acessos') {
                 await this.inicializarControleAcessos();
             } else if (pageName === 'gestao-usuarios') {
@@ -9220,11 +9256,14 @@ class App {
                 coordsCliente.lng
             );
 
-            const DISTANCIA_MAXIMA = 30000; // 30km
+            // Usar configuração salva ou 30km como padrão
+            const config = this.getConfigSistema();
+            const distanciaMaximaKm = config.distanciaMaximaCheckin || 30;
+            const DISTANCIA_MAXIMA = distanciaMaximaKm * 1000; // converter para metros
 
             if (distancia > DISTANCIA_MAXIMA) {
                 const distanciaKm = (distancia / 1000).toFixed(1);
-                const limiteKm = (DISTANCIA_MAXIMA / 1000);
+                const limiteKm = distanciaMaximaKm;
                 return {
                     valido: false,
                     distancia: Math.round(distancia),
@@ -9233,7 +9272,7 @@ class App {
             }
 
             const distanciaKm = (distancia / 1000).toFixed(1);
-            console.log(`Distância validada: ${distanciaKm}km do estabelecimento`);
+            console.log(`Distância validada: ${distanciaKm}km do estabelecimento (limite: ${distanciaMaximaKm}km)`);
 
             return {
                 valido: true,
