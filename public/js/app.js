@@ -12682,6 +12682,9 @@ class App {
 
         try {
             const repositores = await db.getRepositoresDetalhados({ status: 'ativos' });
+            // Armazenar todos para poder restaurar depois
+            this.todosRepositores = repositores;
+
             select.innerHTML = '<option value="">Selecione um repositor...</option>';
             repositores.forEach(repo => {
                 const option = document.createElement('option');
@@ -12738,29 +12741,34 @@ class App {
     gruposDisponiveis = [];
     cidadesDisponiveis = [];
     clientesResultadoBusca = [];
+    todosRepositores = [];
 
     // Funções para Grupos de Clientes
     async carregarGruposParaPesquisa() {
-        const container = document.getElementById('pes_grupo_lista');
+        // Não carrega automaticamente - espera o botão buscar
+    }
+
+    async buscarGruposPesquisa() {
+        const busca = document.getElementById('pes_grupo_busca')?.value || '';
+        const container = document.getElementById('pes_grupo_dropdown');
         if (!container) return;
 
-        try {
-            this.gruposDisponiveis = await db.getGruposClientes();
-            this.renderListaGrupos();
+        container.innerHTML = '<div class="empty-state-mini">Buscando...</div>';
 
-            // Configurar filtro
-            const inputBusca = document.getElementById('pes_grupo_busca');
-            if (inputBusca) {
-                inputBusca.oninput = () => this.renderListaGrupos(inputBusca.value);
+        try {
+            // Carrega todos os grupos se ainda não carregou
+            if (this.gruposDisponiveis.length === 0) {
+                this.gruposDisponiveis = await db.getGruposClientes();
             }
+            this.renderListaGrupos(busca);
         } catch (error) {
-            console.error('Erro ao carregar grupos:', error);
-            container.innerHTML = '<div class="empty-state-mini">Erro ao carregar grupos</div>';
+            console.error('Erro ao buscar grupos:', error);
+            container.innerHTML = '<div class="empty-state-mini">Erro ao buscar grupos</div>';
         }
     }
 
     renderListaGrupos(filtro = '') {
-        const container = document.getElementById('pes_grupo_lista');
+        const container = document.getElementById('pes_grupo_dropdown');
         if (!container) return;
 
         const filtroLower = filtro.toLowerCase();
@@ -12776,13 +12784,15 @@ class App {
         container.innerHTML = gruposFiltrados.map(g => {
             const selecionado = this.pesquisaGruposSelecionados.includes(g.grupo_desc);
             return `
-                <div class="selecao-lista-item ${selecionado ? 'selecionado' : ''}"
+                <div class="dropdown-lista-item ${selecionado ? 'selecionado' : ''}"
                      onclick="window.app.toggleGrupoPesquisa('${(g.grupo_desc || '').replace(/'/g, "\\'")}')">
-                    <span class="check-icon">${selecionado ? '✓' : ''}</span>
-                    <span>${g.grupo_desc || 'Sem nome'}</span>
+                    <span class="checkbox-icon">${selecionado ? '✓' : ''}</span>
+                    <span class="item-texto">${g.grupo_desc || 'Sem nome'}</span>
                 </div>
             `;
         }).join('');
+
+        this.atualizarContadorGrupos();
     }
 
     toggleGrupoPesquisa(grupoDesc) {
@@ -12794,17 +12804,35 @@ class App {
         }
         this.renderListaGrupos(document.getElementById('pes_grupo_busca')?.value || '');
         this.renderGruposSelecionados();
+        this.filtrarRepositoresPorSelecao();
     }
 
     removerGrupoPesquisa(grupoDesc) {
         this.pesquisaGruposSelecionados = this.pesquisaGruposSelecionados.filter(g => g !== grupoDesc);
         this.renderListaGrupos(document.getElementById('pes_grupo_busca')?.value || '');
         this.renderGruposSelecionados();
+        this.filtrarRepositoresPorSelecao();
+    }
+
+    limparGruposPesquisa() {
+        this.pesquisaGruposSelecionados = [];
+        this.renderListaGrupos(document.getElementById('pes_grupo_busca')?.value || '');
+        this.renderGruposSelecionados();
+        this.filtrarRepositoresPorSelecao();
+    }
+
+    atualizarContadorGrupos() {
+        const contador = document.getElementById('pes_grupo_count');
+        if (contador) {
+            contador.textContent = `${this.pesquisaGruposSelecionados.length} selecionado${this.pesquisaGruposSelecionados.length !== 1 ? 's' : ''}`;
+        }
     }
 
     renderGruposSelecionados() {
         const container = document.getElementById('pesquisaGruposLista');
         if (!container) return;
+
+        this.atualizarContadorGrupos();
 
         if (this.pesquisaGruposSelecionados.length === 0) {
             container.innerHTML = '';
@@ -12821,26 +12849,30 @@ class App {
 
     // Funções para Cidades
     async carregarCidadesParaPesquisa() {
-        const container = document.getElementById('pes_cidade_lista');
+        // Não carrega automaticamente - espera o botão buscar
+    }
+
+    async buscarCidadesPesquisa() {
+        const busca = document.getElementById('pes_cidade_busca')?.value || '';
+        const container = document.getElementById('pes_cidade_dropdown');
         if (!container) return;
 
-        try {
-            this.cidadesDisponiveis = await db.getCidadesClientes();
-            this.renderListaCidades();
+        container.innerHTML = '<div class="empty-state-mini">Buscando...</div>';
 
-            // Configurar filtro
-            const inputBusca = document.getElementById('pes_cidade_busca');
-            if (inputBusca) {
-                inputBusca.oninput = () => this.renderListaCidades(inputBusca.value);
+        try {
+            // Carrega todas as cidades se ainda não carregou
+            if (this.cidadesDisponiveis.length === 0) {
+                this.cidadesDisponiveis = await db.getCidadesClientes();
             }
+            this.renderListaCidades(busca);
         } catch (error) {
-            console.error('Erro ao carregar cidades:', error);
-            container.innerHTML = '<div class="empty-state-mini">Erro ao carregar cidades</div>';
+            console.error('Erro ao buscar cidades:', error);
+            container.innerHTML = '<div class="empty-state-mini">Erro ao buscar cidades</div>';
         }
     }
 
     renderListaCidades(filtro = '') {
-        const container = document.getElementById('pes_cidade_lista');
+        const container = document.getElementById('pes_cidade_dropdown');
         if (!container) return;
 
         const filtroLower = filtro.toLowerCase();
@@ -12857,13 +12889,15 @@ class App {
             const selecionada = this.pesquisaCidadesSelecionadas.includes(c.cidade);
             const label = c.estado ? `${c.cidade} - ${c.estado}` : c.cidade;
             return `
-                <div class="selecao-lista-item ${selecionada ? 'selecionado' : ''}"
+                <div class="dropdown-lista-item ${selecionada ? 'selecionado' : ''}"
                      onclick="window.app.toggleCidadePesquisa('${(c.cidade || '').replace(/'/g, "\\'")}')">
-                    <span class="check-icon">${selecionada ? '✓' : ''}</span>
-                    <span>${label}</span>
+                    <span class="checkbox-icon">${selecionada ? '✓' : ''}</span>
+                    <span class="item-texto">${label}</span>
                 </div>
             `;
         }).join('');
+
+        this.atualizarContadorCidades();
     }
 
     toggleCidadePesquisa(cidade) {
@@ -12875,17 +12909,35 @@ class App {
         }
         this.renderListaCidades(document.getElementById('pes_cidade_busca')?.value || '');
         this.renderCidadesSelecionadas();
+        this.filtrarRepositoresPorSelecao();
     }
 
     removerCidadePesquisa(cidade) {
         this.pesquisaCidadesSelecionadas = this.pesquisaCidadesSelecionadas.filter(c => c !== cidade);
         this.renderListaCidades(document.getElementById('pes_cidade_busca')?.value || '');
         this.renderCidadesSelecionadas();
+        this.filtrarRepositoresPorSelecao();
+    }
+
+    limparCidadesPesquisa() {
+        this.pesquisaCidadesSelecionadas = [];
+        this.renderListaCidades(document.getElementById('pes_cidade_busca')?.value || '');
+        this.renderCidadesSelecionadas();
+        this.filtrarRepositoresPorSelecao();
+    }
+
+    atualizarContadorCidades() {
+        const contador = document.getElementById('pes_cidade_count');
+        if (contador) {
+            contador.textContent = `${this.pesquisaCidadesSelecionadas.length} selecionada${this.pesquisaCidadesSelecionadas.length !== 1 ? 's' : ''}`;
+        }
     }
 
     renderCidadesSelecionadas() {
         const container = document.getElementById('pesquisaCidadesLista');
         if (!container) return;
+
+        this.atualizarContadorCidades();
 
         if (this.pesquisaCidadesSelecionadas.length === 0) {
             container.innerHTML = '';
@@ -12903,7 +12955,7 @@ class App {
     // Funções para Clientes
     async buscarClientePesquisa() {
         const busca = document.getElementById('pes_cliente_busca')?.value;
-        const container = document.getElementById('pes_cliente_lista');
+        const container = document.getElementById('pes_cliente_dropdown');
 
         if (!busca || busca.length < 2 || !container) {
             this.showNotification('Digite pelo menos 2 caracteres para buscar', 'warning');
@@ -12928,7 +12980,7 @@ class App {
     }
 
     renderListaClientes() {
-        const container = document.getElementById('pes_cliente_lista');
+        const container = document.getElementById('pes_cliente_dropdown');
         if (!container) return;
 
         if (this.clientesResultadoBusca.length === 0) {
@@ -12940,13 +12992,15 @@ class App {
             const selecionado = this.pesquisaClientesSelecionados.find(s => s.codigo === c.cliente);
             const label = `${c.cliente} - ${c.nome || c.fantasia || 'Sem nome'}`;
             return `
-                <div class="selecao-lista-item ${selecionado ? 'selecionado' : ''}"
+                <div class="dropdown-lista-item ${selecionado ? 'selecionado' : ''}"
                      onclick="window.app.toggleClientePesquisa('${c.cliente}', '${(c.nome || c.fantasia || '').replace(/'/g, "\\'")}')">
-                    <span class="check-icon">${selecionado ? '✓' : ''}</span>
-                    <span>${label}</span>
+                    <span class="checkbox-icon">${selecionado ? '✓' : ''}</span>
+                    <span class="item-texto">${label}</span>
                 </div>
             `;
         }).join('');
+
+        this.atualizarContadorClientes();
     }
 
     toggleClientePesquisa(codigo, nome) {
@@ -12958,17 +13012,35 @@ class App {
         }
         this.renderListaClientes();
         this.renderClientesSelecionados();
+        this.filtrarRepositoresPorSelecao();
     }
 
     removerClientePesquisa(codigo) {
         this.pesquisaClientesSelecionados = this.pesquisaClientesSelecionados.filter(c => c.codigo !== codigo);
         this.renderListaClientes();
         this.renderClientesSelecionados();
+        this.filtrarRepositoresPorSelecao();
+    }
+
+    limparClientesPesquisa() {
+        this.pesquisaClientesSelecionados = [];
+        this.renderListaClientes();
+        this.renderClientesSelecionados();
+        this.filtrarRepositoresPorSelecao();
+    }
+
+    atualizarContadorClientes() {
+        const contador = document.getElementById('pes_cliente_count');
+        if (contador) {
+            contador.textContent = `${this.pesquisaClientesSelecionados.length} selecionado${this.pesquisaClientesSelecionados.length !== 1 ? 's' : ''}`;
+        }
     }
 
     renderClientesSelecionados() {
         const container = document.getElementById('pesquisaClientesLista');
         if (!container) return;
+
+        this.atualizarContadorClientes();
 
         if (this.pesquisaClientesSelecionados.length === 0) {
             container.innerHTML = '';
@@ -12981,6 +13053,60 @@ class App {
                 <button type="button" class="cliente-tag-remove" onclick="window.app.removerClientePesquisa('${c.codigo}')">&times;</button>
             </span>
         `).join('');
+    }
+
+    // Filtrar repositores com base nos clientes/grupos selecionados
+    async filtrarRepositoresPorSelecao() {
+        const select = document.getElementById('pes_repositor_select');
+        const info = document.getElementById('pes_repositor_info');
+        if (!select) return;
+
+        // Se não há seleção de clientes ou grupos, mostrar todos
+        if (this.pesquisaClientesSelecionados.length === 0 && this.pesquisaGruposSelecionados.length === 0) {
+            // Restaurar todos os repositores
+            if (this.todosRepositores.length > 0) {
+                select.innerHTML = '<option value="">Selecione um repositor...</option>';
+                this.todosRepositores.forEach(r => {
+                    const option = document.createElement('option');
+                    option.value = r.repo_cod;
+                    option.textContent = `${r.repo_cod} - ${r.repo_nome}`;
+                    select.appendChild(option);
+                });
+            }
+            if (info) {
+                info.textContent = 'Deixe vazio para habilitar para todos os repositores que atendem os clientes/grupos acima.';
+                info.style.color = '';
+            }
+            return;
+        }
+
+        // Buscar repositores que atendem os clientes/grupos selecionados
+        try {
+            const clientesCodigos = this.pesquisaClientesSelecionados.map(c => c.codigo);
+            const repositoresFiltrados = await db.getRepositoresPorClientesOuGrupos(clientesCodigos, this.pesquisaGruposSelecionados);
+
+            select.innerHTML = '<option value="">Selecione um repositor...</option>';
+
+            if (repositoresFiltrados.length === 0) {
+                if (info) {
+                    info.textContent = '⚠️ Nenhum repositor encontrado para os clientes/grupos selecionados.';
+                    info.style.color = '#dc2626';
+                }
+            } else {
+                repositoresFiltrados.forEach(r => {
+                    const option = document.createElement('option');
+                    option.value = r.repo_cod;
+                    option.textContent = `${r.repo_cod} - ${r.repo_nome}`;
+                    select.appendChild(option);
+                });
+                if (info) {
+                    info.textContent = `${repositoresFiltrados.length} repositor(es) atendem os clientes/grupos selecionados.`;
+                    info.style.color = '#059669';
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao filtrar repositores:', error);
+        }
     }
 
     adicionarCampoPesquisa() {

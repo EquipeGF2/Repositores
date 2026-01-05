@@ -3244,6 +3244,66 @@ class TursoDatabase {
         }
     }
 
+    async getRepositoresPorClientesOuGrupos(clientesCodigos = [], gruposDesc = []) {
+        try {
+            // Se não há filtros, retornar todos os repositores ativos
+            if (clientesCodigos.length === 0 && gruposDesc.length === 0) {
+                return await this.getRepositoresDetalhados({ status: 'ativos' });
+            }
+
+            const hoje = new Date().toISOString().split('T')[0];
+            let clientesParaBuscar = [...clientesCodigos];
+
+            // Se há grupos selecionados, buscar os clientes desses grupos
+            if (gruposDesc.length > 0) {
+                await this.connectComercial();
+                if (this.comercialClient) {
+                    for (const grupo of gruposDesc) {
+                        try {
+                            const clientesGrupo = await this.comercialClient.execute({
+                                sql: `SELECT cliente FROM tab_cliente WHERE grupo_desc = ?`,
+                                args: [grupo]
+                            });
+                            clientesGrupo.rows.forEach(c => {
+                                if (!clientesParaBuscar.includes(c.cliente)) {
+                                    clientesParaBuscar.push(c.cliente);
+                                }
+                            });
+                        } catch (e) {
+                            console.warn('Erro ao buscar clientes do grupo:', e);
+                        }
+                    }
+                }
+            }
+
+            if (clientesParaBuscar.length === 0) {
+                return [];
+            }
+
+            // Buscar repositores que atendem esses clientes (via roteiro)
+            const placeholders = clientesParaBuscar.map(() => '?').join(',');
+            const result = await this.mainClient.execute({
+                sql: `
+                    SELECT DISTINCT r.repo_cod, r.repo_nome
+                    FROM cad_repositor r
+                    JOIN rot_roteiro_cidade rc ON rc.rot_repositor_id = r.repo_cod
+                    JOIN rot_roteiro_cliente cli ON cli.rot_cid_id = rc.rot_cid_id
+                    WHERE cli.rot_cliente_codigo IN (${placeholders})
+                      AND r.repo_data_inicio IS NOT NULL
+                      AND DATE(r.repo_data_inicio) <= DATE(?)
+                      AND (r.repo_data_fim IS NULL OR DATE(r.repo_data_fim) >= DATE(?))
+                    ORDER BY r.repo_nome
+                `,
+                args: [...clientesParaBuscar, hoje, hoje]
+            });
+
+            return result.rows;
+        } catch (error) {
+            console.error('Erro ao buscar repositores por clientes/grupos:', error);
+            return [];
+        }
+    }
+
     async validarVinculosRepositores(filtros = {}) {
         const dataReferencia = new Date();
         const repositores = await this.getRepositoresDetalhados(filtros);

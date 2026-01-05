@@ -4020,47 +4020,62 @@ export const pages = {
                                     </div>
                                     <div class="form-card-body">
                                         <p class="text-muted" style="margin-bottom: 12px; font-size: 0.85rem;">
-                                            Clique nos itens para adicionar. Todos os repositores que atendem esses clientes terão acesso à pesquisa.
+                                            Busque e selecione os itens. Repositores serão filtrados automaticamente.
                                         </p>
                                         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
                                             <!-- Grupos -->
                                             <div class="form-group">
                                                 <label style="font-weight: 500; margin-bottom: 6px; display: block;">Grupo de Clientes</label>
-                                                <input type="text" id="pes_grupo_busca" class="form-control" placeholder="Filtrar grupos..." style="margin-bottom: 8px;">
-                                                <div id="pes_grupo_lista" class="selecao-lista-container">
-                                                    <div class="empty-state-mini">Carregando...</div>
+                                                <div class="dropdown-selecao">
+                                                    <div style="display: flex; gap: 6px; margin-bottom: 8px;">
+                                                        <input type="text" id="pes_grupo_busca" class="form-control" placeholder="Buscar grupo..." style="flex: 1;">
+                                                        <button type="button" class="btn btn-secondary btn-sm" onclick="window.app.buscarGruposPesquisa()">Buscar</button>
+                                                    </div>
+                                                    <div id="pes_grupo_dropdown" class="dropdown-lista-container">
+                                                        <div class="empty-state-mini">Digite para buscar grupos</div>
+                                                    </div>
+                                                    <div class="selecao-footer">
+                                                        <span id="pes_grupo_count" class="selecao-count">0 selecionados</span>
+                                                        <button type="button" class="btn-link-small" onclick="window.app.limparGruposPesquisa()">Limpar</button>
+                                                    </div>
                                                 </div>
-                                                <div style="margin-top: 8px;">
-                                                    <label style="font-size: 0.8rem; color: #666;">Selecionados:</label>
-                                                    <div id="pesquisaGruposLista" class="tags-selecionados"></div>
-                                                </div>
+                                                <div id="pesquisaGruposLista" class="tags-selecionados" style="margin-top: 8px;"></div>
                                             </div>
                                             <!-- Cidades -->
                                             <div class="form-group">
                                                 <label style="font-weight: 500; margin-bottom: 6px; display: block;">Cidade</label>
-                                                <input type="text" id="pes_cidade_busca" class="form-control" placeholder="Filtrar cidades..." style="margin-bottom: 8px;">
-                                                <div id="pes_cidade_lista" class="selecao-lista-container">
-                                                    <div class="empty-state-mini">Carregando...</div>
+                                                <div class="dropdown-selecao">
+                                                    <div style="display: flex; gap: 6px; margin-bottom: 8px;">
+                                                        <input type="text" id="pes_cidade_busca" class="form-control" placeholder="Buscar cidade..." style="flex: 1;">
+                                                        <button type="button" class="btn btn-secondary btn-sm" onclick="window.app.buscarCidadesPesquisa()">Buscar</button>
+                                                    </div>
+                                                    <div id="pes_cidade_dropdown" class="dropdown-lista-container">
+                                                        <div class="empty-state-mini">Digite para buscar cidades</div>
+                                                    </div>
+                                                    <div class="selecao-footer">
+                                                        <span id="pes_cidade_count" class="selecao-count">0 selecionadas</span>
+                                                        <button type="button" class="btn-link-small" onclick="window.app.limparCidadesPesquisa()">Limpar</button>
+                                                    </div>
                                                 </div>
-                                                <div style="margin-top: 8px;">
-                                                    <label style="font-size: 0.8rem; color: #666;">Selecionadas:</label>
-                                                    <div id="pesquisaCidadesLista" class="tags-selecionados"></div>
-                                                </div>
+                                                <div id="pesquisaCidadesLista" class="tags-selecionados" style="margin-top: 8px;"></div>
                                             </div>
                                             <!-- Clientes -->
                                             <div class="form-group">
                                                 <label style="font-weight: 500; margin-bottom: 6px; display: block;">Cliente Individual</label>
-                                                <div style="display: flex; gap: 6px; margin-bottom: 8px;">
-                                                    <input type="text" id="pes_cliente_busca" class="form-control" placeholder="Buscar cliente..." style="flex: 1;">
-                                                    <button type="button" class="btn btn-secondary btn-sm" onclick="window.app.buscarClientePesquisa()">Buscar</button>
+                                                <div class="dropdown-selecao">
+                                                    <div style="display: flex; gap: 6px; margin-bottom: 8px;">
+                                                        <input type="text" id="pes_cliente_busca" class="form-control" placeholder="Buscar cliente..." style="flex: 1;">
+                                                        <button type="button" class="btn btn-secondary btn-sm" onclick="window.app.buscarClientePesquisa()">Buscar</button>
+                                                    </div>
+                                                    <div id="pes_cliente_dropdown" class="dropdown-lista-container">
+                                                        <div class="empty-state-mini">Digite para buscar clientes</div>
+                                                    </div>
+                                                    <div class="selecao-footer">
+                                                        <span id="pes_cliente_count" class="selecao-count">0 selecionados</span>
+                                                        <button type="button" class="btn-link-small" onclick="window.app.limparClientesPesquisa()">Limpar</button>
+                                                    </div>
                                                 </div>
-                                                <div id="pes_cliente_lista" class="selecao-lista-container">
-                                                    <div class="empty-state-mini">Digite para buscar clientes</div>
-                                                </div>
-                                                <div style="margin-top: 8px;">
-                                                    <label style="font-size: 0.8rem; color: #666;">Selecionados:</label>
-                                                    <div id="pesquisaClientesLista" class="tags-selecionados"></div>
-                                                </div>
+                                                <div id="pesquisaClientesLista" class="tags-selecionados" style="margin-top: 8px;"></div>
                                             </div>
                                         </div>
                                     </div>
@@ -4075,7 +4090,7 @@ export const pages = {
                                         </div>
                                     </div>
                                     <div class="form-card-body">
-                                        <p class="text-muted" style="margin-bottom: 10px; font-size: 0.85rem;">
+                                        <p id="pes_repositor_info" class="text-muted" style="margin-bottom: 10px; font-size: 0.85rem;">
                                             Deixe vazio para habilitar para todos os repositores que atendem os clientes/grupos acima.
                                         </p>
                                         <div class="form-group">
@@ -4338,58 +4353,97 @@ export const pages = {
                     line-height: 1;
                 }
 
-                .selecao-lista-container {
+                .dropdown-selecao {
                     border: 1px solid #e5e7eb;
-                    border-radius: 6px;
-                    max-height: 150px;
-                    overflow-y: auto;
+                    border-radius: 8px;
                     background: #fff;
+                    overflow: hidden;
                 }
 
-                .selecao-lista-item {
-                    padding: 8px 12px;
+                .dropdown-lista-container {
+                    max-height: 200px;
+                    overflow-y: auto;
+                    border-top: 1px solid #e5e7eb;
+                }
+
+                .dropdown-lista-item {
+                    padding: 10px 14px;
                     cursor: pointer;
                     border-bottom: 1px solid #f3f4f6;
                     font-size: 0.9rem;
                     transition: background 0.15s;
                     display: flex;
                     align-items: center;
-                    gap: 8px;
+                    gap: 10px;
                 }
 
-                .selecao-lista-item:last-child {
+                .dropdown-lista-item:last-child {
                     border-bottom: none;
                 }
 
-                .selecao-lista-item:hover {
+                .dropdown-lista-item:hover {
                     background: #f9fafb;
                 }
 
-                .selecao-lista-item.selecionado {
+                .dropdown-lista-item.selecionado {
                     background: #ecfdf5;
-                    color: #059669;
                 }
 
-                .selecao-lista-item .check-icon {
-                    width: 16px;
-                    height: 16px;
+                .dropdown-lista-item .checkbox-icon {
+                    width: 18px;
+                    height: 18px;
                     border: 2px solid #d1d5db;
-                    border-radius: 3px;
+                    border-radius: 4px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    font-size: 10px;
+                    font-size: 12px;
                     flex-shrink: 0;
+                    transition: all 0.15s;
                 }
 
-                .selecao-lista-item.selecionado .check-icon {
+                .dropdown-lista-item.selecionado .checkbox-icon {
                     background: #059669;
                     border-color: #059669;
                     color: white;
                 }
 
+                .dropdown-lista-item .item-texto {
+                    flex: 1;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+
+                .selecao-footer {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 8px 12px;
+                    background: #f9fafb;
+                    border-top: 1px solid #e5e7eb;
+                    font-size: 0.8rem;
+                }
+
+                .selecao-count {
+                    color: #6b7280;
+                }
+
+                .btn-link-small {
+                    background: none;
+                    border: none;
+                    color: #dc2626;
+                    cursor: pointer;
+                    font-size: 0.8rem;
+                    padding: 0;
+                }
+
+                .btn-link-small:hover {
+                    text-decoration: underline;
+                }
+
                 .empty-state-mini {
-                    padding: 16px;
+                    padding: 24px 16px;
                     text-align: center;
                     color: #9ca3af;
                     font-size: 0.85rem;
