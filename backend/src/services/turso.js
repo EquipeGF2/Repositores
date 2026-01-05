@@ -1233,6 +1233,55 @@ class TursoService {
     return Number(resultado?.rows?.[0]?.total || 0) > 0;
   }
 
+  // Lista TODAS as sessões abertas (sem checkout), opcionalmente filtradas por rep_id
+  async listarTodasSessoesAbertas(repId = null) {
+    let sql = `
+      SELECT
+        s.sessao_id,
+        s.rep_id,
+        s.cliente_id,
+        s.cliente_nome,
+        s.data_planejada,
+        s.checkin_at,
+        s.checkout_at,
+        s.status,
+        s.cancelado_em
+      FROM cc_visita_sessao s
+      WHERE s.checkin_at IS NOT NULL
+        AND s.checkout_at IS NULL
+        AND (s.cancelado_em IS NULL)
+        AND (COALESCE(UPPER(s.status), '') != 'CANCELADO')
+    `;
+    const params = [];
+
+    if (repId) {
+      sql += ' AND s.rep_id = ?';
+      params.push(repId);
+    }
+
+    sql += ' ORDER BY s.rep_id ASC, s.checkin_at DESC';
+
+    const result = await this.execute(sql, params);
+    return result.rows || [];
+  }
+
+  // Exclui uma sessão e todos os registros de visita associados
+  async excluirSessao(sessaoId) {
+    // Primeiro excluir registros de visita associados
+    await this.execute(
+      'DELETE FROM cc_registro_visita WHERE COALESCE(rv_sessao_id, sessao_id) = ?',
+      [sessaoId]
+    );
+
+    // Depois excluir a sessão
+    await this.execute(
+      'DELETE FROM cc_visita_sessao WHERE sessao_id = ?',
+      [sessaoId]
+    );
+
+    return { ok: true, sessao_id: sessaoId };
+  }
+
   async marcarSessaoSemEvidenciaComoCancelada(sessaoId) {
     try {
       await this.cancelarAtendimento(sessaoId, 'SANEAMENTO_SEM_FOTO');

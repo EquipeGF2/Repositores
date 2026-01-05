@@ -1556,6 +1556,80 @@ router.get('/atendimentos-abertos', async (req, res) => {
   }
 });
 
+// ==================== GET /api/registro-rota/sessoes-abertas ====================
+// Lista TODAS as sessões abertas (sem checkout) para gerenciamento administrativo
+router.get('/sessoes-abertas', async (req, res) => {
+  const requestId = req.requestId || crypto.randomUUID();
+  res.setHeader('x-request-id', requestId);
+
+  try {
+    const { rep_id } = req.query;
+    const repIdNumber = rep_id ? Number(rep_id) : null;
+
+    if (rep_id && Number.isNaN(repIdNumber)) {
+      return res.status(400).json({ ok: false, code: 'INVALID_REP_ID', message: 'rep_id deve ser numérico', requestId });
+    }
+
+    const sessoes = await tursoService.listarTodasSessoesAbertas(repIdNumber);
+
+    return res.json(sanitizeForJson({
+      ok: true,
+      sessoes: sessoes.map(s => ({
+        sessao_id: s.sessao_id,
+        rep_id: s.rep_id,
+        cliente_id: normalizeClienteId(s.cliente_id),
+        cliente_nome: s.cliente_nome || '',
+        data_planejada: s.data_planejada,
+        checkin_at: s.checkin_at,
+        status: s.status
+      })),
+      total: sessoes.length,
+      requestId
+    }));
+  } catch (error) {
+    if (error instanceof DatabaseNotConfiguredError) {
+      return res.status(503).json({ ok: false, code: error.code, message: error.message, requestId });
+    }
+
+    console.error('Erro ao buscar sessões abertas:', error?.stack || error);
+    return res.status(500).json({ ok: false, code: 'SESSOES_ABERTAS_ERROR', message: 'Erro ao listar sessões abertas', requestId });
+  }
+});
+
+// ==================== DELETE /api/registro-rota/sessoes/:sessaoId ====================
+// Exclui uma sessão e todos os registros de visita associados (uso administrativo)
+router.delete('/sessoes/:sessaoId', async (req, res) => {
+  const requestId = req.requestId || crypto.randomUUID();
+  res.setHeader('x-request-id', requestId);
+
+  try {
+    const { sessaoId } = req.params;
+
+    if (!sessaoId) {
+      return res.status(400).json({ ok: false, code: 'SESSAO_ID_REQUIRED', message: 'sessaoId é obrigatório', requestId });
+    }
+
+    // Verificar se a sessão existe
+    const sessao = await tursoService.obterSessaoPorId(sessaoId);
+    if (!sessao) {
+      return res.status(404).json({ ok: false, code: 'SESSAO_NOT_FOUND', message: 'Sessão não encontrada', requestId });
+    }
+
+    console.info('DELETE_SESSAO', { sessaoId, rep_id: sessao.rep_id, cliente_id: sessao.cliente_id });
+
+    await tursoService.excluirSessao(sessaoId);
+
+    return res.json({ ok: true, message: 'Sessão excluída com sucesso', sessao_id: sessaoId, requestId });
+  } catch (error) {
+    if (error instanceof DatabaseNotConfiguredError) {
+      return res.status(503).json({ ok: false, code: error.code, message: error.message, requestId });
+    }
+
+    console.error('Erro ao excluir sessão:', error?.stack || error);
+    return res.status(500).json({ ok: false, code: 'DELETE_SESSAO_ERROR', message: 'Erro ao excluir sessão', requestId });
+  }
+});
+
 // ==================== POST /api/registro-rota/cancelar-atendimento ====================
 router.post('/cancelar-atendimento', async (req, res) => {
   const requestId = req.requestId || crypto.randomUUID();
