@@ -13284,8 +13284,11 @@ class App {
     // ==================== CONSULTA DE PESQUISAS ====================
 
     async inicializarConsultaPesquisa() {
-        // Carregar lista de pesquisas no filtro
-        await this.carregarFiltrosPesquisas();
+        // Carregar lista de pesquisas e dados do roteiro
+        await Promise.all([
+            this.carregarFiltrosPesquisas(),
+            this.carregarDadosRoteiroConsultaPesquisa()
+        ]);
 
         // Definir datas padrão (últimos 30 dias)
         const hoje = new Date();
@@ -13300,6 +13303,16 @@ class App {
         if (btnExportar) {
             btnExportar.onclick = () => this.exportarRespostasPesquisa();
         }
+
+        // Fechar dropdowns ao clicar fora
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.dropdown-floating-wrapper')) {
+                const cidadeDropdown = document.getElementById('filtroConsultaCidadeDropdown');
+                const clienteDropdown = document.getElementById('filtroConsultaClienteDropdown');
+                if (cidadeDropdown) cidadeDropdown.style.display = 'none';
+                if (clienteDropdown) clienteDropdown.style.display = 'none';
+            }
+        });
     }
 
     async carregarFiltrosPesquisas() {
@@ -13323,57 +13336,211 @@ class App {
     respostasPesquisaAtual = [];
     consultaPesquisaCidadesSelecionadas = [];
     consultaPesquisaClientesSelecionados = [];
+    consultaCidadesDoRoteiro = [];
+    consultaClientesDoRoteiro = [];
 
-    // Funções para dropdown multiselect na consulta de pesquisas
-    toggleDropdownConsultaPesquisa(tipo) {
-        const menuId = tipo === 'cidades' ? 'filtroConsultaCidadesMenu' : 'filtroConsultaClientesMenu';
-        const menu = document.getElementById(menuId);
-        if (!menu) return;
-
-        const isVisible = menu.style.display !== 'none';
-        // Fechar todos os menus primeiro
-        document.querySelectorAll('.dropdown-multiselect-menu').forEach(m => m.style.display = 'none');
-
-        if (!isVisible) {
-            menu.style.display = 'flex';
+    // Carregar dados do roteiro para consulta de pesquisas
+    async carregarDadosRoteiroConsultaPesquisa() {
+        try {
+            const [cidades, clientes] = await Promise.all([
+                db.getCidadesDoRoteiro(),
+                db.getClientesDoRoteiro()
+            ]);
+            this.consultaCidadesDoRoteiro = cidades;
+            this.consultaClientesDoRoteiro = clientes;
+            this.renderDropdownConsultaCidades('');
+            this.renderDropdownConsultaClientes('');
+        } catch (error) {
+            console.error('Erro ao carregar dados do roteiro para consulta:', error);
         }
     }
 
-    filtrarDropdownConsultaPesquisa(tipo, termo) {
-        const containerId = tipo === 'cidades' ? 'filtroConsultaCidadesItems' : 'filtroConsultaClientesItems';
-        const container = document.getElementById(containerId);
+    // ===== Funções para Cidades na Consulta de Pesquisas =====
+    abrirDropdownConsultaCidades() {
+        const dropdown = document.getElementById('filtroConsultaCidadeDropdown');
+        if (dropdown) {
+            dropdown.style.display = 'flex';
+            this.renderDropdownConsultaCidades('');
+        }
+    }
+
+    filtrarDropdownConsultaCidades(filtro) {
+        this.renderDropdownConsultaCidades(filtro);
+    }
+
+    renderDropdownConsultaCidades(filtro = '') {
+        const container = document.getElementById('filtroConsultaCidadeItems');
         if (!container) return;
 
-        const termoLower = termo.toLowerCase();
-        container.querySelectorAll('.dropdown-multiselect-item').forEach(item => {
-            const texto = item.textContent.toLowerCase();
-            item.style.display = texto.includes(termoLower) ? '' : 'none';
-        });
+        const filtroLower = filtro.toLowerCase();
+        const cidadesFiltradas = this.consultaCidadesDoRoteiro.filter(c =>
+            !filtro || (c.cidade && c.cidade.toLowerCase().includes(filtroLower))
+        );
+
+        if (cidadesFiltradas.length === 0) {
+            container.innerHTML = '<div class="empty-state-mini">Nenhuma cidade encontrada</div>';
+            return;
+        }
+
+        container.innerHTML = cidadesFiltradas.map(c => {
+            const selecionada = this.consultaPesquisaCidadesSelecionadas.includes(c.cidade);
+            return `
+                <div class="dropdown-floating-item ${selecionada ? 'selecionado' : ''}"
+                     onclick="event.stopPropagation(); window.app.toggleConsultaCidade('${(c.cidade || '').replace(/'/g, "\\'")}')">
+                    <span class="checkbox-icon">${selecionada ? '✓' : ''}</span>
+                    <span class="item-texto">${c.cidade}</span>
+                </div>
+            `;
+        }).join('');
+
+        this.atualizarContadorConsultaCidades();
     }
 
-    atualizarSelecaoConsultaPesquisa(tipo) {
-        const containerId = tipo === 'cidades' ? 'filtroConsultaCidadesItems' : 'filtroConsultaClientesItems';
-        const labelId = tipo === 'cidades' ? 'filtroConsultaCidadesLabel' : 'filtroConsultaClientesLabel';
-        const container = document.getElementById(containerId);
-        const label = document.getElementById(labelId);
-        if (!container || !label) return;
-
-        const checkboxes = container.querySelectorAll('input[type="checkbox"]:checked');
-        const valores = Array.from(checkboxes).map(cb => cb.value);
-
-        if (tipo === 'cidades') {
-            this.consultaPesquisaCidadesSelecionadas = valores;
+    toggleConsultaCidade(cidade) {
+        const index = this.consultaPesquisaCidadesSelecionadas.indexOf(cidade);
+        if (index >= 0) {
+            this.consultaPesquisaCidadesSelecionadas.splice(index, 1);
         } else {
-            this.consultaPesquisaClientesSelecionados = valores;
+            this.consultaPesquisaCidadesSelecionadas.push(cidade);
+        }
+        this.renderDropdownConsultaCidades(document.getElementById('filtroConsultaCidadeBusca')?.value || '');
+        this.renderConsultaCidadesSelecionadas();
+    }
+
+    limparConsultaCidades() {
+        this.consultaPesquisaCidadesSelecionadas = [];
+        this.renderDropdownConsultaCidades('');
+        this.renderConsultaCidadesSelecionadas();
+    }
+
+    atualizarContadorConsultaCidades() {
+        const contador = document.getElementById('filtroConsultaCidadeCount');
+        if (contador) {
+            contador.textContent = `${this.consultaPesquisaCidadesSelecionadas.length} selecionada${this.consultaPesquisaCidadesSelecionadas.length !== 1 ? 's' : ''}`;
+        }
+    }
+
+    renderConsultaCidadesSelecionadas() {
+        const container = document.getElementById('consultaCidadesLista');
+        if (!container) return;
+
+        this.atualizarContadorConsultaCidades();
+
+        if (this.consultaPesquisaCidadesSelecionadas.length === 0) {
+            container.innerHTML = '';
+            return;
         }
 
-        if (valores.length === 0) {
-            label.textContent = tipo === 'cidades' ? 'Todas' : 'Todos';
-        } else if (valores.length === 1) {
-            label.textContent = valores[0];
-        } else {
-            label.textContent = `${valores.length} selecionado(s)`;
+        container.innerHTML = this.consultaPesquisaCidadesSelecionadas.map(c => `
+            <span class="cidade-tag">
+                ${c}
+                <button type="button" class="cidade-tag-remove" onclick="window.app.removerConsultaCidade('${c.replace(/'/g, "\\'")}')">&times;</button>
+            </span>
+        `).join('');
+    }
+
+    removerConsultaCidade(cidade) {
+        this.consultaPesquisaCidadesSelecionadas = this.consultaPesquisaCidadesSelecionadas.filter(c => c !== cidade);
+        this.renderDropdownConsultaCidades('');
+        this.renderConsultaCidadesSelecionadas();
+    }
+
+    // ===== Funções para Clientes na Consulta de Pesquisas =====
+    abrirDropdownConsultaClientes() {
+        const dropdown = document.getElementById('filtroConsultaClienteDropdown');
+        if (dropdown) {
+            dropdown.style.display = 'flex';
+            this.renderDropdownConsultaClientes('');
         }
+    }
+
+    filtrarDropdownConsultaClientes(filtro) {
+        this.renderDropdownConsultaClientes(filtro);
+    }
+
+    renderDropdownConsultaClientes(filtro = '') {
+        const container = document.getElementById('filtroConsultaClienteItems');
+        if (!container) return;
+
+        const filtroLower = filtro.toLowerCase();
+        const clientesFiltrados = this.consultaClientesDoRoteiro.filter(c => {
+            if (!filtro) return true;
+            const codigo = String(c.cliente || '').toLowerCase();
+            const nome = (c.nome || '').toLowerCase();
+            return codigo.includes(filtroLower) || nome.includes(filtroLower);
+        });
+
+        if (clientesFiltrados.length === 0) {
+            container.innerHTML = '<div class="empty-state-mini">Nenhum cliente encontrado</div>';
+            return;
+        }
+
+        container.innerHTML = clientesFiltrados.slice(0, 100).map(c => {
+            const selecionado = this.consultaPesquisaClientesSelecionados.find(s => s.codigo === c.cliente);
+            const label = c.nome ? `${c.cliente} - ${c.nome}` : String(c.cliente);
+            return `
+                <div class="dropdown-floating-item ${selecionado ? 'selecionado' : ''}"
+                     onclick="event.stopPropagation(); window.app.toggleConsultaCliente('${c.cliente}', '${(c.nome || '').replace(/'/g, "\\'")}')">
+                    <span class="checkbox-icon">${selecionado ? '✓' : ''}</span>
+                    <span class="item-texto">${label}</span>
+                </div>
+            `;
+        }).join('');
+
+        if (clientesFiltrados.length > 100) {
+            container.innerHTML += '<div class="empty-state-mini">Mostrando 100 de ' + clientesFiltrados.length + '. Digite para filtrar.</div>';
+        }
+
+        this.atualizarContadorConsultaClientes();
+    }
+
+    toggleConsultaCliente(codigo, nome) {
+        const index = this.consultaPesquisaClientesSelecionados.findIndex(c => c.codigo === codigo);
+        if (index >= 0) {
+            this.consultaPesquisaClientesSelecionados.splice(index, 1);
+        } else {
+            this.consultaPesquisaClientesSelecionados.push({ codigo, nome });
+        }
+        this.renderDropdownConsultaClientes(document.getElementById('filtroConsultaClienteBusca')?.value || '');
+        this.renderConsultaClientesSelecionados();
+    }
+
+    limparConsultaClientes() {
+        this.consultaPesquisaClientesSelecionados = [];
+        this.renderDropdownConsultaClientes('');
+        this.renderConsultaClientesSelecionados();
+    }
+
+    atualizarContadorConsultaClientes() {
+        const contador = document.getElementById('filtroConsultaClienteCount');
+        if (contador) {
+            contador.textContent = `${this.consultaPesquisaClientesSelecionados.length} selecionado${this.consultaPesquisaClientesSelecionados.length !== 1 ? 's' : ''}`;
+        }
+    }
+
+    renderConsultaClientesSelecionados() {
+        const container = document.getElementById('consultaClientesLista');
+        if (!container) return;
+
+        this.atualizarContadorConsultaClientes();
+
+        if (this.consultaPesquisaClientesSelecionados.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+
+        container.innerHTML = this.consultaPesquisaClientesSelecionados.map(c => `
+            <span class="cliente-tag">
+                ${c.codigo}${c.nome ? ' - ' + c.nome : ''}
+                <button type="button" class="cliente-tag-remove" onclick="window.app.removerConsultaCliente('${c.codigo}')">&times;</button>
+            </span>
+        `).join('');
+    }
+
+    removerConsultaCliente(codigo) {
+        this.consultaPesquisaClientesSelecionados = this.consultaPesquisaClientesSelecionados.filter(c => c.codigo !== codigo);
+        this.renderDropdownConsultaClientes('');
+        this.renderConsultaClientesSelecionados();
     }
 
     async buscarRespostasPesquisa() {
@@ -13383,11 +13550,12 @@ class App {
         container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⏳</div><p>Buscando...</p></div>';
 
         try {
+            const clientesCodigos = this.consultaPesquisaClientesSelecionados.map(c => c.codigo);
             const filtros = {
                 pesquisaId: document.getElementById('filtroConsultaPesquisa')?.value || null,
                 repositor: document.getElementById('filtroConsultaRepositor')?.value || null,
                 cidades: this.consultaPesquisaCidadesSelecionadas.length > 0 ? this.consultaPesquisaCidadesSelecionadas : null,
-                clientes: this.consultaPesquisaClientesSelecionados.length > 0 ? this.consultaPesquisaClientesSelecionados : null,
+                clientes: clientesCodigos.length > 0 ? clientesCodigos : null,
                 dataInicio: document.getElementById('filtroConsultaDataInicio')?.value || null,
                 dataFim: document.getElementById('filtroConsultaDataFim')?.value || null
             };
