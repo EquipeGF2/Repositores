@@ -588,6 +588,124 @@ class TursoDatabase {
             console.error('Erro ao criar tabelas de custos:', error);
             throw error;
         }
+
+        // ==================== TABELAS DE PESQUISA ====================
+        try {
+            // Tabela principal de pesquisas
+            await this.mainClient.execute(`
+                CREATE TABLE IF NOT EXISTS cc_pesquisas (
+                    pes_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    pes_titulo TEXT NOT NULL,
+                    pes_descricao TEXT,
+                    pes_obrigatorio INTEGER DEFAULT 0,
+                    pes_foto_obrigatoria INTEGER DEFAULT 0,
+                    pes_ativa INTEGER DEFAULT 1,
+                    pes_data_inicio TEXT,
+                    pes_data_fim TEXT,
+                    pes_criado_em TEXT NOT NULL DEFAULT (datetime('now')),
+                    pes_atualizado_em TEXT
+                )
+            `);
+
+            // Campos da pesquisa
+            await this.mainClient.execute(`
+                CREATE TABLE IF NOT EXISTS cc_pesquisa_campos (
+                    pca_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    pca_pes_id INTEGER NOT NULL,
+                    pca_ordem INTEGER,
+                    pca_tipo TEXT,
+                    pca_titulo TEXT NOT NULL,
+                    pca_obrigatorio INTEGER DEFAULT 0,
+                    pca_opcoes TEXT,
+                    FOREIGN KEY (pca_pes_id) REFERENCES cc_pesquisas(pes_id) ON DELETE CASCADE
+                )
+            `);
+
+            // Clientes vinculados à pesquisa
+            await this.mainClient.execute(`
+                CREATE TABLE IF NOT EXISTS cc_pesquisa_clientes (
+                    pecl_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    pecl_pes_id INTEGER NOT NULL,
+                    pecl_cliente_codigo TEXT,
+                    FOREIGN KEY (pecl_pes_id) REFERENCES cc_pesquisas(pes_id) ON DELETE CASCADE
+                )
+            `);
+
+            // Repositores vinculados à pesquisa
+            await this.mainClient.execute(`
+                CREATE TABLE IF NOT EXISTS cc_pesquisa_repositores (
+                    per_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    per_pes_id INTEGER NOT NULL,
+                    per_rep_id INTEGER NOT NULL,
+                    FOREIGN KEY (per_pes_id) REFERENCES cc_pesquisas(pes_id) ON DELETE CASCADE,
+                    FOREIGN KEY (per_rep_id) REFERENCES cad_repositor(repo_cod)
+                )
+            `);
+
+            // Pastas do Drive do repositor
+            await this.mainClient.execute(`
+                CREATE TABLE IF NOT EXISTS cc_repositor_drive (
+                    rpd_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    rpd_repositor_id INTEGER UNIQUE NOT NULL,
+                    rpd_drive_root_folder_id TEXT NOT NULL,
+                    rpd_drive_documentos_folder_id TEXT NOT NULL,
+                    rpd_criado_em TEXT NOT NULL DEFAULT (datetime('now')),
+                    rpd_atualizado_em TEXT
+                )
+            `);
+
+            // Subpastas do Drive
+            await this.mainClient.execute(`
+                CREATE TABLE IF NOT EXISTS cc_repositor_drive_pastas (
+                    rpf_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    rpf_repositor_id INTEGER NOT NULL,
+                    rpf_dct_id INTEGER NOT NULL,
+                    rpf_drive_folder_id TEXT NOT NULL,
+                    rpf_criado_em TEXT NOT NULL DEFAULT (datetime('now')),
+                    rpf_atualizado_em TEXT,
+                    UNIQUE (rpf_repositor_id, rpf_dct_id)
+                )
+            `);
+
+            // Respostas das pesquisas
+            await this.mainClient.execute(`
+                CREATE TABLE IF NOT EXISTS cc_pesquisa_respostas (
+                    res_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    res_pes_id INTEGER NOT NULL,
+                    res_rep_id INTEGER NOT NULL,
+                    res_cliente_codigo TEXT,
+                    res_visita_id INTEGER,
+                    res_data TEXT NOT NULL,
+                    res_foto_url TEXT,
+                    res_respostas TEXT,
+                    res_criado_em TEXT NOT NULL DEFAULT (datetime('now')),
+                    FOREIGN KEY (res_pes_id) REFERENCES cc_pesquisas(pes_id),
+                    FOREIGN KEY (res_rep_id) REFERENCES cad_repositor(repo_cod)
+                )
+            `);
+
+            // Índices
+            await this.mainClient.execute(`
+                CREATE INDEX IF NOT EXISTS idx_pesquisa_campos_pes_id ON cc_pesquisa_campos(pca_pes_id)
+            `);
+            await this.mainClient.execute(`
+                CREATE INDEX IF NOT EXISTS idx_pesquisa_repositores_pes_id ON cc_pesquisa_repositores(per_pes_id)
+            `);
+            await this.mainClient.execute(`
+                CREATE INDEX IF NOT EXISTS idx_pesquisa_repositores_rep_id ON cc_pesquisa_repositores(per_rep_id)
+            `);
+            await this.mainClient.execute(`
+                CREATE INDEX IF NOT EXISTS idx_pesquisa_respostas_pes_id ON cc_pesquisa_respostas(res_pes_id)
+            `);
+            await this.mainClient.execute(`
+                CREATE INDEX IF NOT EXISTS idx_pesquisa_respostas_rep_id ON cc_pesquisa_respostas(res_rep_id)
+            `);
+
+            console.log('✅ Tabelas de pesquisa criadas/verificadas');
+        } catch (error) {
+            console.error('Erro ao criar tabelas de pesquisa:', error);
+            throw error;
+        }
     }
 
     // ==================== UTILITÁRIOS DE DATA ====================
