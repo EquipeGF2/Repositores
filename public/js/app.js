@@ -8399,7 +8399,15 @@ class App {
             ? this.registroRotaState.atendimentosAbertos.get(clienteIdNorm)
             : null;
 
-        const rvId = statusCliente?.rv_id || atendimentoPersistido?.rv_id || abertoMap?.rv_id;
+        let rvId = statusCliente?.rv_id || atendimentoPersistido?.rv_id || abertoMap?.rv_id;
+
+        // Se não encontrou localmente, buscar do backend
+        if (!rvId) {
+            const atendimentoBackend = await this.buscarAtendimentoAberto(repId);
+            if (atendimentoBackend?.existe && atendimentoBackend?.rv_id) {
+                rvId = atendimentoBackend.rv_id;
+            }
+        }
 
         if (!rvId) {
             this.showNotification('Nenhum atendimento aberto encontrado para cancelar.', 'warning');
@@ -9188,12 +9196,20 @@ class App {
             }
 
             // Se não encontrou, tentar apenas com cidade/UF
-            const matchCidadeUF = endereco.match(/^([^\/\-]+)[\/-]?\s*([A-Z]{2})?/i);
-            if (matchCidadeUF) {
-                const cidadeUF = matchCidadeUF[0].trim() + ', Brasil';
-                console.log('Tentando apenas cidade:', cidadeUF);
+            // Formato: "CIDADE - RUA..." ou "CIDADE/UF - RUA..."
+            const partes = endereco.split(/\s*-\s*/);
+            if (partes.length > 0) {
+                // Pegar primeira parte (cidade ou cidade/UF) e limpar
+                let cidadeParte = partes[0].trim();
+                // Se tiver "/", pegar só a cidade (antes da barra)
+                if (cidadeParte.includes('/')) {
+                    cidadeParte = cidadeParte.split('/')[0].trim();
+                }
 
-                const urlCidade = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cidadeUF)}&format=json&limit=1&countrycodes=br`;
+                const cidadeBusca = cidadeParte + ', RS, Brasil';
+                console.log('Tentando apenas cidade:', cidadeBusca);
+
+                const urlCidade = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cidadeBusca)}&format=json&limit=1&countrycodes=br`;
                 const dataCidade = await fetchJson(urlCidade, {
                     headers: {
                         'User-Agent': 'RepositorApp/1.0'
@@ -9578,11 +9594,13 @@ class App {
             return stampedBlob || blob;
         };
 
+        // Definir variáveis fora do try para uso no catch
+        const atual = this.registroRotaState.clienteAtual || {};
+        const repId = Number(atual.repId);
+        const clienteId = normalizeClienteId(atual.clienteId);
+        const clienteNome = String(atual.clienteNome || '');
+
         try {
-            const atual = this.registroRotaState.clienteAtual || {};
-            const repId = Number(atual.repId);
-            const clienteId = normalizeClienteId(atual.clienteId);
-            const clienteNome = String(atual.clienteNome || '');
             const dataVisita = String(atual.dataVisita || '').trim();
             const tipoRegistro = (this.registroRotaState.tipoRegistro || '').toLowerCase();
             const statusCliente = atual.statusCliente;
@@ -9644,6 +9662,17 @@ class App {
             if (tipoRegistro === 'campanha' && (!statusCliente || statusCliente.status !== 'em_atendimento')) {
                 this.showNotification('Campanha liberada apenas após o check-in e antes do checkout.', 'warning');
                 return;
+            }
+
+            // Para campanha e checkout, verificar se a sessão existe no backend
+            if (['campanha', 'checkout'].includes(tipoRegistro) && !rvSessaoId) {
+                const sessaoBackend = await this.buscarSessaoAberta(repId, dataVisita);
+                if (sessaoBackend && normalizeClienteId(sessaoBackend.cliente_id) === clienteId) {
+                    this.reconciliarSessaoAbertaLocal(sessaoBackend, repId);
+                } else {
+                    this.showNotification('Sessão de atendimento não encontrada. Realize o check-in novamente.', 'error');
+                    return;
+                }
             }
 
             const listaFotos = tipoRegistro === 'campanha' ? fotos : fotos.slice(0, 1);
