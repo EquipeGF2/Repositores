@@ -12661,7 +12661,7 @@ class App {
         if (!select) return;
 
         try {
-            const repositores = await db.getRepositores({ status: 'ativos' });
+            const repositores = await db.getRepositoresDetalhados({ status: 'ativos' });
             select.innerHTML = '<option value="">Selecione um repositor...</option>';
             repositores.forEach(repo => {
                 const option = document.createElement('option');
@@ -12719,7 +12719,8 @@ class App {
             id: Date.now(),
             pergunta: '',
             tipo: 'texto',
-            obrigatorio: false,
+            min: null,
+            max: null,
             ordem: this.pesquisaCampos.length + 1
         };
         this.pesquisaCampos.push(novoCampo);
@@ -12763,38 +12764,54 @@ class App {
             return;
         }
 
-        container.innerHTML = this.pesquisaCampos.map(campo => `
-            <div class="pesquisa-campo-item" data-campo-id="${campo.id}">
-                <div class="pesquisa-campo-ordem">
-                    <button type="button" onclick="window.app.moverCampoPesquisa(${campo.id}, 'up')">▲</button>
-                    <span class="pesquisa-campo-numero">${campo.ordem}</span>
-                    <button type="button" onclick="window.app.moverCampoPesquisa(${campo.id}, 'down')">▼</button>
+        container.innerHTML = this.pesquisaCampos.map(campo => {
+            const isNumero = campo.tipo === 'numero';
+            const minMaxClass = isNumero ? '' : 'pesquisa-campo-minmax-hidden';
+
+            return `
+                <div class="pesquisa-campo-item" data-campo-id="${campo.id}">
+                    <div class="pesquisa-campo-ordem">
+                        <button type="button" onclick="window.app.moverCampoPesquisa(${campo.id}, 'up')">▲</button>
+                        <span class="pesquisa-campo-numero">${campo.ordem}</span>
+                        <button type="button" onclick="window.app.moverCampoPesquisa(${campo.id}, 'down')">▼</button>
+                    </div>
+                    <input type="text"
+                        placeholder="Digite a pergunta..."
+                        value="${campo.pergunta || ''}"
+                        onchange="window.app.atualizarCampoPesquisa(${campo.id}, 'pergunta', this.value)">
+                    <select onchange="window.app.atualizarCampoPesquisa(${campo.id}, 'tipo', this.value, true)">
+                        <option value="texto" ${campo.tipo === 'texto' ? 'selected' : ''}>Texto</option>
+                        <option value="numero" ${campo.tipo === 'numero' ? 'selected' : ''}>Número</option>
+                        <option value="sim_nao" ${campo.tipo === 'sim_nao' ? 'selected' : ''}>Sim/Não</option>
+                        <option value="data" ${campo.tipo === 'data' ? 'selected' : ''}>Data</option>
+                        <option value="selecao" ${campo.tipo === 'selecao' ? 'selected' : ''}>Seleção</option>
+                    </select>
+                    <div class="pesquisa-campo-minmax ${minMaxClass}">
+                        <label>Mín</label>
+                        <input type="number" value="${campo.min ?? ''}"
+                            onchange="window.app.atualizarCampoPesquisa(${campo.id}, 'min', this.value ? Number(this.value) : null)"
+                            placeholder="0">
+                    </div>
+                    <div class="pesquisa-campo-minmax ${minMaxClass}">
+                        <label>Máx</label>
+                        <input type="number" value="${campo.max ?? ''}"
+                            onchange="window.app.atualizarCampoPesquisa(${campo.id}, 'max', this.value ? Number(this.value) : null)"
+                            placeholder="100">
+                    </div>
+                    <button type="button" class="pesquisa-campo-remove" onclick="window.app.removerCampoPesquisa(${campo.id})">×</button>
                 </div>
-                <input type="text"
-                    placeholder="Digite a pergunta..."
-                    value="${campo.pergunta || ''}"
-                    onchange="window.app.atualizarCampoPesquisa(${campo.id}, 'pergunta', this.value)">
-                <select onchange="window.app.atualizarCampoPesquisa(${campo.id}, 'tipo', this.value)">
-                    <option value="texto" ${campo.tipo === 'texto' ? 'selected' : ''}>Texto</option>
-                    <option value="numero" ${campo.tipo === 'numero' ? 'selected' : ''}>Número</option>
-                    <option value="sim_nao" ${campo.tipo === 'sim_nao' ? 'selected' : ''}>Sim/Não</option>
-                    <option value="data" ${campo.tipo === 'data' ? 'selected' : ''}>Data</option>
-                    <option value="selecao" ${campo.tipo === 'selecao' ? 'selected' : ''}>Seleção</option>
-                </select>
-                <label class="checkbox-inline">
-                    <input type="checkbox" ${campo.obrigatorio ? 'checked' : ''}
-                        onchange="window.app.atualizarCampoPesquisa(${campo.id}, 'obrigatorio', this.checked)">
-                    <span>Obrig.</span>
-                </label>
-                <button type="button" class="pesquisa-campo-remove" onclick="window.app.removerCampoPesquisa(${campo.id})">×</button>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     }
 
-    atualizarCampoPesquisa(campoId, propriedade, valor) {
+    atualizarCampoPesquisa(campoId, propriedade, valor, reRender = false) {
         const campo = this.pesquisaCampos.find(c => c.id === campoId);
         if (campo) {
             campo[propriedade] = valor;
+            // Se mudou o tipo, re-renderiza para mostrar/ocultar min/max
+            if (reRender) {
+                this.renderCamposPesquisa();
+            }
         }
     }
 
@@ -12817,9 +12834,10 @@ class App {
             // Carregar campos
             this.pesquisaCampos = (pesquisa.campos || []).map(c => ({
                 id: c.pca_id || Date.now() + Math.random(),
-                pergunta: c.pca_pergunta,
+                pergunta: c.pca_titulo || c.pca_pergunta,
                 tipo: c.pca_tipo,
-                obrigatorio: !!c.pca_obrigatorio,
+                min: c.pca_min ?? null,
+                max: c.pca_max ?? null,
                 ordem: c.pca_ordem
             }));
             this.renderCamposPesquisa();
@@ -12870,7 +12888,8 @@ class App {
             campos: camposValidos.map((c, i) => ({
                 pergunta: c.pergunta.trim(),
                 tipo: c.tipo,
-                obrigatorio: c.obrigatorio,
+                min: c.tipo === 'numero' ? c.min : null,
+                max: c.tipo === 'numero' ? c.max : null,
                 ordem: i + 1
             })),
             repositores: this.pesquisaRepositoresSelecionados.map(r => r.codigo)
@@ -13249,20 +13268,31 @@ class App {
 
         titulo.textContent = `Pesquisa ${pesquisaAtualIndex + 1}/${pesquisasPendentes.length}: ${pesquisa.pes_titulo}`;
 
+        // Se pesquisa é obrigatória, todos os campos são obrigatórios
+        const todosObrigatorios = pesquisa.pes_obrigatorio;
+
         const camposHtml = (pesquisa.campos || []).map(campo => {
+            const pergunta = campo.pca_titulo || campo.pca_pergunta;
+            const isRequired = todosObrigatorios ? 'required' : '';
             let inputHtml = '';
+
             switch (campo.pca_tipo) {
                 case 'texto':
-                    inputHtml = `<input type="text" id="campo_${campo.pca_id}" class="form-control" ${campo.pca_obrigatorio ? 'required' : ''}>`;
+                    inputHtml = `<input type="text" id="campo_${campo.pca_id}" class="form-control" ${isRequired}>`;
                     break;
                 case 'numero':
-                    inputHtml = `<input type="number" id="campo_${campo.pca_id}" class="form-control" ${campo.pca_obrigatorio ? 'required' : ''}>`;
+                    const minAttr = campo.pca_min !== null ? `min="${campo.pca_min}"` : '';
+                    const maxAttr = campo.pca_max !== null ? `max="${campo.pca_max}"` : '';
+                    const rangeHint = (campo.pca_min !== null || campo.pca_max !== null)
+                        ? `<small style="color: #6b7280; display: block; margin-top: 4px;">Valor permitido: ${campo.pca_min ?? 'sem mín.'} até ${campo.pca_max ?? 'sem máx.'}</small>`
+                        : '';
+                    inputHtml = `<input type="number" id="campo_${campo.pca_id}" class="form-control" ${minAttr} ${maxAttr} ${isRequired}>${rangeHint}`;
                     break;
                 case 'sim_nao':
                     inputHtml = `
                         <div class="radio-group" style="display: flex; gap: 20px;">
                             <label class="radio-inline">
-                                <input type="radio" name="campo_${campo.pca_id}" value="Sim" ${campo.pca_obrigatorio ? 'required' : ''}>
+                                <input type="radio" name="campo_${campo.pca_id}" value="Sim" ${isRequired}>
                                 <span>Sim</span>
                             </label>
                             <label class="radio-inline">
@@ -13273,17 +13303,17 @@ class App {
                     `;
                     break;
                 case 'data':
-                    inputHtml = `<input type="date" id="campo_${campo.pca_id}" class="form-control" ${campo.pca_obrigatorio ? 'required' : ''}>`;
+                    inputHtml = `<input type="date" id="campo_${campo.pca_id}" class="form-control" ${isRequired}>`;
                     break;
                 default:
-                    inputHtml = `<input type="text" id="campo_${campo.pca_id}" class="form-control" ${campo.pca_obrigatorio ? 'required' : ''}>`;
+                    inputHtml = `<input type="text" id="campo_${campo.pca_id}" class="form-control" ${isRequired}>`;
             }
 
             return `
                 <div class="form-group" style="margin-bottom: 16px;">
                     <label style="font-weight: 600; margin-bottom: 6px; display: block;">
-                        ${campo.pca_pergunta}
-                        ${campo.pca_obrigatorio ? '<span style="color: #ef4444;">*</span>' : ''}
+                        ${pergunta}
+                        ${todosObrigatorios ? '<span style="color: #ef4444;">*</span>' : ''}
                     </label>
                     ${inputHtml}
                 </div>
@@ -13344,10 +13374,15 @@ class App {
 
         if (!pesquisa) return;
 
+        // Se pesquisa é obrigatória, todos os campos são obrigatórios
+        const todosObrigatorios = pesquisa.pes_obrigatorio;
+
         // Coletar respostas dos campos
         const respostas = [];
         for (const campo of (pesquisa.campos || [])) {
+            const pergunta = campo.pca_titulo || campo.pca_pergunta;
             let valor = '';
+
             if (campo.pca_tipo === 'sim_nao') {
                 const radio = document.querySelector(`input[name="campo_${campo.pca_id}"]:checked`);
                 valor = radio ? radio.value : '';
@@ -13356,14 +13391,28 @@ class App {
                 valor = input ? input.value : '';
             }
 
-            if (campo.pca_obrigatorio && !valor) {
-                this.showNotification(`O campo "${campo.pca_pergunta}" é obrigatório`, 'warning');
+            // Validar obrigatoriedade (se pesquisa é obrigatória, todos campos são obrigatórios)
+            if (todosObrigatorios && !valor) {
+                this.showNotification(`O campo "${pergunta}" é obrigatório`, 'warning');
                 return;
+            }
+
+            // Validar min/max para campos numéricos
+            if (campo.pca_tipo === 'numero' && valor) {
+                const numVal = Number(valor);
+                if (campo.pca_min !== null && numVal < campo.pca_min) {
+                    this.showNotification(`O valor de "${pergunta}" deve ser no mínimo ${campo.pca_min}`, 'warning');
+                    return;
+                }
+                if (campo.pca_max !== null && numVal > campo.pca_max) {
+                    this.showNotification(`O valor de "${pergunta}" deve ser no máximo ${campo.pca_max}`, 'warning');
+                    return;
+                }
             }
 
             respostas.push({
                 campo: campo.pca_id,
-                pergunta: campo.pca_pergunta,
+                pergunta: pergunta,
                 resposta: valor
             });
         }
