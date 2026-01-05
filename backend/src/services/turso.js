@@ -1235,6 +1235,7 @@ class TursoService {
 
   // Lista TODAS as sessões abertas (sem checkout), opcionalmente filtradas por rep_id
   async listarTodasSessoesAbertas(repId = null) {
+    // Query simplificada - apenas verifica checkout_at IS NULL
     let sql = `
       SELECT
         s.sessao_id,
@@ -1247,10 +1248,7 @@ class TursoService {
         s.status,
         s.cancelado_em
       FROM cc_visita_sessao s
-      WHERE s.checkin_at IS NOT NULL
-        AND s.checkout_at IS NULL
-        AND (s.cancelado_em IS NULL)
-        AND (COALESCE(UPPER(s.status), '') != 'CANCELADO')
+      WHERE s.checkout_at IS NULL
     `;
     const params = [];
 

@@ -1174,7 +1174,16 @@ class App {
             const params = new URLSearchParams();
             if (repIdFiltro) params.append('rep_id', repIdFiltro);
 
-            const data = await fetchJson(`${backendUrl}/api/registro-rota/sessoes-abertas?${params.toString()}`);
+            const url = `${backendUrl}/api/registro-rota/sessoes-abertas?${params.toString()}`;
+            console.log('Buscando sessões abertas:', url);
+
+            const data = await fetchJson(url);
+            console.log('Resposta sessões abertas:', data);
+
+            if (!data || !data.ok) {
+                throw new Error(data?.message || 'Resposta inválida da API');
+            }
+
             const sessoes = data?.sessoes || [];
 
             if (sessoes.length === 0) {
