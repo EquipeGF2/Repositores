@@ -3970,7 +3970,7 @@ export const pages = {
                                             </div>
                                             <div class="form-group">
                                                 <label for="pes_data_inicio">Data Início</label>
-                                                <input type="date" id="pes_data_inicio">
+                                                <input type="date" id="pes_data_inicio" min="">
                                             </div>
                                             <div class="form-group">
                                                 <label for="pes_data_fim">Data Fim</label>
@@ -4010,24 +4010,30 @@ export const pages = {
                                     </div>
                                 </section>
 
-                                <!-- Clientes/Grupos Vinculados -->
+                                <!-- Clientes/Grupos/Cidades Vinculados -->
                                 <section class="form-card" style="grid-column: 1 / -1;">
                                     <div class="form-card-header">
                                         <div>
                                             <p class="form-card-eyebrow">Vincular (opcional)</p>
-                                            <h4 class="form-card-title-inline">Clientes ou Grupos de Clientes</h4>
+                                            <h4 class="form-card-title-inline">Filtrar por Grupo, Cliente ou Cidade</h4>
                                         </div>
                                     </div>
                                     <div class="form-card-body">
                                         <p class="text-muted" style="margin-bottom: 10px; font-size: 0.85rem;">
-                                            Selecione grupos ou clientes específicos. Todos os repositores que atendem esses clientes terão acesso à pesquisa.
+                                            Selecione grupos, clientes ou cidades específicas. Todos os repositores que atendem esses clientes terão acesso à pesquisa.
                                         </p>
-                                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
                                             <div class="form-group">
                                                 <label style="font-weight: 500; margin-bottom: 6px; display: block;">Grupo de Clientes</label>
-                                                <select id="pes_grupo_select" class="form-control">
-                                                    <option value="">Selecione um grupo...</option>
+                                                <select id="pes_grupo_select" class="form-control" multiple size="4" style="min-height: 100px;">
                                                 </select>
+                                                <small class="text-muted">Ctrl+click para selecionar múltiplos</small>
+                                            </div>
+                                            <div class="form-group">
+                                                <label style="font-weight: 500; margin-bottom: 6px; display: block;">Cidade</label>
+                                                <select id="pes_cidade_select" class="form-control" multiple size="4" style="min-height: 100px;">
+                                                </select>
+                                                <small class="text-muted">Ctrl+click para selecionar múltiplas</small>
                                             </div>
                                             <div class="form-group">
                                                 <label style="font-weight: 500; margin-bottom: 6px; display: block;">Cliente Individual</label>
@@ -4035,15 +4041,25 @@ export const pages = {
                                                     <input type="text" id="pes_cliente_busca" class="form-control" placeholder="Buscar cliente..." style="flex: 1;">
                                                     <button type="button" class="btn btn-secondary btn-sm" onclick="window.app.buscarClientePesquisa()">Buscar</button>
                                                 </div>
-                                                <select id="pes_cliente_select" class="form-control" style="margin-top: 8px; display: none;">
+                                                <select id="pes_cliente_select" class="form-control" multiple size="3" style="margin-top: 8px; display: none;">
                                                 </select>
                                             </div>
                                         </div>
-                                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px;">
+                                        <div style="display: flex; gap: 8px; margin-top: 12px;">
+                                            <button type="button" class="btn btn-secondary btn-sm" onclick="window.app.adicionarGruposSelecionados()">+ Adicionar Grupos</button>
+                                            <button type="button" class="btn btn-secondary btn-sm" onclick="window.app.adicionarCidadesSelecionadas()">+ Adicionar Cidades</button>
+                                        </div>
+                                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 12px;">
                                             <div>
                                                 <label style="font-weight: 500; margin-bottom: 6px; display: block; font-size: 0.85rem;">Grupos selecionados:</label>
                                                 <div id="pesquisaGruposLista" class="grupos-vinculados-lista">
                                                     <span class="text-muted" style="font-size: 0.85rem;">Nenhum grupo selecionado</span>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label style="font-weight: 500; margin-bottom: 6px; display: block; font-size: 0.85rem;">Cidades selecionadas:</label>
+                                                <div id="pesquisaCidadesLista" class="cidades-vinculadas-lista">
+                                                    <span class="text-muted" style="font-size: 0.85rem;">Nenhuma cidade selecionada</span>
                                                 </div>
                                             </div>
                                             <div>
@@ -4329,7 +4345,8 @@ export const pages = {
                 }
 
                 .grupos-vinculados-lista,
-                .clientes-vinculados-lista {
+                .clientes-vinculados-lista,
+                .cidades-vinculadas-lista {
                     display: flex;
                     flex-wrap: wrap;
                     gap: 8px;
@@ -4360,8 +4377,21 @@ export const pages = {
                     color: #065f46;
                 }
 
+                .cidade-tag {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    padding: 6px 12px;
+                    background: #dbeafe;
+                    border: 1px solid #93c5fd;
+                    border-radius: 20px;
+                    font-size: 0.85rem;
+                    color: #1e40af;
+                }
+
                 .grupo-tag-remove,
-                .cliente-tag-remove {
+                .cliente-tag-remove,
+                .cidade-tag-remove {
                     background: none;
                     border: none;
                     cursor: pointer;
@@ -4376,6 +4406,10 @@ export const pages = {
 
                 .cliente-tag-remove {
                     color: #047857;
+                }
+
+                .cidade-tag-remove {
+                    color: #1e40af;
                 }
 
                 .repositor-tag-remove:hover {
