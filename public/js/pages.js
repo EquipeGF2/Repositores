@@ -4019,53 +4019,47 @@ export const pages = {
                                         </div>
                                     </div>
                                     <div class="form-card-body">
-                                        <p class="text-muted" style="margin-bottom: 10px; font-size: 0.85rem;">
-                                            Selecione grupos, clientes ou cidades específicas. Todos os repositores que atendem esses clientes terão acesso à pesquisa.
+                                        <p class="text-muted" style="margin-bottom: 12px; font-size: 0.85rem;">
+                                            Clique nos itens para adicionar. Todos os repositores que atendem esses clientes terão acesso à pesquisa.
                                         </p>
                                         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+                                            <!-- Grupos -->
                                             <div class="form-group">
                                                 <label style="font-weight: 500; margin-bottom: 6px; display: block;">Grupo de Clientes</label>
-                                                <select id="pes_grupo_select" class="form-control" multiple size="4" style="min-height: 100px;">
-                                                </select>
-                                                <small class="text-muted">Ctrl+click para selecionar múltiplos</small>
+                                                <input type="text" id="pes_grupo_busca" class="form-control" placeholder="Filtrar grupos..." style="margin-bottom: 8px;">
+                                                <div id="pes_grupo_lista" class="selecao-lista-container">
+                                                    <div class="empty-state-mini">Carregando...</div>
+                                                </div>
+                                                <div style="margin-top: 8px;">
+                                                    <label style="font-size: 0.8rem; color: #666;">Selecionados:</label>
+                                                    <div id="pesquisaGruposLista" class="tags-selecionados"></div>
+                                                </div>
                                             </div>
+                                            <!-- Cidades -->
                                             <div class="form-group">
                                                 <label style="font-weight: 500; margin-bottom: 6px; display: block;">Cidade</label>
-                                                <select id="pes_cidade_select" class="form-control" multiple size="4" style="min-height: 100px;">
-                                                </select>
-                                                <small class="text-muted">Ctrl+click para selecionar múltiplas</small>
+                                                <input type="text" id="pes_cidade_busca" class="form-control" placeholder="Filtrar cidades..." style="margin-bottom: 8px;">
+                                                <div id="pes_cidade_lista" class="selecao-lista-container">
+                                                    <div class="empty-state-mini">Carregando...</div>
+                                                </div>
+                                                <div style="margin-top: 8px;">
+                                                    <label style="font-size: 0.8rem; color: #666;">Selecionadas:</label>
+                                                    <div id="pesquisaCidadesLista" class="tags-selecionados"></div>
+                                                </div>
                                             </div>
+                                            <!-- Clientes -->
                                             <div class="form-group">
                                                 <label style="font-weight: 500; margin-bottom: 6px; display: block;">Cliente Individual</label>
-                                                <div style="display: flex; gap: 8px;">
+                                                <div style="display: flex; gap: 6px; margin-bottom: 8px;">
                                                     <input type="text" id="pes_cliente_busca" class="form-control" placeholder="Buscar cliente..." style="flex: 1;">
                                                     <button type="button" class="btn btn-secondary btn-sm" onclick="window.app.buscarClientePesquisa()">Buscar</button>
                                                 </div>
-                                                <select id="pes_cliente_select" class="form-control" multiple size="3" style="margin-top: 8px; display: none;">
-                                                </select>
-                                            </div>
-                                        </div>
-                                        <div style="display: flex; gap: 8px; margin-top: 12px;">
-                                            <button type="button" class="btn btn-secondary btn-sm" onclick="window.app.adicionarGruposSelecionados()">+ Adicionar Grupos</button>
-                                            <button type="button" class="btn btn-secondary btn-sm" onclick="window.app.adicionarCidadesSelecionadas()">+ Adicionar Cidades</button>
-                                        </div>
-                                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 12px;">
-                                            <div>
-                                                <label style="font-weight: 500; margin-bottom: 6px; display: block; font-size: 0.85rem;">Grupos selecionados:</label>
-                                                <div id="pesquisaGruposLista" class="grupos-vinculados-lista">
-                                                    <span class="text-muted" style="font-size: 0.85rem;">Nenhum grupo selecionado</span>
+                                                <div id="pes_cliente_lista" class="selecao-lista-container">
+                                                    <div class="empty-state-mini">Digite para buscar clientes</div>
                                                 </div>
-                                            </div>
-                                            <div>
-                                                <label style="font-weight: 500; margin-bottom: 6px; display: block; font-size: 0.85rem;">Cidades selecionadas:</label>
-                                                <div id="pesquisaCidadesLista" class="cidades-vinculadas-lista">
-                                                    <span class="text-muted" style="font-size: 0.85rem;">Nenhuma cidade selecionada</span>
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <label style="font-weight: 500; margin-bottom: 6px; display: block; font-size: 0.85rem;">Clientes selecionados:</label>
-                                                <div id="pesquisaClientesLista" class="clientes-vinculados-lista">
-                                                    <span class="text-muted" style="font-size: 0.85rem;">Nenhum cliente selecionado</span>
+                                                <div style="margin-top: 8px;">
+                                                    <label style="font-size: 0.8rem; color: #666;">Selecionados:</label>
+                                                    <div id="pesquisaClientesLista" class="tags-selecionados"></div>
                                                 </div>
                                             </div>
                                         </div>
@@ -4344,13 +4338,74 @@ export const pages = {
                     line-height: 1;
                 }
 
-                .grupos-vinculados-lista,
-                .clientes-vinculados-lista,
-                .cidades-vinculadas-lista {
+                .selecao-lista-container {
+                    border: 1px solid #e5e7eb;
+                    border-radius: 6px;
+                    max-height: 150px;
+                    overflow-y: auto;
+                    background: #fff;
+                }
+
+                .selecao-lista-item {
+                    padding: 8px 12px;
+                    cursor: pointer;
+                    border-bottom: 1px solid #f3f4f6;
+                    font-size: 0.9rem;
+                    transition: background 0.15s;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+
+                .selecao-lista-item:last-child {
+                    border-bottom: none;
+                }
+
+                .selecao-lista-item:hover {
+                    background: #f9fafb;
+                }
+
+                .selecao-lista-item.selecionado {
+                    background: #ecfdf5;
+                    color: #059669;
+                }
+
+                .selecao-lista-item .check-icon {
+                    width: 16px;
+                    height: 16px;
+                    border: 2px solid #d1d5db;
+                    border-radius: 3px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 10px;
+                    flex-shrink: 0;
+                }
+
+                .selecao-lista-item.selecionado .check-icon {
+                    background: #059669;
+                    border-color: #059669;
+                    color: white;
+                }
+
+                .empty-state-mini {
+                    padding: 16px;
+                    text-align: center;
+                    color: #9ca3af;
+                    font-size: 0.85rem;
+                }
+
+                .tags-selecionados {
                     display: flex;
                     flex-wrap: wrap;
-                    gap: 8px;
-                    min-height: 32px;
+                    gap: 6px;
+                    min-height: 24px;
+                }
+
+                .tags-selecionados:empty::after {
+                    content: 'Nenhum selecionado';
+                    color: #9ca3af;
+                    font-size: 0.8rem;
                 }
 
                 .grupo-tag {
