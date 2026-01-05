@@ -10065,17 +10065,30 @@ class App {
     }
 
     resolverUrlFotoVisita(url, fileId, { modoThumb = false } = {}) {
-        const previewBase = fileId
-            ? `${this.registroRotaState.backendUrl}/api/arquivos/preview/${fileId}`
-            : (url || null);
+        // Detectar se é um fileId do Google Drive (padrão: string alfanumérica de ~33 caracteres)
+        const isGoogleDriveId = fileId && /^[a-zA-Z0-9_-]{20,}$/.test(fileId);
 
-        const previewUrl = modoThumb && previewBase
-            ? `${previewBase}${previewBase.includes('?') ? '&' : '?'}mode=thumb`
-            : previewBase;
+        let previewUrl;
+        let downloadUrl;
 
-        const downloadUrl = fileId
-            ? `${this.registroRotaState.backendUrl}/api/registro-rota/fotos/${fileId}?download=1`
-            : (url || null);
+        if (isGoogleDriveId) {
+            // Usar URL de thumbnail do Google Drive
+            if (modoThumb) {
+                previewUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=w300`;
+            } else {
+                // Para visualização maior, usar lh3.googleusercontent.com
+                previewUrl = `https://lh3.googleusercontent.com/d/${fileId}=w800`;
+            }
+            downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+        } else if (fileId) {
+            // Fallback para endpoint backend (IDs locais)
+            const previewBase = `${this.registroRotaState.backendUrl}/api/arquivos/preview/${fileId}`;
+            previewUrl = modoThumb ? `${previewBase}?mode=thumb` : previewBase;
+            downloadUrl = `${this.registroRotaState.backendUrl}/api/registro-rota/fotos/${fileId}?download=1`;
+        } else {
+            previewUrl = url || null;
+            downloadUrl = url || null;
+        }
 
         return {
             previewUrl,
