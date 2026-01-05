@@ -3381,6 +3381,11 @@ tbody td {
     align-self: flex-end;
 }
 
+.cidades-busca-container .btn {
+    height: 44px;
+    align-self: flex-end;
+}
+
 .cidades-lista-container {
     display: flex;
     flex-direction: column;
