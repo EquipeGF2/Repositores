@@ -651,6 +651,16 @@ class TursoDatabase {
                 )
             `);
 
+            // Cidades vinculadas à pesquisa
+            await this.mainClient.execute(`
+                CREATE TABLE IF NOT EXISTS cc_pesquisa_cidades (
+                    peci_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    peci_pes_id INTEGER NOT NULL,
+                    peci_cidade TEXT NOT NULL,
+                    FOREIGN KEY (peci_pes_id) REFERENCES cc_pesquisas(pes_id) ON DELETE CASCADE
+                )
+            `);
+
             // Repositores vinculados à pesquisa
             await this.mainClient.execute(`
                 CREATE TABLE IF NOT EXISTS cc_pesquisa_repositores (
@@ -1318,6 +1328,26 @@ class TursoDatabase {
             return resultado.rows;
         } catch (error) {
             console.error('Erro ao buscar grupos de clientes:', error);
+            return [];
+        }
+    }
+
+    async getCidadesClientes() {
+        await this.connectComercial();
+        if (!this.comercialClient) return [];
+
+        try {
+            const resultado = await this.comercialClient.execute({
+                sql: `
+                    SELECT DISTINCT cidade, estado
+                    FROM tab_cliente
+                    WHERE cidade IS NOT NULL AND cidade != ''
+                    ORDER BY cidade
+                `
+            });
+            return resultado.rows;
+        } catch (error) {
+            console.error('Erro ao buscar cidades de clientes:', error);
             return [];
         }
     }
@@ -3852,6 +3882,13 @@ class TursoDatabase {
             });
             pesquisa.clientes = clientes.rows.map(c => c.pecl_cliente_codigo);
 
+            // Buscar cidades vinculadas
+            const cidades = await this.mainClient.execute({
+                sql: `SELECT peci_cidade FROM cc_pesquisa_cidades WHERE peci_pes_id = ?`,
+                args: [pesId]
+            });
+            pesquisa.cidades = cidades.rows.map(c => c.peci_cidade);
+
             return pesquisa;
         } catch (error) {
             console.error('Erro ao buscar pesquisa:', error);
@@ -3861,7 +3898,7 @@ class TursoDatabase {
 
     async criarPesquisa(dados) {
         try {
-            const { titulo, descricao, obrigatorio, fotoObrigatoria, dataInicio, dataFim, campos, repositores, grupos, clientes } = dados;
+            const { titulo, descricao, obrigatorio, fotoObrigatoria, dataInicio, dataFim, campos, repositores, grupos, clientes, cidades } = dados;
 
             // Criar pesquisa
             const result = await this.mainClient.execute({
@@ -3918,6 +3955,16 @@ class TursoDatabase {
                 }
             }
 
+            // Vincular cidades
+            if (cidades && cidades.length > 0) {
+                for (const cidade of cidades) {
+                    await this.mainClient.execute({
+                        sql: `INSERT INTO cc_pesquisa_cidades (peci_pes_id, peci_cidade) VALUES (?, ?)`,
+                        args: [pesId, cidade]
+                    });
+                }
+            }
+
             return { success: true, id: pesId };
         } catch (error) {
             console.error('Erro ao criar pesquisa:', error);
@@ -3927,7 +3974,7 @@ class TursoDatabase {
 
     async atualizarPesquisa(pesId, dados) {
         try {
-            const { titulo, descricao, obrigatorio, fotoObrigatoria, dataInicio, dataFim, ativa, campos, repositores, grupos, clientes } = dados;
+            const { titulo, descricao, obrigatorio, fotoObrigatoria, dataInicio, dataFim, ativa, campos, repositores, grupos, clientes, cidades } = dados;
 
             await this.mainClient.execute({
                 sql: `
@@ -4003,6 +4050,21 @@ class TursoDatabase {
                 }
             }
 
+            // Atualizar cidades vinculadas
+            if (cidades !== undefined) {
+                await this.mainClient.execute({
+                    sql: `DELETE FROM cc_pesquisa_cidades WHERE peci_pes_id = ?`,
+                    args: [pesId]
+                });
+
+                for (const cidade of cidades) {
+                    await this.mainClient.execute({
+                        sql: `INSERT INTO cc_pesquisa_cidades (peci_pes_id, peci_cidade) VALUES (?, ?)`,
+                        args: [pesId, cidade]
+                    });
+                }
+            }
+
             return { success: true };
         } catch (error) {
             console.error('Erro ao atualizar pesquisa:', error);
@@ -4028,21 +4090,23 @@ class TursoDatabase {
         try {
             const hoje = new Date().toISOString().split('T')[0];
 
-            // Se um cliente for fornecido, buscar seu grupo
+            // Se um cliente for fornecido, buscar seu grupo e cidade
             let clienteGrupo = null;
+            let clienteCidade = null;
             if (clienteCodigo) {
                 await this.connectComercial();
                 if (this.comercialClient) {
                     try {
                         const clienteResult = await this.comercialClient.execute({
-                            sql: `SELECT grupo_desc FROM tab_cliente WHERE codigo = ?`,
+                            sql: `SELECT grupo_desc, cidade FROM tab_cliente WHERE codigo = ?`,
                             args: [clienteCodigo]
                         });
                         if (clienteResult.rows.length > 0) {
                             clienteGrupo = clienteResult.rows[0].grupo_desc;
+                            clienteCidade = clienteResult.rows[0].cidade;
                         }
                     } catch (e) {
-                        console.warn('Erro ao buscar grupo do cliente:', e);
+                        console.warn('Erro ao buscar dados do cliente:', e);
                     }
                 }
             }
@@ -4065,10 +4129,10 @@ class TursoDatabase {
                 args: [hoje, hoje, repId]
             });
 
-            // Para cada pesquisa, verificar restrições de cliente/grupo e buscar campos
+            // Para cada pesquisa, verificar restrições de cliente/grupo/cidade e buscar campos
             const pesquisas = [];
             for (const pes of result.rows) {
-                // Verificar se a pesquisa tem restrições de cliente/grupo
+                // Verificar se a pesquisa tem restrições
                 const temRestricaoGrupo = await this.mainClient.execute({
                     sql: `SELECT COUNT(*) as count FROM cc_pesquisa_grupos WHERE peg_pes_id = ?`,
                     args: [pes.pes_id]
@@ -4077,12 +4141,17 @@ class TursoDatabase {
                     sql: `SELECT COUNT(*) as count FROM cc_pesquisa_clientes WHERE pecl_pes_id = ?`,
                     args: [pes.pes_id]
                 });
+                const temRestricaoCidade = await this.mainClient.execute({
+                    sql: `SELECT COUNT(*) as count FROM cc_pesquisa_cidades WHERE peci_pes_id = ?`,
+                    args: [pes.pes_id]
+                });
 
                 const qtdGrupos = Number(temRestricaoGrupo.rows[0].count);
                 const qtdClientes = Number(temRestricaoCliente.rows[0].count);
+                const qtdCidades = Number(temRestricaoCidade.rows[0].count);
 
-                // Se não tem restrições de cliente/grupo, incluir a pesquisa
-                if (qtdGrupos === 0 && qtdClientes === 0) {
+                // Se não tem restrições de cliente/grupo/cidade, incluir a pesquisa
+                if (qtdGrupos === 0 && qtdClientes === 0 && qtdCidades === 0) {
                     const campos = await this.mainClient.execute({
                         sql: `SELECT * FROM cc_pesquisa_campos WHERE pca_pes_id = ? ORDER BY pca_ordem`,
                         args: [pes.pes_id]
@@ -4119,7 +4188,18 @@ class TursoDatabase {
                     }
                 }
 
-                // Se o cliente/grupo está permitido, incluir a pesquisa
+                // Verificar se a cidade do cliente está vinculada
+                if (!clientePermitido && qtdCidades > 0 && clienteCidade) {
+                    const cidadeVinculada = await this.mainClient.execute({
+                        sql: `SELECT 1 FROM cc_pesquisa_cidades WHERE peci_pes_id = ? AND peci_cidade = ?`,
+                        args: [pes.pes_id, clienteCidade]
+                    });
+                    if (cidadeVinculada.rows.length > 0) {
+                        clientePermitido = true;
+                    }
+                }
+
+                // Se o cliente/grupo/cidade está permitido, incluir a pesquisa
                 if (clientePermitido) {
                     const campos = await this.mainClient.execute({
                         sql: `SELECT * FROM cc_pesquisa_campos WHERE pca_pes_id = ? ORDER BY pca_ordem`,

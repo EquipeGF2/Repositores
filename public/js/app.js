@@ -12522,6 +12522,7 @@ class App {
     pesquisaRepositoresSelecionados = [];
     pesquisaGruposSelecionados = [];
     pesquisaClientesSelecionados = [];
+    pesquisaCidadesSelecionadas = [];
 
     async inicializarPaginaPesquisas() {
         await this.carregarListaPesquisas();
@@ -12637,11 +12638,20 @@ class App {
         this.pesquisaRepositoresSelecionados = [];
         this.pesquisaGruposSelecionados = [];
         this.pesquisaClientesSelecionados = [];
+        this.pesquisaCidadesSelecionadas = [];
 
-        // Carregar repositores e grupos para os selects
+        // Definir data mínima para data de início (hoje)
+        const hoje = new Date().toISOString().split('T')[0];
+        const dataInicioInput = document.getElementById('pes_data_inicio');
+        if (dataInicioInput) {
+            dataInicioInput.min = hoje;
+        }
+
+        // Carregar repositores, grupos e cidades para os selects
         await Promise.all([
             this.carregarRepositoresParaPesquisa(),
-            this.carregarGruposParaPesquisa()
+            this.carregarGruposParaPesquisa(),
+            this.carregarCidadesParaPesquisa()
         ]);
 
         if (pesquisaId) {
@@ -12653,6 +12663,7 @@ class App {
             this.renderRepositoresSelecionados();
             this.renderGruposSelecionados();
             this.renderClientesSelecionados();
+            this.renderCidadesSelecionadas();
         }
 
         modal.classList.add('active');
@@ -12730,31 +12741,31 @@ class App {
 
         try {
             const grupos = await db.getGruposClientes();
-            select.innerHTML = '<option value="">Selecione um grupo...</option>';
+            select.innerHTML = '';
             grupos.forEach(g => {
                 const option = document.createElement('option');
                 option.value = g.grupo_desc;
                 option.textContent = g.grupo_desc;
                 select.appendChild(option);
             });
-
-            // Event listener para adicionar grupo
-            select.onchange = () => {
-                if (select.value) {
-                    this.adicionarGrupoPesquisa(select.value);
-                    select.value = '';
-                }
-            };
         } catch (error) {
             console.error('Erro ao carregar grupos:', error);
         }
     }
 
-    adicionarGrupoPesquisa(grupoDesc) {
-        if (this.pesquisaGruposSelecionados.includes(grupoDesc)) {
-            return; // Já adicionado
-        }
-        this.pesquisaGruposSelecionados.push(grupoDesc);
+    adicionarGruposSelecionados() {
+        const select = document.getElementById('pes_grupo_select');
+        if (!select) return;
+
+        const selecionados = Array.from(select.selectedOptions).map(opt => opt.value);
+        selecionados.forEach(grupoDesc => {
+            if (!this.pesquisaGruposSelecionados.includes(grupoDesc)) {
+                this.pesquisaGruposSelecionados.push(grupoDesc);
+            }
+        });
+
+        // Limpar seleção
+        select.selectedIndex = -1;
         this.renderGruposSelecionados();
     }
 
@@ -12780,6 +12791,63 @@ class App {
         `).join('');
     }
 
+    // Funções para Cidades
+    async carregarCidadesParaPesquisa() {
+        const select = document.getElementById('pes_cidade_select');
+        if (!select) return;
+
+        try {
+            const cidades = await db.getCidadesClientes();
+            select.innerHTML = '';
+            cidades.forEach(c => {
+                const option = document.createElement('option');
+                option.value = c.cidade;
+                option.textContent = c.estado ? `${c.cidade} - ${c.estado}` : c.cidade;
+                select.appendChild(option);
+            });
+        } catch (error) {
+            console.error('Erro ao carregar cidades:', error);
+        }
+    }
+
+    adicionarCidadesSelecionadas() {
+        const select = document.getElementById('pes_cidade_select');
+        if (!select) return;
+
+        const selecionadas = Array.from(select.selectedOptions).map(opt => opt.value);
+        selecionadas.forEach(cidade => {
+            if (!this.pesquisaCidadesSelecionadas.includes(cidade)) {
+                this.pesquisaCidadesSelecionadas.push(cidade);
+            }
+        });
+
+        // Limpar seleção
+        select.selectedIndex = -1;
+        this.renderCidadesSelecionadas();
+    }
+
+    removerCidadePesquisa(cidade) {
+        this.pesquisaCidadesSelecionadas = this.pesquisaCidadesSelecionadas.filter(c => c !== cidade);
+        this.renderCidadesSelecionadas();
+    }
+
+    renderCidadesSelecionadas() {
+        const container = document.getElementById('pesquisaCidadesLista');
+        if (!container) return;
+
+        if (this.pesquisaCidadesSelecionadas.length === 0) {
+            container.innerHTML = '<span class="text-muted" style="font-size: 0.85rem;">Nenhuma cidade selecionada</span>';
+            return;
+        }
+
+        container.innerHTML = this.pesquisaCidadesSelecionadas.map(c => `
+            <span class="cidade-tag">
+                ${c}
+                <button type="button" class="cidade-tag-remove" onclick="window.app.removerCidadePesquisa('${c.replace(/'/g, "\\'")}')">&times;</button>
+            </span>
+        `).join('');
+    }
+
     // Funções para Clientes
     async buscarClientePesquisa() {
         const busca = document.getElementById('pes_cliente_busca')?.value;
@@ -12799,7 +12867,7 @@ class App {
                 return;
             }
 
-            select.innerHTML = '<option value="">Selecione um cliente...</option>';
+            select.innerHTML = '';
             clientes.forEach(c => {
                 const option = document.createElement('option');
                 option.value = c.cliente;
@@ -12810,20 +12878,40 @@ class App {
 
             select.style.display = 'block';
 
-            // Event listener para adicionar cliente
-            select.onchange = () => {
-                if (select.value) {
-                    const option = select.selectedOptions[0];
-                    this.adicionarClientePesquisa(select.value, option.dataset.nome);
-                    select.value = '';
-                    select.style.display = 'none';
-                    document.getElementById('pes_cliente_busca').value = '';
-                }
-            };
+            // Adicionar botão para adicionar clientes selecionados se não existir
+            let btnAdd = document.getElementById('btn_add_clientes');
+            if (!btnAdd) {
+                btnAdd = document.createElement('button');
+                btnAdd.type = 'button';
+                btnAdd.id = 'btn_add_clientes';
+                btnAdd.className = 'btn btn-secondary btn-sm';
+                btnAdd.style.marginTop = '8px';
+                btnAdd.textContent = '+ Adicionar Selecionados';
+                btnAdd.onclick = () => this.adicionarClientesSelecionados();
+                select.parentNode.appendChild(btnAdd);
+            }
         } catch (error) {
             console.error('Erro ao buscar clientes:', error);
             this.showNotification('Erro ao buscar clientes', 'error');
         }
+    }
+
+    adicionarClientesSelecionados() {
+        const select = document.getElementById('pes_cliente_select');
+        if (!select) return;
+
+        const selecionados = Array.from(select.selectedOptions);
+        selecionados.forEach(opt => {
+            const codigo = opt.value;
+            const nome = opt.dataset.nome;
+            if (!this.pesquisaClientesSelecionados.find(c => c.codigo === codigo)) {
+                this.pesquisaClientesSelecionados.push({ codigo, nome });
+            }
+        });
+
+        this.renderClientesSelecionados();
+        select.style.display = 'none';
+        document.getElementById('pes_cliente_busca').value = '';
     }
 
     adicionarClientePesquisa(codigo, nome) {
@@ -12986,21 +13074,25 @@ class App {
 
             // Carregar repositores vinculados
             this.pesquisaRepositoresSelecionados = (pesquisa.repositores || []).map(r => ({
-                codigo: r.per_repo_cod,
-                nome: r.repo_nome || r.per_repo_cod
+                codigo: r.repo_cod || r.per_rep_id,
+                nome: r.repo_nome || r.per_rep_id
             }));
             this.renderRepositoresSelecionados();
 
-            // Carregar grupos vinculados
-            this.pesquisaGruposSelecionados = (pesquisa.grupos || []).map(g => g.peg_grupo_desc);
+            // Carregar grupos vinculados (já vem como array de strings do db)
+            this.pesquisaGruposSelecionados = pesquisa.grupos || [];
             this.renderGruposSelecionados();
 
-            // Carregar clientes vinculados
+            // Carregar clientes vinculados (já vem como array de códigos do db)
             this.pesquisaClientesSelecionados = (pesquisa.clientes || []).map(c => ({
-                codigo: c.pecl_cliente_codigo,
-                nome: c.cliente_nome || c.pecl_cliente_codigo
+                codigo: c,
+                nome: c
             }));
             this.renderClientesSelecionados();
+
+            // Carregar cidades vinculadas (já vem como array de strings do db)
+            this.pesquisaCidadesSelecionadas = pesquisa.cidades || [];
+            this.renderCidadesSelecionadas();
 
         } catch (error) {
             console.error('Erro ao carregar dados da pesquisa:', error);
@@ -13047,7 +13139,8 @@ class App {
             })),
             repositores: this.pesquisaRepositoresSelecionados.map(r => r.codigo),
             grupos: this.pesquisaGruposSelecionados,
-            clientes: this.pesquisaClientesSelecionados.map(c => c.codigo)
+            clientes: this.pesquisaClientesSelecionados.map(c => c.codigo),
+            cidades: this.pesquisaCidadesSelecionadas
         };
 
         try {
