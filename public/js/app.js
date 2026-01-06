@@ -1318,7 +1318,7 @@ class App {
             if (precisao) params.append('precisao', precisao);
             params.append('limite', '50');
 
-            const response = await fetchJson(`${backendUrl}/api/coordenadas/listar?${params.toString()}`);
+            const response = await fetchJson(`${backendUrl}/api/registro-rota/coordenadas/listar?${params.toString()}`);
 
             if (!response || !response.ok) {
                 throw new Error(response?.message || 'Erro ao buscar coordenadas');
@@ -1526,7 +1526,7 @@ class App {
 
         try {
             const backendUrl = this.registroRotaState?.backendUrl || 'https://repositor-backend.onrender.com';
-            const response = await fetchJson(`${backendUrl}/api/coordenadas/manual`, {
+            const response = await fetchJson(`${backendUrl}/api/registro-rota/coordenadas/manual`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -14730,32 +14730,27 @@ class App {
      */
     async buscarPesquisasPendentes(repId, clienteId, dataVisita, apenasObrigatorias = false) {
         try {
-            // Passa o clienteId para filtrar pesquisas por cliente/grupo
-            const pesquisas = await db.getPesquisasPendentesRepositor(repId, clienteId);
             const hoje = new Date().toISOString().split('T')[0];
+            const dataRef = dataVisita || hoje;
 
-            // Filtrar pesquisas que ainda não foram respondidas
-            const pendentes = [];
-            for (const pesquisa of pesquisas) {
+            // Buscar pesquisas e respostas em paralelo (otimização)
+            const [pesquisas, respondidas] = await Promise.all([
+                db.getPesquisasPendentesRepositor(repId, clienteId),
+                db.getPesquisasRespondidas(repId, clienteId, dataRef)
+            ]);
+
+            // Filtrar pesquisas pendentes em uma única passagem
+            const pendentes = pesquisas.filter(pesquisa => {
                 // Se apenasObrigatorias, pula as não obrigatórias
-                if (apenasObrigatorias && !pesquisa.pes_obrigatorio) continue;
+                if (apenasObrigatorias && !pesquisa.pes_obrigatorio) return false;
 
                 // Verificar se está no período válido
-                if (pesquisa.pes_data_inicio && pesquisa.pes_data_inicio > hoje) continue;
-                if (pesquisa.pes_data_fim && pesquisa.pes_data_fim < hoje) continue;
+                if (pesquisa.pes_data_inicio && pesquisa.pes_data_inicio > hoje) return false;
+                if (pesquisa.pes_data_fim && pesquisa.pes_data_fim < hoje) return false;
 
-                // Verificar se já foi respondida para este cliente/data
-                const jaRespondida = await db.verificarPesquisaRespondida(
-                    pesquisa.pes_id,
-                    repId,
-                    clienteId,
-                    dataVisita || hoje
-                );
-
-                if (!jaRespondida) {
-                    pendentes.push(pesquisa);
-                }
-            }
+                // Verificar se já foi respondida (usando Set para O(1) lookup)
+                return !respondidas.has(pesquisa.pes_id);
+            });
 
             // Ordenar: obrigatórias primeiro, depois por título
             pendentes.sort((a, b) => {
@@ -14864,8 +14859,15 @@ class App {
         // Fechar modal de seleção
         document.getElementById('modalSelecaoPesquisa')?.classList.remove('active');
 
-        // Abrir apenas a pesquisa selecionada
-        await this.abrirModalPesquisaVisita([pesquisas[index]], repId, clienteId, clienteNome, dataVisita, false);
+        // Reordenar pesquisas: selecionada primeiro, depois as demais
+        const pesquisasReordenadas = [
+            pesquisas[index],
+            ...pesquisas.slice(0, index),
+            ...pesquisas.slice(index + 1)
+        ];
+
+        // Abrir modal com todas as pesquisas (começando pela selecionada)
+        await this.abrirModalPesquisaVisita(pesquisasReordenadas, repId, clienteId, clienteNome, dataVisita, false);
     }
 
     async abrirModalPesquisaVisita(pesquisas, repId, clienteId, clienteNome, dataVisita, veioDocheckout = true) {

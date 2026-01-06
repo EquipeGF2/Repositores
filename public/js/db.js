@@ -4545,6 +4545,28 @@ class TursoDatabase {
         }
     }
 
+    /**
+     * Busca todas as pesquisas já respondidas para um cliente/data em uma única query
+     * Retorna um Set com os IDs das pesquisas já respondidas
+     */
+    async getPesquisasRespondidas(repId, clienteCodigo, data) {
+        try {
+            const result = await this.mainClient.execute({
+                sql: `
+                    SELECT DISTINCT res_pes_id
+                    FROM cc_pesquisa_respostas
+                    WHERE res_rep_id = ? AND res_data = ?
+                    ${clienteCodigo ? 'AND res_cliente_codigo = ?' : ''}
+                `,
+                args: clienteCodigo ? [repId, data, clienteCodigo] : [repId, data]
+            });
+            return new Set(result.rows.map(r => r.res_pes_id));
+        } catch (error) {
+            console.error('Erro ao buscar pesquisas respondidas:', error);
+            return new Set();
+        }
+    }
+
     async getDrivePastaRepositor(repId) {
         try {
             const result = await this.mainClient.execute({

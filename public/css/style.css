@@ -546,9 +546,30 @@ small {
 }
 
 /* Botões específicos do roteiro */
+.btn-small {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 6px 12px;
+    border: none;
+    border-radius: var(--radius);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: var(--gray-200);
+    color: var(--gray-700);
+}
+
+.btn-small:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
 .btn-checkout {
-    background: var(--primary-red);
-    color: var(--white);
+    background: var(--primary-red) !important;
+    color: var(--white) !important;
 }
 
 .btn-checkout:hover {
@@ -556,21 +577,21 @@ small {
 }
 
 .btn-campanha {
-    background: #16a34a;
-    color: var(--white);
+    background: #16a34a !important;
+    color: var(--white) !important;
 }
 
 .btn-campanha:hover {
-    background: #15803d;
+    background: #15803d !important;
 }
 
 .btn-checkin {
-    background: #2563eb;
-    color: var(--white);
+    background: #2563eb !important;
+    color: var(--white) !important;
 }
 
 .btn-checkin:hover {
-    background: #1d4ed8;
+    background: #1d4ed8 !important;
 }
 
 .btn-compact {
