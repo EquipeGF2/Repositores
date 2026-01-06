@@ -9533,9 +9533,12 @@ class App {
         // 2. Para cada cliente, calcular distância (com delay para evitar rate limit do Nominatim)
         for (let i = 0; i < roteiro.length; i++) {
             const cli = roteiro[i];
-            const cliId = String(cli.cliente_id || cli.cod_cliente || '').trim().replace(/\.0$/, '');
+            // IMPORTANTE: O campo correto é cli_codigo (igual ao usado na renderização do card)
+            const cliId = String(cli.cli_codigo || cli.cliente_id || cli.cod_cliente || '').trim().replace(/\.0$/, '');
             const elDistancia = document.getElementById(`distancia-${cliId}`);
             const itemElement = document.querySelector(`.route-item[data-cliente-id="${cliId}"]`);
+
+            console.log(`Processando cliente ${cliId}, elemento encontrado:`, !!elDistancia);
 
             if (!elDistancia) continue;
 
@@ -9685,7 +9688,8 @@ class App {
         try {
             // Resetar exibição das distâncias
             roteiro.forEach(cli => {
-                const cliId = String(cli.cli_codigo || cli.cliente_id || '').trim().replace(/\.0$/, '');
+                // IMPORTANTE: O campo correto é cli_codigo
+                const cliId = String(cli.cli_codigo || cli.cliente_id || cli.cod_cliente || '').trim().replace(/\.0$/, '');
                 const elDistancia = document.getElementById(`distancia-${cliId}`);
                 if (elDistancia) {
                     elDistancia.innerHTML = '📍 Calculando distância...';
