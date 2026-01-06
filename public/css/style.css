@@ -4928,3 +4928,170 @@ body.modal-open {
     text-align: center !important;
     color: var(--gray-500) !important;
 }
+
+/* ==================== PESQUISA CAMPOS ==================== */
+.pesquisa-campos-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.pesquisa-campo-item {
+    display: grid;
+    grid-template-columns: auto 1fr 150px auto auto auto;
+    gap: 10px;
+    align-items: center;
+    padding: 12px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+}
+
+.pesquisa-campo-ordem {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.pesquisa-campo-ordem button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    color: #6b7280;
+    padding: 2px;
+}
+
+.pesquisa-campo-ordem button:hover {
+    color: #111827;
+}
+
+.pesquisa-campo-numero {
+    font-weight: 600;
+    color: #374151;
+    font-size: 14px;
+}
+
+.pesquisa-campo-item input[type="text"] {
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.pesquisa-campo-item select {
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 14px;
+    background: white;
+}
+
+.pesquisa-campo-minmax {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.pesquisa-campo-minmax label {
+    font-size: 11px;
+    color: #6b7280;
+}
+
+.pesquisa-campo-minmax input {
+    width: 70px;
+    padding: 6px 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.pesquisa-campo-minmax-hidden {
+    visibility: hidden;
+}
+
+.pesquisa-campo-remove {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #dc2626;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pesquisa-campo-remove:hover {
+    background: #fecaca;
+}
+
+/* Opções de seleção */
+.pesquisa-campo-selecao-opcoes {
+    grid-column: 1 / -1;
+    margin-left: 40px;
+    padding: 12px 16px;
+    background: #eff6ff;
+    border-radius: 6px;
+    border: 1px solid #bfdbfe;
+}
+
+.pesquisa-campo-selecao-hidden {
+    display: none;
+}
+
+.pesquisa-campo-selecao-row {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+}
+
+.pesquisa-campo-selecao-opcoes-input {
+    flex: 1;
+}
+
+.pesquisa-campo-selecao-opcoes-input label {
+    display: block;
+    font-size: 12px;
+    color: #1e40af;
+    margin-bottom: 6px;
+    font-weight: 500;
+}
+
+.pesquisa-campo-selecao-opcoes-input textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #93c5fd;
+    border-radius: 6px;
+    font-size: 14px;
+    resize: vertical;
+    min-height: 60px;
+}
+
+.pesquisa-campo-selecao-multipla {
+    padding-top: 20px;
+}
+
+/* Responsivo para campos de pesquisa */
+@media (max-width: 768px) {
+    .pesquisa-campo-item {
+        grid-template-columns: auto 1fr auto;
+        gap: 8px;
+    }
+    
+    .pesquisa-campo-item select {
+        grid-column: 1 / -1;
+    }
+    
+    .pesquisa-campo-minmax {
+        display: none;
+    }
+    
+    .pesquisa-campo-selecao-row {
+        flex-direction: column;
+        gap: 12px;
+    }
+}

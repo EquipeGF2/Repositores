@@ -14005,6 +14005,8 @@ class App {
             tipo: 'texto',
             min: null,
             max: null,
+            opcoes: '',  // Para tipo seleção: opções separadas por vírgula ou linha
+            multipla: false, // Para tipo seleção: permitir múltiplas respostas
             ordem: this.pesquisaCampos.length + 1
         };
         this.pesquisaCampos.push(novoCampo);
@@ -14050,7 +14052,9 @@ class App {
 
         container.innerHTML = this.pesquisaCampos.map(campo => {
             const isNumero = campo.tipo === 'numero';
+            const isSelecao = campo.tipo === 'selecao';
             const minMaxClass = isNumero ? '' : 'pesquisa-campo-minmax-hidden';
+            const selecaoClass = isSelecao ? '' : 'pesquisa-campo-selecao-hidden';
 
             return `
                 <div class="pesquisa-campo-item" data-campo-id="${campo.id}">
@@ -14083,6 +14087,22 @@ class App {
                             placeholder="100">
                     </div>
                     <button type="button" class="pesquisa-campo-remove" onclick="window.app.removerCampoPesquisa(${campo.id})">×</button>
+                </div>
+                <div class="pesquisa-campo-selecao-opcoes ${selecaoClass}" data-campo-id="${campo.id}">
+                    <div class="pesquisa-campo-selecao-row">
+                        <div class="pesquisa-campo-selecao-opcoes-input">
+                            <label>Opções (uma por linha)</label>
+                            <textarea rows="3" placeholder="Opção 1&#10;Opção 2&#10;Opção 3"
+                                onchange="window.app.atualizarCampoPesquisa(${campo.id}, 'opcoes', this.value)">${campo.opcoes || ''}</textarea>
+                        </div>
+                        <div class="pesquisa-campo-selecao-multipla">
+                            <label class="checkbox-inline">
+                                <input type="checkbox" ${campo.multipla ? 'checked' : ''}
+                                    onchange="window.app.atualizarCampoPesquisa(${campo.id}, 'multipla', this.checked)">
+                                <span>Múltipla seleção</span>
+                            </label>
+                        </div>
+                    </div>
                 </div>
             `;
         }).join('');
@@ -14122,6 +14142,8 @@ class App {
                 tipo: c.pca_tipo,
                 min: c.pca_min ?? null,
                 max: c.pca_max ?? null,
+                opcoes: c.pca_opcoes || '',
+                multipla: !!c.pca_multipla,
                 ordem: c.pca_ordem
             }));
             this.renderCamposPesquisa();
@@ -14179,6 +14201,14 @@ class App {
             return;
         }
 
+        // Validar campos de seleção
+        for (const c of camposValidos) {
+            if (c.tipo === 'selecao' && (!c.opcoes || !c.opcoes.trim())) {
+                this.showNotification(`Campo "${c.pergunta}" do tipo Seleção precisa ter opções definidas`, 'error');
+                return;
+            }
+        }
+
         const dados = {
             titulo,
             descricao,
@@ -14191,6 +14221,8 @@ class App {
                 tipo: c.tipo,
                 min: c.tipo === 'numero' ? c.min : null,
                 max: c.tipo === 'numero' ? c.max : null,
+                opcoes: c.tipo === 'selecao' ? c.opcoes : null,
+                multipla: c.tipo === 'selecao' ? c.multipla : false,
                 ordem: i + 1
             })),
             repositores: this.pesquisaRepositoresSelecionados.map(r => r.codigo),
@@ -14951,6 +14983,38 @@ class App {
                 case 'data':
                     inputHtml = `<input type="date" id="campo_${campo.pca_id}" class="form-control" ${isRequired}>`;
                     break;
+                case 'selecao':
+                    // Pegar opções do campo (separadas por linha ou vírgula)
+                    const opcoesTexto = campo.pca_opcoes || '';
+                    const opcoes = opcoesTexto.split(/[\n,]/).map(o => o.trim()).filter(o => o);
+                    const isMultipla = campo.pca_multipla === 1 || campo.pca_multipla === true;
+
+                    if (isMultipla) {
+                        // Checkbox para múltipla seleção
+                        inputHtml = `
+                            <div class="checkbox-group" id="campo_${campo.pca_id}" style="display: flex; flex-direction: column; gap: 8px;">
+                                ${opcoes.map((opcao, idx) => `
+                                    <label class="checkbox-inline" style="padding: 8px 12px; background: #f9fafb; border-radius: 6px; border: 1px solid #e5e7eb;">
+                                        <input type="checkbox" name="campo_${campo.pca_id}" value="${opcao}" data-multipla="true">
+                                        <span>${opcao}</span>
+                                    </label>
+                                `).join('')}
+                            </div>
+                        `;
+                    } else {
+                        // Radio para seleção única
+                        inputHtml = `
+                            <div class="radio-group" id="campo_${campo.pca_id}" style="display: flex; flex-direction: column; gap: 8px;">
+                                ${opcoes.map((opcao, idx) => `
+                                    <label class="radio-inline" style="padding: 8px 12px; background: #f9fafb; border-radius: 6px; border: 1px solid #e5e7eb;">
+                                        <input type="radio" name="campo_${campo.pca_id}" value="${opcao}" ${idx === 0 && isRequired ? 'required' : ''}>
+                                        <span>${opcao}</span>
+                                    </label>
+                                `).join('')}
+                            </div>
+                        `;
+                    }
+                    break;
                 default:
                     inputHtml = `<input type="text" id="campo_${campo.pca_id}" class="form-control" ${isRequired}>`;
             }
@@ -15332,6 +15396,18 @@ class App {
             if (campo.pca_tipo === 'sim_nao') {
                 const radio = document.querySelector(`input[name="campo_${campo.pca_id}"]:checked`);
                 valor = radio ? radio.value : '';
+            } else if (campo.pca_tipo === 'selecao') {
+                const isMultipla = campo.pca_multipla === 1 || campo.pca_multipla === true;
+                if (isMultipla) {
+                    // Múltipla seleção - pega todos os checkboxes marcados
+                    const checkboxes = document.querySelectorAll(`input[name="campo_${campo.pca_id}"]:checked`);
+                    const valores = Array.from(checkboxes).map(cb => cb.value);
+                    valor = valores.join(', ');
+                } else {
+                    // Seleção única - pega o radio selecionado
+                    const radio = document.querySelector(`input[name="campo_${campo.pca_id}"]:checked`);
+                    valor = radio ? radio.value : '';
+                }
             } else {
                 const input = document.getElementById(`campo_${campo.pca_id}`);
                 valor = input ? input.value : '';
@@ -15439,7 +15515,14 @@ class App {
                         false
                     );
 
+                    // Atualizar mapa de pesquisas pendentes com as restantes
+                    const pesquisasPendentesMap = this.registroRotaState.pesquisasPendentesMap || new Map();
+
                     if (maisPesquisas.length > 0) {
+                        // Atualizar com as pesquisas restantes
+                        pesquisasPendentesMap.set(contextoVisita.clienteId, maisPesquisas);
+                        this.registroRotaState.pesquisasPendentesMap = pesquisasPendentesMap;
+
                         // Há mais pesquisas - perguntar se quer responder
                         this.showNotification('Pesquisa registrada! Ainda existem outras pesquisas disponíveis.', 'success');
 
@@ -15454,13 +15537,10 @@ class App {
                             );
                         }, 800);
                     } else {
-                        // Não há mais pesquisas
-                        this.showNotification('Todas as pesquisas foram respondidas!', 'success');
-
-                        // Atualizar mapa de pesquisas pendentes (remover do cliente)
-                        const pesquisasPendentesMap = this.registroRotaState.pesquisasPendentesMap || new Map();
+                        // Não há mais pesquisas - remover do mapa
                         pesquisasPendentesMap.delete(contextoVisita.clienteId);
                         this.registroRotaState.pesquisasPendentesMap = pesquisasPendentesMap;
+                        this.showNotification('Todas as pesquisas foram respondidas!', 'success');
                     }
 
                     // Atualizar card do cliente

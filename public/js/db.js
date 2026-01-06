@@ -644,12 +644,15 @@ class TursoDatabase {
                 )
             `);
 
-            // Adicionar colunas min/max se não existirem (migração)
+            // Adicionar colunas min/max/multipla se não existirem (migração)
             try {
                 await this.mainClient.execute(`ALTER TABLE cc_pesquisa_campos ADD COLUMN pca_min INTEGER`);
             } catch (e) { /* coluna já existe */ }
             try {
                 await this.mainClient.execute(`ALTER TABLE cc_pesquisa_campos ADD COLUMN pca_max INTEGER`);
+            } catch (e) { /* coluna já existe */ }
+            try {
+                await this.mainClient.execute(`ALTER TABLE cc_pesquisa_campos ADD COLUMN pca_multipla INTEGER DEFAULT 0`);
             } catch (e) { /* coluna já existe */ }
 
             // Clientes vinculados à pesquisa
@@ -750,6 +753,11 @@ class TursoDatabase {
             `);
             await this.mainClient.execute(`
                 CREATE INDEX IF NOT EXISTS idx_pesquisa_respostas_rep_id ON cc_pesquisa_respostas(res_rep_id)
+            `);
+            // Índice único para evitar duplicatas de resposta
+            await this.mainClient.execute(`
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_pesquisa_respostas_unico
+                ON cc_pesquisa_respostas(res_pes_id, res_rep_id, res_cliente_codigo, res_data)
             `);
 
             console.log('✅ Tabelas de pesquisa criadas/verificadas');
@@ -4136,10 +4144,10 @@ class TursoDatabase {
                     const campo = campos[i];
                     await this.mainClient.execute({
                         sql: `
-                            INSERT INTO cc_pesquisa_campos (pca_pes_id, pca_ordem, pca_tipo, pca_titulo, pca_min, pca_max, pca_opcoes)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                            INSERT INTO cc_pesquisa_campos (pca_pes_id, pca_ordem, pca_tipo, pca_titulo, pca_min, pca_max, pca_opcoes, pca_multipla)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         `,
-                        args: [pesId, i + 1, campo.tipo, campo.pergunta || campo.titulo, campo.min ?? null, campo.max ?? null, campo.opcoes || null]
+                        args: [pesId, i + 1, campo.tipo, campo.pergunta || campo.titulo, campo.min ?? null, campo.max ?? null, campo.opcoes || null, campo.multipla ? 1 : 0]
                     });
                 }
             }
@@ -4216,10 +4224,10 @@ class TursoDatabase {
                     const campo = campos[i];
                     await this.mainClient.execute({
                         sql: `
-                            INSERT INTO cc_pesquisa_campos (pca_pes_id, pca_ordem, pca_tipo, pca_titulo, pca_min, pca_max, pca_opcoes)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                            INSERT INTO cc_pesquisa_campos (pca_pes_id, pca_ordem, pca_tipo, pca_titulo, pca_min, pca_max, pca_opcoes, pca_multipla)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         `,
-                        args: [pesId, i + 1, campo.tipo, campo.pergunta || campo.titulo, campo.min ?? null, campo.max ?? null, campo.opcoes || null]
+                        args: [pesId, i + 1, campo.tipo, campo.pergunta || campo.titulo, campo.min ?? null, campo.max ?? null, campo.opcoes || null, campo.multipla ? 1 : 0]
                     });
                 }
             }
@@ -4439,16 +4447,40 @@ class TursoDatabase {
         try {
             const { pesId, repId, clienteCodigo, visitaId, respostas, fotoUrl } = dados;
             const dataHoje = new Date().toISOString().split('T')[0];
+            const clienteCodigoNorm = clienteCodigo || null;
 
-            const result = await this.mainClient.execute({
+            // Verificar se já existe uma resposta para esta combinação
+            const existente = await this.mainClient.execute({
                 sql: `
-                    INSERT INTO cc_pesquisa_respostas (res_pes_id, res_rep_id, res_cliente_codigo, res_visita_id, res_data, res_respostas, res_foto_url)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    SELECT res_id FROM cc_pesquisa_respostas
+                    WHERE res_pes_id = ? AND res_rep_id = ? AND res_cliente_codigo = ? AND res_data = ?
                 `,
-                args: [pesId, repId, clienteCodigo || null, visitaId || null, dataHoje, JSON.stringify(respostas), fotoUrl || null]
+                args: [pesId, repId, clienteCodigoNorm, dataHoje]
             });
 
-            return { success: true, id: Number(result.lastInsertRowid) };
+            if (existente.rows.length > 0) {
+                // Atualizar registro existente
+                const resId = existente.rows[0].res_id;
+                await this.mainClient.execute({
+                    sql: `
+                        UPDATE cc_pesquisa_respostas
+                        SET res_respostas = ?, res_foto_url = ?, res_visita_id = ?
+                        WHERE res_id = ?
+                    `,
+                    args: [JSON.stringify(respostas), fotoUrl || null, visitaId || null, resId]
+                });
+                return { success: true, id: resId, updated: true };
+            } else {
+                // Inserir novo registro
+                const result = await this.mainClient.execute({
+                    sql: `
+                        INSERT INTO cc_pesquisa_respostas (res_pes_id, res_rep_id, res_cliente_codigo, res_visita_id, res_data, res_respostas, res_foto_url)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    `,
+                    args: [pesId, repId, clienteCodigoNorm, visitaId || null, dataHoje, JSON.stringify(respostas), fotoUrl || null]
+                });
+                return { success: true, id: Number(result.lastInsertRowid), inserted: true };
+            }
         } catch (error) {
             console.error('Erro ao salvar resposta:', error);
             throw error;
