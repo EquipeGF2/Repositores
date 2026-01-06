@@ -1,13 +1,10 @@
 /**
  * Serviço de Geocodificação Multi-Provider
- * Busca coordenadas em cascata: Google Maps → Here Maps → Nominatim
+ * Busca coordenadas em cascata: Google Maps → Nominatim (OSM)
  */
 
-import { config } from '../config.js';
-
-// Configuração das APIs (definir em variáveis de ambiente)
+// Configuração da API (definir em variável de ambiente)
 const GOOGLE_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
-const HERE_API_KEY = process.env.HERE_API_KEY || '';
 
 /**
  * Faz uma requisição HTTP com timeout
@@ -71,7 +68,7 @@ function parseEndereco(endereco) {
 }
 
 /**
- * Geocodifica usando Google Maps API
+ * Geocodifica usando Google Maps API (mais preciso)
  * @returns {Object|null} { lat, lng, fonte, precisao, cidade, bairro }
  */
 async function geocodeGoogle(endereco) {
@@ -128,68 +125,6 @@ async function geocodeGoogle(endereco) {
     return null;
   } catch (error) {
     console.error('❌ Google Maps erro:', error.message);
-    return null;
-  }
-}
-
-/**
- * Geocodifica usando Here Maps API
- * @returns {Object|null} { lat, lng, fonte, precisao, cidade, bairro }
- */
-async function geocodeHere(endereco) {
-  if (!HERE_API_KEY) {
-    console.log('⚠️ Here Maps API key não configurada');
-    return null;
-  }
-
-  const parsed = parseEndereco(endereco);
-
-  // Montar endereço para Here
-  let query = '';
-  if (parsed.rua) {
-    query = parsed.rua;
-    if (parsed.numero) query += ' ' + parsed.numero;
-    if (parsed.bairro) query += ', ' + parsed.bairro;
-  }
-  if (parsed.cidade) query += ', ' + parsed.cidade;
-  query += ', RS, Brasil';
-
-  const url = `https://geocode.search.hereapi.com/v1/geocode?q=${encodeURIComponent(query)}&apiKey=${HERE_API_KEY}&in=countryCode:BRA&lang=pt-BR`;
-
-  try {
-    console.log(`🔍 Here Maps: ${query}`);
-    const response = await fetchWithTimeout(url);
-    const data = await response.json();
-
-    if (data.items && data.items.length > 0) {
-      const result = data.items[0];
-      const position = result.position;
-
-      // Determinar precisão baseado no resultType
-      let precisao = 'endereco';
-      const resultType = result.resultType;
-      if (resultType === 'houseNumber') precisao = 'endereco';
-      else if (resultType === 'street') precisao = 'rua';
-      else if (resultType === 'district' || resultType === 'subdistrict') precisao = 'bairro';
-      else precisao = 'cidade';
-
-      console.log(`✅ Here Maps OK: ${result.title} (${precisao})`);
-
-      return {
-        lat: position.lat,
-        lng: position.lng,
-        fonte: 'here',
-        precisao,
-        cidade: parsed.cidade,
-        bairro: parsed.bairro,
-        enderecoFormatado: result.title
-      };
-    }
-
-    console.log('❌ Here Maps: Sem resultados');
-    return null;
-  } catch (error) {
-    console.error('❌ Here Maps erro:', error.message);
     return null;
   }
 }
@@ -275,7 +210,7 @@ async function geocodeNominatim(endereco) {
 
 /**
  * Geocodifica um endereço usando múltiplos providers em cascata
- * Ordem: Google Maps → Here Maps → Nominatim
+ * Ordem: Google Maps → Nominatim
  * @param {string} endereco - Endereço a geocodificar
  * @returns {Object|null} - Coordenadas ou null se falhar
  */
@@ -292,13 +227,7 @@ export async function geocodificarEndereco(endereco) {
     return resultGoogle;
   }
 
-  // 2. Tentar Here Maps (bom para Brasil)
-  const resultHere = await geocodeHere(endereco);
-  if (resultHere) {
-    return resultHere;
-  }
-
-  // 3. Fallback: Nominatim (gratuito)
+  // 2. Fallback: Nominatim (gratuito)
   const resultNominatim = await geocodeNominatim(endereco);
   if (resultNominatim) {
     return resultNominatim;
@@ -314,7 +243,6 @@ export async function geocodificarEndereco(endereco) {
 export function getApiStatus() {
   return {
     google: !!GOOGLE_API_KEY,
-    here: !!HERE_API_KEY,
     nominatim: true // Sempre disponível
   };
 }
