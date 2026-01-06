@@ -2470,6 +2470,11 @@ tbody td {
     color: #1e40af;
 }
 
+.badge-purple {
+    background: #ede9fe;
+    color: #6b21a8;
+}
+
 .row-warning {
     background: #fff7ed;
 }

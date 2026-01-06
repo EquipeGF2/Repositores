@@ -4317,7 +4317,7 @@ class TursoDatabase {
                 if (this.comercialClient) {
                     try {
                         const clienteResult = await this.comercialClient.execute({
-                            sql: `SELECT grupo_desc, cidade FROM tab_cliente WHERE codigo = ?`,
+                            sql: `SELECT grupo_desc, cidade FROM tab_cliente WHERE cliente = ?`,
                             args: [clienteCodigo]
                         });
                         if (clienteResult.rows.length > 0) {

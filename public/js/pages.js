@@ -2606,6 +2606,62 @@ export const pages = {
         `;
     },
 
+    'manutencao-coordenadas': async () => {
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">Manutenção de Coordenadas</h3>
+                        <p class="text-muted" style="margin: 4px 0 0;">
+                            Gerencie as coordenadas dos clientes. Defina manualmente a localização de clientes que não foram encontrados automaticamente.
+                        </p>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- Filtros -->
+                    <div class="filter-bar" style="display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px;">
+                        <div class="form-group" style="flex: 1; min-width: 200px; max-width: 300px;">
+                            <label for="coordBuscaCliente">Buscar Cliente</label>
+                            <input type="text" id="coordBuscaCliente" placeholder="Código ou nome do cliente" style="width: 100%;">
+                        </div>
+                        <div class="form-group" style="flex: 1; min-width: 150px; max-width: 200px;">
+                            <label for="coordFiltroPrecisao">Filtrar por Precisão</label>
+                            <select id="coordFiltroPrecisao" style="width: 100%;">
+                                <option value="">Todos</option>
+                                <option value="aproximado">Apenas Aproximados</option>
+                                <option value="manual">Apenas Manuais</option>
+                                <option value="endereco">Endereço Exato</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; align-items: flex-end; gap: 8px;">
+                            <button type="button" class="btn btn-primary" id="btnBuscarCoordenadas">🔍 Buscar</button>
+                            <button type="button" class="btn btn-secondary" id="btnLimparFiltrosCoordenadas">🧹 Limpar</button>
+                        </div>
+                    </div>
+
+                    <div id="coordenadasResultados" style="margin-top: 20px;">
+                        <p class="text-muted" style="text-align: center; padding: 40px;">
+                            Use os filtros acima para buscar clientes e gerenciar suas coordenadas.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal de Edição de Coordenadas -->
+            <div class="modal" id="modalEditarCoordenadas">
+                <div class="modal-content" style="max-width: 600px;">
+                    <div class="modal-header">
+                        <h3>Editar Coordenadas</h3>
+                        <button class="modal-close" onclick="document.getElementById('modalEditarCoordenadas').classList.remove('active')">&times;</button>
+                    </div>
+                    <div class="modal-body" id="modalEditarCoordenadasBody">
+                        <!-- Conteúdo preenchido dinamicamente -->
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
     'configuracoes-sistema': async () => {
         // Carregar configurações salvas
         const configSalva = localStorage.getItem('configSistema');
@@ -4879,6 +4935,7 @@ export const pageTitles = {
     'consulta-roteiro': 'Consulta de Roteiro',
     'custos-repositor': 'Custos por Repositor',
     'estrutura-banco-comercial': 'Estrutura do Banco Comercial',
+    'manutencao-coordenadas': 'Manutenção de Coordenadas',
     'configuracoes-sistema': 'Configurações do Sistema',
     'controle-acessos': 'Controle de Acessos',
     'gestao-usuarios': 'Gestão de Usuários',
