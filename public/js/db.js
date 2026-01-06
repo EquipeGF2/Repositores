@@ -755,10 +755,34 @@ class TursoDatabase {
                 CREATE INDEX IF NOT EXISTS idx_pesquisa_respostas_rep_id ON cc_pesquisa_respostas(res_rep_id)
             `);
             // Índice único para evitar duplicatas de resposta
-            await this.mainClient.execute(`
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_pesquisa_respostas_unico
-                ON cc_pesquisa_respostas(res_pes_id, res_rep_id, res_cliente_codigo, res_data)
-            `);
+            // Primeiro, tentar criar o índice - se falhar por duplicatas, limpar e tentar novamente
+            try {
+                await this.mainClient.execute(`
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_pesquisa_respostas_unico
+                    ON cc_pesquisa_respostas(res_pes_id, res_rep_id, res_cliente_codigo, res_data)
+                `);
+            } catch (indexError) {
+                if (indexError.message && indexError.message.includes('UNIQUE constraint failed')) {
+                    console.warn('⚠️ Duplicatas encontradas em cc_pesquisa_respostas, removendo...');
+                    // Remover duplicatas mantendo apenas o registro com maior res_id (mais recente)
+                    await this.mainClient.execute(`
+                        DELETE FROM cc_pesquisa_respostas
+                        WHERE res_id NOT IN (
+                            SELECT MAX(res_id) FROM cc_pesquisa_respostas
+                            GROUP BY res_pes_id, res_rep_id, res_cliente_codigo, res_data
+                        )
+                    `);
+                    console.log('✅ Duplicatas removidas, criando índice...');
+                    // Tentar criar o índice novamente
+                    await this.mainClient.execute(`
+                        CREATE UNIQUE INDEX IF NOT EXISTS idx_pesquisa_respostas_unico
+                        ON cc_pesquisa_respostas(res_pes_id, res_rep_id, res_cliente_codigo, res_data)
+                    `);
+                } else {
+                    // Se não for erro de duplicata, propagar
+                    throw indexError;
+                }
+            }
 
             console.log('✅ Tabelas de pesquisa criadas/verificadas');
         } catch (error) {
