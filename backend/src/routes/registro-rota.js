@@ -2602,4 +2602,180 @@ router.get('/coordenadas/:cliente_id', async (req, res) => {
   }
 });
 
+/**
+ * GET /coordenadas/listar - Lista clientes com suas coordenadas
+ * Query params: busca, precisao, limite
+ */
+router.get('/coordenadas/listar', async (req, res) => {
+  try {
+    const { busca, precisao, limite = '50' } = req.query;
+    const limiteNum = Math.min(parseInt(limite) || 50, 200);
+
+    // Buscar coordenadas existentes do cache
+    const db = tursoService.getMainClient();
+    let coordQuery = `
+      SELECT
+        cc.cliente_id,
+        cc.latitude,
+        cc.longitude,
+        cc.aproximado,
+        cc.precisao,
+        cc.fonte,
+        cc.endereco_original,
+        cc.cidade,
+        cc.bairro,
+        cc.atualizado_em
+      FROM cc_clientes_coordenadas cc
+      WHERE 1=1
+    `;
+    const args = [];
+
+    if (busca) {
+      coordQuery += ` AND (cc.cliente_id LIKE ? OR cc.endereco_original LIKE ?)`;
+      args.push(`%${busca}%`, `%${busca}%`);
+    }
+
+    if (precisao === 'aproximado') {
+      coordQuery += ` AND cc.aproximado = 1`;
+    } else if (precisao === 'manual') {
+      coordQuery += ` AND cc.precisao = 'manual'`;
+    } else if (precisao === 'endereco') {
+      coordQuery += ` AND cc.aproximado = 0 AND cc.precisao != 'manual'`;
+    }
+
+    coordQuery += ` ORDER BY cc.atualizado_em DESC LIMIT ?`;
+    args.push(limiteNum);
+
+    const coordResult = await db.execute({ sql: coordQuery, args });
+    const coordMap = new Map();
+
+    for (const row of coordResult.rows) {
+      coordMap.set(String(row.cliente_id).trim(), {
+        cliente_id: row.cliente_id,
+        latitude: row.latitude,
+        longitude: row.longitude,
+        aproximado: row.aproximado === 1,
+        precisao: row.precisao,
+        fonte: row.fonte,
+        endereco: row.endereco_original,
+        cidade: row.cidade,
+        bairro: row.bairro,
+        nome: null // será preenchido abaixo se disponível
+      });
+    }
+
+    // Tentar buscar nomes dos clientes do banco comercial
+    if (coordMap.size > 0) {
+      try {
+        const comercialClient = tursoService.getComercialClient();
+        if (comercialClient) {
+          const clienteIds = Array.from(coordMap.keys());
+          const placeholders = clienteIds.map(() => '?').join(',');
+          const nomeResult = await comercialClient.execute({
+            sql: `SELECT cliente, nome, fantasia FROM tab_cliente WHERE cliente IN (${placeholders})`,
+            args: clienteIds
+          });
+
+          for (const row of nomeResult.rows) {
+            const id = String(row.cliente).trim();
+            if (coordMap.has(id)) {
+              coordMap.get(id).nome = row.fantasia || row.nome || null;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Não foi possível buscar nomes dos clientes:', e.message);
+      }
+    }
+
+    const clientes = Array.from(coordMap.values());
+
+    res.json({
+      ok: true,
+      clientes,
+      total: clientes.length
+    });
+  } catch (error) {
+    console.error('Erro ao listar coordenadas:', error);
+    res.status(500).json({
+      ok: false,
+      message: 'Erro ao listar coordenadas: ' + error.message
+    });
+  }
+});
+
+/**
+ * POST /coordenadas/manual - Salva coordenadas manualmente para um cliente
+ * Body: { cliente_id, latitude, longitude }
+ */
+router.post('/coordenadas/manual', async (req, res) => {
+  try {
+    const { cliente_id, latitude, longitude } = req.body;
+
+    if (!cliente_id) {
+      return res.status(400).json({ ok: false, message: 'cliente_id é obrigatório' });
+    }
+
+    if (latitude === undefined || longitude === undefined) {
+      return res.status(400).json({ ok: false, message: 'latitude e longitude são obrigatórios' });
+    }
+
+    const lat = parseFloat(latitude);
+    const lng = parseFloat(longitude);
+
+    if (isNaN(lat) || isNaN(lng)) {
+      return res.status(400).json({ ok: false, message: 'Coordenadas inválidas' });
+    }
+
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      return res.status(400).json({ ok: false, message: 'Coordenadas fora do intervalo válido' });
+    }
+
+    const clienteIdNorm = normalizeClienteId(cliente_id);
+
+    // Buscar endereço original do cache, se existir
+    let enderecoOriginal = null;
+    try {
+      const existente = await tursoService.buscarCoordenadasCliente(clienteIdNorm);
+      if (existente) {
+        enderecoOriginal = existente.endereco_original;
+      }
+    } catch (e) {
+      // Ignora erro
+    }
+
+    // Salvar coordenadas como "manual"
+    await tursoService.salvarCoordenadasCliente(clienteIdNorm, {
+      endereco_original: enderecoOriginal,
+      latitude: lat,
+      longitude: lng,
+      fonte: 'manual',
+      precisao: 'manual',
+      aproximado: false,
+      cidade: null,
+      bairro: null
+    });
+
+    console.log(`✓ Coordenadas manuais salvas para cliente ${clienteIdNorm}: ${lat}, ${lng}`);
+
+    res.json({
+      ok: true,
+      message: 'Coordenadas salvas com sucesso',
+      coordenadas: {
+        cliente_id: clienteIdNorm,
+        latitude: lat,
+        longitude: lng,
+        precisao: 'manual',
+        fonte: 'manual'
+      }
+    });
+  } catch (error) {
+    console.error('Erro ao salvar coordenadas manuais:', error);
+    res.status(500).json({
+      ok: false,
+      message: 'Erro ao salvar coordenadas: ' + error.message
+    });
+  }
+});
+
 export default router;

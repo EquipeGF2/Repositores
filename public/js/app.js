@@ -1271,6 +1271,286 @@ class App {
         }
     }
 
+    // ==================== MANUTENÇÃO DE COORDENADAS ====================
+
+    async inicializarManutencaoCoordenadas() {
+        const btnBuscar = document.getElementById('btnBuscarCoordenadas');
+        const btnLimpar = document.getElementById('btnLimparFiltrosCoordenadas');
+        const inputBusca = document.getElementById('coordBuscaCliente');
+
+        if (btnBuscar) {
+            btnBuscar.addEventListener('click', () => this.buscarCoordenadasClientes());
+        }
+
+        if (btnLimpar) {
+            btnLimpar.addEventListener('click', () => {
+                document.getElementById('coordBuscaCliente').value = '';
+                document.getElementById('coordFiltroPrecisao').value = '';
+                document.getElementById('coordenadasResultados').innerHTML = `
+                    <p class="text-muted" style="text-align: center; padding: 40px;">
+                        Use os filtros acima para buscar clientes e gerenciar suas coordenadas.
+                    </p>
+                `;
+            });
+        }
+
+        // Buscar ao pressionar Enter
+        if (inputBusca) {
+            inputBusca.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') this.buscarCoordenadasClientes();
+            });
+        }
+    }
+
+    async buscarCoordenadasClientes() {
+        const container = document.getElementById('coordenadasResultados');
+        const busca = document.getElementById('coordBuscaCliente')?.value?.trim() || '';
+        const precisao = document.getElementById('coordFiltroPrecisao')?.value || '';
+
+        if (!container) return;
+
+        container.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px;">Buscando clientes...</p>';
+
+        try {
+            const backendUrl = this.registroRotaState?.backendUrl || 'https://repositor-backend.onrender.com';
+            const params = new URLSearchParams();
+            if (busca) params.append('busca', busca);
+            if (precisao) params.append('precisao', precisao);
+            params.append('limite', '50');
+
+            const response = await fetchJson(`${backendUrl}/api/coordenadas/listar?${params.toString()}`);
+
+            if (!response || !response.ok) {
+                throw new Error(response?.message || 'Erro ao buscar coordenadas');
+            }
+
+            const clientes = response.clientes || [];
+
+            if (clientes.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state" style="padding: 40px;">
+                        <div class="empty-state-icon">📍</div>
+                        <p>Nenhum cliente encontrado com os filtros selecionados.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            this.renderizarListaCoordenadas(clientes);
+        } catch (error) {
+            console.error('Erro ao buscar coordenadas:', error);
+            container.innerHTML = `<p style="color: #b91c1c; text-align: center; padding: 20px;">Erro: ${error.message}</p>`;
+        }
+    }
+
+    renderizarListaCoordenadas(clientes) {
+        const container = document.getElementById('coordenadasResultados');
+        if (!container) return;
+
+        const getPrecisaoClass = (precisao) => {
+            if (precisao === 'manual') return 'badge-purple';
+            if (precisao === 'endereco') return 'badge-success';
+            if (precisao === 'rua') return 'badge-success';
+            if (precisao === 'bairro') return 'badge-warning';
+            if (precisao === 'cidade') return 'badge-gray';
+            return 'badge-gray';
+        };
+
+        const getPrecisaoTexto = (precisao, aproximado) => {
+            if (precisao === 'manual') return '📌 Manual';
+            if (aproximado) return '⚠️ Aproximado';
+            if (precisao === 'endereco') return '✅ Preciso';
+            return precisao || 'Desconhecido';
+        };
+
+        container.innerHTML = `
+            <p style="margin-bottom: 16px; color: var(--gray-600);">
+                Encontrados <strong>${clientes.length}</strong> cliente(s)
+            </p>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Cliente</th>
+                            <th>Nome</th>
+                            <th>Endereço</th>
+                            <th>Precisão</th>
+                            <th>Coordenadas</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${clientes.map(c => `
+                            <tr>
+                                <td><strong>${c.cliente_id}</strong></td>
+                                <td>${c.nome || '-'}</td>
+                                <td style="max-width: 300px; white-space: normal;">${c.endereco || '-'}</td>
+                                <td>
+                                    <span class="badge ${getPrecisaoClass(c.precisao)}">
+                                        ${getPrecisaoTexto(c.precisao, c.aproximado)}
+                                    </span>
+                                </td>
+                                <td style="font-family: monospace; font-size: 0.85rem;">
+                                    ${c.latitude && c.longitude
+                                        ? `${Number(c.latitude).toFixed(6)}, ${Number(c.longitude).toFixed(6)}`
+                                        : '<span style="color:#999;">Não definido</span>'}
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-secondary"
+                                            onclick="app.abrirModalEditarCoordenadas('${c.cliente_id}', '${(c.nome || '').replace(/'/g, "\\'")}', '${(c.endereco || '').replace(/'/g, "\\'")}', ${c.latitude || 'null'}, ${c.longitude || 'null'})">
+                                        ✏️ Editar
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    abrirModalEditarCoordenadas(clienteId, nome, endereco, latitude, longitude) {
+        const modal = document.getElementById('modalEditarCoordenadas');
+        const body = document.getElementById('modalEditarCoordenadasBody');
+
+        if (!modal || !body) return;
+
+        body.innerHTML = `
+            <div class="form-group">
+                <label>Cliente</label>
+                <input type="text" value="${clienteId} - ${nome}" disabled style="width: 100%; background: #f3f4f6;">
+            </div>
+            <div class="form-group">
+                <label>Endereço Cadastrado</label>
+                <textarea disabled style="width: 100%; min-height: 60px; background: #f3f4f6;">${endereco}</textarea>
+            </div>
+            <hr style="margin: 16px 0;">
+            <div class="form-group">
+                <label for="editCoordLatitude">Latitude</label>
+                <input type="text" id="editCoordLatitude" value="${latitude || ''}"
+                       placeholder="-29.123456" style="width: 100%;">
+                <small class="text-muted">Ex: -29.123456</small>
+            </div>
+            <div class="form-group">
+                <label for="editCoordLongitude">Longitude</label>
+                <input type="text" id="editCoordLongitude" value="${longitude || ''}"
+                       placeholder="-51.123456" style="width: 100%;">
+                <small class="text-muted">Ex: -51.123456</small>
+            </div>
+            <div class="form-group" style="margin-top: 16px;">
+                <button type="button" class="btn btn-secondary" id="btnCapturarCoordenadas" style="width: 100%;">
+                    📍 Usar Minha Localização Atual
+                </button>
+                <small class="text-muted" style="display: block; margin-top: 4px;">
+                    Clique para capturar as coordenadas do seu GPS atual
+                </small>
+            </div>
+            <hr style="margin: 16px 0;">
+            <div class="modal-footer" style="justify-content: flex-end; padding: 0; margin: 0;">
+                <button type="button" class="btn btn-secondary"
+                        onclick="document.getElementById('modalEditarCoordenadas').classList.remove('active')">
+                    Cancelar
+                </button>
+                <button type="button" class="btn btn-primary" id="btnSalvarCoordenadas">
+                    💾 Salvar Coordenadas
+                </button>
+            </div>
+        `;
+
+        // Capturar localização atual
+        document.getElementById('btnCapturarCoordenadas').addEventListener('click', async () => {
+            try {
+                const pos = await this.obterLocalizacaoAtual();
+                if (pos) {
+                    document.getElementById('editCoordLatitude').value = pos.latitude.toFixed(6);
+                    document.getElementById('editCoordLongitude').value = pos.longitude.toFixed(6);
+                    this.showNotification('Localização capturada com sucesso!', 'success');
+                }
+            } catch (error) {
+                this.showNotification('Não foi possível obter a localização: ' + error.message, 'error');
+            }
+        });
+
+        // Salvar coordenadas
+        document.getElementById('btnSalvarCoordenadas').addEventListener('click', async () => {
+            await this.salvarCoordenadasManual(clienteId);
+        });
+
+        modal.classList.add('active');
+    }
+
+    async obterLocalizacaoAtual() {
+        return new Promise((resolve, reject) => {
+            if (!navigator.geolocation) {
+                reject(new Error('Geolocalização não suportada'));
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    resolve({
+                        latitude: position.coords.latitude,
+                        longitude: position.coords.longitude,
+                        accuracy: position.coords.accuracy
+                    });
+                },
+                (error) => {
+                    reject(new Error('Erro ao obter localização: ' + error.message));
+                },
+                { enableHighAccuracy: true, timeout: 10000 }
+            );
+        });
+    }
+
+    async salvarCoordenadasManual(clienteId) {
+        const latitude = document.getElementById('editCoordLatitude')?.value?.trim();
+        const longitude = document.getElementById('editCoordLongitude')?.value?.trim();
+
+        if (!latitude || !longitude) {
+            this.showNotification('Informe a latitude e longitude', 'warning');
+            return;
+        }
+
+        const lat = parseFloat(latitude.replace(',', '.'));
+        const lng = parseFloat(longitude.replace(',', '.'));
+
+        if (isNaN(lat) || isNaN(lng)) {
+            this.showNotification('Coordenadas inválidas. Use o formato numérico (ex: -29.123456)', 'warning');
+            return;
+        }
+
+        if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+            this.showNotification('Coordenadas fora do intervalo válido', 'warning');
+            return;
+        }
+
+        try {
+            const backendUrl = this.registroRotaState?.backendUrl || 'https://repositor-backend.onrender.com';
+            const response = await fetchJson(`${backendUrl}/api/coordenadas/manual`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    cliente_id: clienteId,
+                    latitude: lat,
+                    longitude: lng
+                })
+            });
+
+            if (!response || !response.ok) {
+                throw new Error(response?.message || 'Erro ao salvar coordenadas');
+            }
+
+            this.showNotification('Coordenadas salvas com sucesso!', 'success');
+            document.getElementById('modalEditarCoordenadas').classList.remove('active');
+
+            // Atualizar lista
+            await this.buscarCoordenadasClientes();
+        } catch (error) {
+            console.error('Erro ao salvar coordenadas:', error);
+            this.showNotification('Erro ao salvar: ' + error.message, 'error');
+        }
+    }
+
     getConfigSistema() {
         try {
             const configSalva = localStorage.getItem('configSistema');
@@ -1831,6 +2111,8 @@ class App {
                 await this.inicializarPaginaPesquisas();
             } else if (pageName === 'consulta-pesquisa') {
                 await this.inicializarConsultaPesquisa();
+            } else if (pageName === 'manutencao-coordenadas') {
+                await this.inicializarManutencaoCoordenadas();
             }
         } catch (error) {
             console.error('Erro ao carregar página:', error);
@@ -8470,7 +8752,8 @@ class App {
             const btnAtividades = podeCheckout
                 ? `<button onclick="app.abrirModalAtividades(${repId}, '${cliId}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-atividades">📋 Atividades</button>`
                 : '';
-            const btnCheckout = checkoutLiberado
+            // Checkout sempre aparece quando em atendimento (pode estar desabilitado)
+            const btnCheckout = podeCheckout
                 ? `<button onclick="app.abrirModalCaptura(${repId}, '${cliId}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkout', '${cadastroEsc}')" class="btn-small btn-checkout" ${textoCheckout}>🚪 Checkout</button>`
                 : '';
             const btnCampanha = podeCheckout
@@ -8811,7 +9094,8 @@ class App {
             ? `<button onclick="app.abrirPesquisaCliente(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-pesquisa" style="background:#8b5cf6;color:white;">📝 Pesquisa (${pesquisasPendentes.length})</button>`
             : '';
 
-        const btnCheckout = checkoutLiberado
+        // Checkout sempre aparece quando em atendimento (pode estar desabilitado)
+        const btnCheckout = podeCheckout
             ? `<button onclick="app.abrirModalCaptura(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkout', '${cadastroEsc}')" class="btn-small btn-checkout" ${estadoCheckout}>🚪 Checkout</button>`
             : '';
         const btnCampanha = podeCheckout
@@ -10318,7 +10602,8 @@ class App {
             }
 
             await this.fecharModalCaptura();
-            this.carregarRoteiroRepositor();
+            // Atualizar apenas o card do cliente (sem recarregar tudo)
+            this.atualizarCardCliente(clienteId);
         } catch (error) {
             console.error('Erro ao salvar visita:', error);
             const mensagem = String(error?.message || '').toLowerCase();
@@ -10550,7 +10835,8 @@ class App {
 
             this.showNotification('Atividades salvas com sucesso!', 'success');
             this.fecharModalAtividades();
-            await this.carregarRoteiroRepositor(); // Atualizar grid
+            // Atualizar apenas o card do cliente (sem recarregar tudo)
+            this.atualizarCardCliente(sessao.clienteId);
         } catch (error) {
             console.error('Erro ao salvar atividades:', error);
             this.showNotification('Erro ao salvar atividades: ' + error.message, 'error');
