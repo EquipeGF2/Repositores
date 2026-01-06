@@ -8519,6 +8519,9 @@ class App {
         // Calcular distâncias em background após carregar a lista
         this.calcularDistanciasRoteiro(roteiro, repId, dataVisita);
 
+        // Verificar pesquisas pendentes para cada cliente em atendimento
+        this.verificarPesquisasDoRoteiro(roteiro, repId, dataVisita);
+
         // Verificar clientes não atendidos do último dia útil
         await this.verificarClientesPendentes();
     } catch (error) {
@@ -8777,12 +8780,24 @@ class App {
         const podeCheckout = statusBase === 'em_atendimento';
         const checkinDisponivel = statusBase !== 'em_atendimento' && !podeNovaVisita;
         const atividadesCount = Number(statusCliente.atividades_count || 0);
-        const checkoutLiberado = podeCheckout && atividadesCount > 0;
-        const estadoCheckout = (!checkoutLiberado && podeCheckout)
-            ? 'disabled title="Registre atividades antes do checkout" style="opacity:0.6;cursor:not-allowed;"'
-            : (!podeCheckout
-                ? 'disabled title="Faça o check-in primeiro" style="opacity:0.6;cursor:not-allowed;"'
-                : '');
+
+        // Verificar pesquisas pendentes
+        const pesquisasPendentesMap = this.registroRotaState.pesquisasPendentesMap || new Map();
+        const pesquisasPendentes = pesquisasPendentesMap.get(clienteIdNorm) || [];
+        const temPesquisaPendente = pesquisasPendentes.length > 0;
+
+        // Checkout só liberado se: atividades > 0 E pesquisas respondidas
+        const checkoutLiberado = podeCheckout && atividadesCount > 0 && !temPesquisaPendente;
+
+        // Determinar motivo do bloqueio do checkout
+        let estadoCheckout = '';
+        if (!podeCheckout) {
+            estadoCheckout = 'disabled title="Faça o check-in primeiro" style="opacity:0.6;cursor:not-allowed;"';
+        } else if (atividadesCount === 0) {
+            estadoCheckout = 'disabled title="Registre atividades antes do checkout" style="opacity:0.6;cursor:not-allowed;"';
+        } else if (temPesquisaPendente) {
+            estadoCheckout = 'disabled title="Responda as pesquisas obrigatórias antes do checkout" style="opacity:0.6;cursor:not-allowed;"';
+        }
 
         const btnCheckin = checkinDisponivel
             ? `<button onclick="app.abrirModalCaptura(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkin', '${cadastroEsc}')" class="btn-small" ${textoBloqueioCheckin}>✅ Check-in</button>`
@@ -8790,6 +8805,12 @@ class App {
         const btnAtividades = podeCheckout
             ? `<button onclick="app.abrirModalAtividades(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-atividades">📋 Atividades</button>`
             : '';
+
+        // Botão de pesquisa - aparece se em atendimento E tem pesquisas pendentes
+        const btnPesquisa = (podeCheckout && temPesquisaPendente)
+            ? `<button onclick="app.abrirPesquisaCliente(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-pesquisa" style="background:#8b5cf6;color:white;">📝 Pesquisa (${pesquisasPendentes.length})</button>`
+            : '';
+
         const btnCheckout = checkoutLiberado
             ? `<button onclick="app.abrirModalCaptura(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkout', '${cadastroEsc}')" class="btn-small" ${estadoCheckout}>🚪 Checkout</button>`
             : '';
@@ -8800,7 +8821,7 @@ class App {
             ? `<button onclick="app.abrirModalCaptura(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkin', '${cadastroEsc}', true)" class="btn-small">🆕 Nova visita</button>`
             : '';
 
-        const botoes = `${btnNovaVisita}${btnCheckin}${btnAtividades}${btnCheckout}${btnCampanha}`;
+        const botoes = `${btnNovaVisita}${btnCheckin}${btnAtividades}${btnPesquisa}${btnCheckout}${btnCampanha}`;
         const avisoAtraso = checkinBloqueadoPorAtraso
             ? '<span style="display:block;color:#b91c1c;font-size:12px;margin-top:6px;">Atraso superior a 7 dias. Check-in bloqueado.</span>'
             : '';
@@ -9381,13 +9402,15 @@ class App {
 
             if (data && data.length > 0) {
                 console.log('Geocodificação OK:', data[0].display_name);
-                const coords = {
+                const result = {
                     lat: parseFloat(data[0].lat),
-                    lng: parseFloat(data[0].lon)
+                    lng: parseFloat(data[0].lon),
+                    aproximado: false,
+                    fonte: 'endereco_completo'
                 };
                 // Salvar no cache
-                this.geocodeCache[cacheKey] = { coords, timestamp: Date.now() };
-                return coords;
+                this.geocodeCache[cacheKey] = { coords: result, timestamp: Date.now() };
+                return result;
             }
 
             // Se não encontrou, tentar apenas com cidade/UF
@@ -9412,14 +9435,17 @@ class App {
                 });
 
                 if (dataCidade && dataCidade.length > 0) {
-                    console.log('Geocodificação por cidade OK:', dataCidade[0].display_name);
-                    const coords = {
+                    console.log('Geocodificação por cidade (APROXIMADO):', dataCidade[0].display_name);
+                    const result = {
                         lat: parseFloat(dataCidade[0].lat),
-                        lng: parseFloat(dataCidade[0].lon)
+                        lng: parseFloat(dataCidade[0].lon),
+                        aproximado: true,
+                        fonte: 'cidade',
+                        cidade: cidadeParte
                     };
                     // Salvar no cache
-                    this.geocodeCache[cacheKey] = { coords, timestamp: Date.now() };
-                    return coords;
+                    this.geocodeCache[cacheKey] = { coords: result, timestamp: Date.now() };
+                    return result;
                 }
             }
 
@@ -9576,13 +9602,18 @@ class App {
 
                 const distanciaKm = (distanciaMetros / 1000).toFixed(1);
                 const foraDoPer = distanciaMetros > (distanciaMaximaKm * 1000);
+                const ehAproximado = coordsCliente.aproximado === true;
 
                 // Atualizar display da distância
-                if (foraDoPer) {
+                if (ehAproximado) {
+                    // Distância aproximada (baseada só na cidade) - não bloqueia check-in
+                    elDistancia.innerHTML = `📍 ~${distanciaKm} km <span style="font-size:10px;color:#6b7280;">(aprox. via ${coordsCliente.cidade || 'cidade'})</span>`;
+                    elDistancia.style.color = '#f59e0b'; // amarelo/laranja
+                } else if (foraDoPer) {
                     elDistancia.innerHTML = `📍 <strong style="color:#b91c1c;">${distanciaKm} km</strong> (fora do perímetro de ${distanciaMaximaKm}km)`;
                     elDistancia.style.color = '#b91c1c';
 
-                    // Desabilitar botão de check-in se estiver fora do perímetro
+                    // Desabilitar botão de check-in APENAS se distância for precisa e fora do perímetro
                     this.desabilitarCheckinCliente(itemElement, cliId, distanciaKm, distanciaMaximaKm);
                 } else {
                     elDistancia.innerHTML = `📍 ${distanciaKm} km`;
@@ -9597,6 +9628,45 @@ class App {
         }
 
         console.log('Cálculo de distâncias do roteiro concluído');
+    }
+
+    /**
+     * Verifica pesquisas pendentes para cada cliente do roteiro em atendimento
+     * Atualiza o card para mostrar botão de pesquisa quando necessário
+     */
+    async verificarPesquisasDoRoteiro(roteiro, repId, dataVisita) {
+        if (!roteiro || roteiro.length === 0) return;
+
+        // Inicializar mapa de pesquisas pendentes se não existir
+        if (!this.registroRotaState.pesquisasPendentesMap) {
+            this.registroRotaState.pesquisasPendentesMap = new Map();
+        }
+
+        const mapaResumo = this.registroRotaState.resumoVisitas || new Map();
+
+        // Para cada cliente em atendimento, verificar se há pesquisas pendentes
+        for (const cliente of roteiro) {
+            const cliId = String(cliente.cli_codigo || '').trim().replace(/\.0$/, '');
+            const statusCliente = mapaResumo.get(cliId) || {};
+
+            // Só verifica pesquisas para clientes em atendimento
+            if (statusCliente.status !== 'em_atendimento') continue;
+
+            try {
+                const pesquisasPendentes = await this.verificarPesquisasObrigatoriasPendentes(repId, cliId, dataVisita);
+
+                if (pesquisasPendentes && pesquisasPendentes.length > 0) {
+                    this.registroRotaState.pesquisasPendentesMap.set(cliId, pesquisasPendentes);
+                    // Atualizar o card para mostrar botão de pesquisa
+                    this.atualizarCardCliente(cliId);
+                    console.log(`Cliente ${cliId}: ${pesquisasPendentes.length} pesquisa(s) pendente(s)`);
+                } else {
+                    this.registroRotaState.pesquisasPendentesMap.delete(cliId);
+                }
+            } catch (error) {
+                console.warn(`Erro ao verificar pesquisas do cliente ${cliId}:`, error);
+            }
+        }
     }
 
     /**
@@ -14384,13 +14454,39 @@ class App {
         }
     }
 
-    async abrirModalPesquisaVisita(pesquisas, repId, clienteId, clienteNome, dataVisita) {
+    /**
+     * Abre o modal de pesquisa para um cliente específico
+     * Chamado pelo botão de pesquisa no card do cliente
+     */
+    async abrirPesquisaCliente(repId, clienteId, clienteNome, dataVisita) {
+        const pesquisasPendentesMap = this.registroRotaState.pesquisasPendentesMap || new Map();
+        const pesquisasPendentes = pesquisasPendentesMap.get(clienteId) || [];
+
+        if (pesquisasPendentes.length === 0) {
+            // Re-verificar pesquisas pendentes
+            const novasPesquisas = await this.verificarPesquisasObrigatoriasPendentes(repId, clienteId, dataVisita);
+            if (!novasPesquisas || novasPesquisas.length === 0) {
+                this.showNotification('Nenhuma pesquisa pendente para este cliente.', 'info');
+                return;
+            }
+            pesquisasPendentesMap.set(clienteId, novasPesquisas);
+            this.registroRotaState.pesquisasPendentesMap = pesquisasPendentesMap;
+            // veioDocheckout = false porque veio do botão
+            await this.abrirModalPesquisaVisita(novasPesquisas, repId, clienteId, clienteNome, dataVisita, false);
+        } else {
+            // veioDocheckout = false porque veio do botão
+            await this.abrirModalPesquisaVisita(pesquisasPendentes, repId, clienteId, clienteNome, dataVisita, false);
+        }
+    }
+
+    async abrirModalPesquisaVisita(pesquisas, repId, clienteId, clienteNome, dataVisita, veioDocheckout = true) {
         this.pesquisaVisitaState = {
             pesquisasPendentes: pesquisas,
             pesquisaAtualIndex: 0,
             respostasColetadas: [],
             contextoVisita: { repId, clienteId, clienteNome, dataVisita },
-            fotoPesquisa: null
+            fotoPesquisa: null,
+            veioDocheckout: veioDocheckout
         };
 
         // Criar modal se não existir
@@ -14602,14 +14698,26 @@ class App {
                 this.pesquisaVisitaState.pesquisaAtualIndex++;
                 this.renderPesquisaAtual();
             } else {
-                // Todas as pesquisas respondidas, continuar com checkout
+                // Todas as pesquisas respondidas
                 this.fecharModalPesquisaVisita();
-                this.showNotification('Pesquisas respondidas. Continuando com o checkout...', 'success');
 
-                // Continuar salvando a visita
-                setTimeout(() => {
-                    this.salvarVisita();
-                }, 500);
+                // Atualizar mapa de pesquisas pendentes (remover do cliente)
+                const pesquisasPendentesMap = this.registroRotaState.pesquisasPendentesMap || new Map();
+                pesquisasPendentesMap.delete(contextoVisita.clienteId);
+                this.registroRotaState.pesquisasPendentesMap = pesquisasPendentesMap;
+
+                // Atualizar card do cliente
+                this.atualizarCardCliente(contextoVisita.clienteId);
+
+                // Se veio do checkout, continuar salvando a visita
+                if (this.pesquisaVisitaState.veioDocheckout) {
+                    this.showNotification('Pesquisas respondidas. Continuando com o checkout...', 'success');
+                    setTimeout(() => {
+                        this.salvarVisita();
+                    }, 500);
+                } else {
+                    this.showNotification('Pesquisas respondidas com sucesso!', 'success');
+                }
             }
         } catch (error) {
             console.error('Erro ao salvar resposta:', error);

@@ -481,6 +481,40 @@ class TursoService {
     return columns;
   }
 
+  // Sanitiza valores para serem compatíveis com Turso/SQLite
+  _sanitizeValue(value) {
+    // undefined e null -> null
+    if (value === undefined || value === null) {
+      return null;
+    }
+    // Tipos primitivos suportados
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      return value;
+    }
+    // BigInt -> string
+    if (typeof value === 'bigint') {
+      return value.toString();
+    }
+    // Date -> ISO string
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+    // Buffer -> base64 string
+    if (Buffer.isBuffer(value)) {
+      return value.toString('base64');
+    }
+    // Arrays e objetos -> JSON string (ou null se vazio/inválido)
+    if (typeof value === 'object') {
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return null;
+      }
+    }
+    // Qualquer outro tipo não suportado -> null
+    return null;
+  }
+
   async _insertDynamic(tableName, dataObj) {
     const availableColumns = await this._getTableColumns(tableName);
     const entries = Object.entries(dataObj).filter(([key]) => availableColumns.includes(key));
@@ -490,7 +524,8 @@ class TursoService {
     }
 
     const columns = entries.map(([key]) => key);
-    const values = entries.map(([, value]) => value);
+    // Sanitizar valores para evitar "Unsupported type of value"
+    const values = entries.map(([, value]) => this._sanitizeValue(value));
     const placeholders = columns.map(() => '?').join(', ');
 
     const sql = `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders})`;
@@ -509,8 +544,9 @@ class TursoService {
     }
 
     const setters = entries.map(([key]) => `${key} = ?`).join(', ');
-    const values = entries.map(([, value]) => value);
-    values.push(keyValue);
+    // Sanitizar valores para evitar "Unsupported type of value"
+    const values = entries.map(([, value]) => this._sanitizeValue(value));
+    values.push(this._sanitizeValue(keyValue));
 
     const sql = `UPDATE ${tableName} SET ${setters} WHERE ${keyColumn} = ?`;
     const result = await this.execute(sql, values);
@@ -793,14 +829,25 @@ class TursoService {
     const filtroData = usarDataPlanejada
       ? 'date(COALESCE(s.data_planejada, date(' + dataAtendimentoExpr + '))) BETWEEN date(?) AND date(?)'
       : `date(${dataAtendimentoExpr}) BETWEEN date(?) AND date(?)`;
+
+    // Subquery para contar campanhas da sessão
+    const campanhasCountExpr = `(
+      SELECT COUNT(1) FROM cc_registro_visita rv
+      WHERE COALESCE(rv.rv_sessao_id, rv.sessao_id) = s.sessao_id AND lower(rv.rv_tipo) = 'campanha'
+    )`;
+
     const sql = `
-      SELECT s.*, (${checkinDataExpr}) AS checkin_data_ref, (${checkoutDataExpr}) AS checkout_data_hora, (
-        SELECT rv_endereco_registro
-        FROM cc_registro_visita v
-        WHERE COALESCE(v.rv_sessao_id, v.sessao_id) = s.sessao_id
-        ORDER BY COALESCE(v.rv_data_hora_registro, v.data_hora) DESC
-        LIMIT 1
-      ) AS ultimo_endereco_registro
+      SELECT s.*,
+        (${checkinDataExpr}) AS checkin_data_ref,
+        (${checkoutDataExpr}) AS checkout_data_hora,
+        (${campanhasCountExpr}) AS campanhas_count,
+        (
+          SELECT rv_endereco_registro
+          FROM cc_registro_visita v
+          WHERE COALESCE(v.rv_sessao_id, v.sessao_id) = s.sessao_id
+          ORDER BY COALESCE(v.rv_data_hora_registro, v.data_hora) DESC
+          LIMIT 1
+        ) AS ultimo_endereco_registro
       FROM cc_visita_sessao s
       WHERE s.rep_id = ?
         AND ${filtroData}
@@ -818,6 +865,19 @@ class TursoService {
         statusFinal = 'finalizado';
       }
 
+      // Calcular atividades_count: campanhas + (1 se tiver serviços preenchidos)
+      const campanhas = Number(row.campanhas_count || 0);
+      const servicosAtivos = Boolean(
+        row.serv_abastecimento
+        || row.serv_espaco_loja
+        || row.serv_ruptura_loja
+        || row.serv_pontos_extras
+        || row.qtd_pontos_extras
+        || row.qtd_frentes
+        || row.usou_merchandising
+      );
+      const atividadesCount = campanhas + (servicosAtivos ? 1 : 0);
+
         return {
           cliente_id: normalizeClienteId(row.cliente_id),
           checkin_data_hora: row.checkin_data_ref || row.checkin_at,
@@ -828,7 +888,9 @@ class TursoService {
           tempo_minutos: row.tempo_minutos,
           endereco_cliente: row.endereco_cliente,
           ultimo_endereco_registro: row.ultimo_endereco_registro,
-          sessao_id: row.sessao_id
+          sessao_id: row.sessao_id,
+          atividades_count: atividadesCount,
+          rv_id: row.sessao_id
         };
     });
   }

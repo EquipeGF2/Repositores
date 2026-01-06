@@ -1303,7 +1303,9 @@ router.get('/visitas', async (req, res) => {
           status: item.status,
           tempo_minutos: item.tempo_minutos,
           endereco_cliente: item.endereco_cliente,
-          ultimo_endereco_registro: item.ultimo_endereco_registro
+          ultimo_endereco_registro: item.ultimo_endereco_registro,
+          atividades_count: item.atividades_count || 0,
+          rv_id: item.rv_id || item.sessao_id
         }));
 
         return res.json(sanitizeForJson({ ok: true, resumo: resumoFormatado, visitas: resumoFormatado, modo: modoNormalizado }));
