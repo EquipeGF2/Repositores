@@ -8471,10 +8471,10 @@ class App {
                 ? `<button onclick="app.abrirModalAtividades(${repId}, '${cliId}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-atividades">📋 Atividades</button>`
                 : '';
             const btnCheckout = checkoutLiberado
-                ? `<button onclick="app.abrirModalCaptura(${repId}, '${cliId}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkout', '${cadastroEsc}')" class="btn-small" ${textoCheckout}>🚪 Checkout</button>`
+                ? `<button onclick="app.abrirModalCaptura(${repId}, '${cliId}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkout', '${cadastroEsc}')" class="btn-small btn-checkout" ${textoCheckout}>🚪 Checkout</button>`
                 : '';
             const btnCampanha = podeCheckout
-                ? `<button onclick="app.abrirModalCaptura(${repId}, '${cliId}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'campanha', '${cadastroEsc}')" class="btn-small">🎯 Campanha</button>`
+                ? `<button onclick="app.abrirModalCaptura(${repId}, '${cliId}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'campanha', '${cadastroEsc}')" class="btn-small btn-campanha">🎯 Campanha</button>`
                 : '';
             const btnNovaVisita = podeNovaVisita
                 ? `<button onclick="app.abrirModalCaptura(${repId}, '${cliId}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkin', '${cadastroEsc}', true)" class="btn-small">🆕 Nova visita</button>`
@@ -8812,10 +8812,10 @@ class App {
             : '';
 
         const btnCheckout = checkoutLiberado
-            ? `<button onclick="app.abrirModalCaptura(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkout', '${cadastroEsc}')" class="btn-small" ${estadoCheckout}>🚪 Checkout</button>`
+            ? `<button onclick="app.abrirModalCaptura(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkout', '${cadastroEsc}')" class="btn-small btn-checkout" ${estadoCheckout}>🚪 Checkout</button>`
             : '';
         const btnCampanha = podeCheckout
-            ? `<button onclick="app.abrirModalCaptura(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'campanha', '${cadastroEsc}')" class="btn-small">🎯 Campanha</button>`
+            ? `<button onclick="app.abrirModalCaptura(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'campanha', '${cadastroEsc}')" class="btn-small btn-campanha">🎯 Campanha</button>`
             : '';
         const btnNovaVisita = podeNovaVisita
             ? `<button onclick="app.abrirModalCaptura(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkin', '${cadastroEsc}', true)" class="btn-small">🆕 Nova visita</button>`
@@ -9148,6 +9148,8 @@ class App {
         const tipoBadge = document.getElementById('capturaTipoBadge');
         if (tipoBadge) {
             tipoBadge.textContent = tipoPadrao.toUpperCase();
+            // Definir cor do badge: checkout = vermelho, campanha = laranja, outros = azul
+            tipoBadge.dataset.tipo = tipoPadrao;
         }
 
         // Mostrar aviso de fotos apenas para campanha
@@ -14504,12 +14506,13 @@ class App {
                     inputHtml = `<input type="text" id="campo_${campo.pca_id}" class="form-control" ${isRequired}>`;
                     break;
                 case 'numero':
-                    const minAttr = campo.pca_min !== null ? `min="${campo.pca_min}"` : '';
-                    const maxAttr = campo.pca_max !== null ? `max="${campo.pca_max}"` : '';
+                    const minAttr = campo.pca_min !== null ? `data-min="${campo.pca_min}"` : '';
+                    const maxAttr = campo.pca_max !== null ? `data-max="${campo.pca_max}"` : '';
                     const rangeHint = (campo.pca_min !== null || campo.pca_max !== null)
                         ? `<small style="color: #6b7280; display: block; margin-top: 4px;">Valor permitido: ${campo.pca_min ?? 'sem mín.'} até ${campo.pca_max ?? 'sem máx.'}</small>`
                         : '';
-                    inputHtml = `<input type="number" id="campo_${campo.pca_id}" class="form-control" ${minAttr} ${maxAttr} ${isRequired}>${rangeHint}`;
+                    // Usa type="text" com inputmode="decimal" para aceitar vírgula como separador decimal
+                    inputHtml = `<input type="text" inputmode="decimal" id="campo_${campo.pca_id}" class="form-control" ${minAttr} ${maxAttr} ${isRequired} placeholder="Ex: 10,5">${rangeHint}`;
                     break;
                 case 'sim_nao':
                     inputHtml = `
@@ -14920,9 +14923,17 @@ class App {
                 return;
             }
 
-            // Validar min/max para campos numéricos
+            // Validar e converter campos numéricos (aceita vírgula como decimal)
             if (campo.pca_tipo === 'numero' && valor) {
-                const numVal = Number(valor);
+                // Converter vírgula para ponto (padrão brasileiro → padrão internacional)
+                const valorConvertido = valor.replace(',', '.');
+                const numVal = parseFloat(valorConvertido);
+
+                if (isNaN(numVal)) {
+                    this.showNotification(`O valor de "${pergunta}" deve ser um número válido`, 'warning');
+                    return;
+                }
+
                 if (campo.pca_min !== null && numVal < campo.pca_min) {
                     this.showNotification(`O valor de "${pergunta}" deve ser no mínimo ${campo.pca_min}`, 'warning');
                     return;
@@ -14931,6 +14942,9 @@ class App {
                     this.showNotification(`O valor de "${pergunta}" deve ser no máximo ${campo.pca_max}`, 'warning');
                     return;
                 }
+
+                // Salvar o valor convertido (com ponto decimal)
+                valor = valorConvertido;
             }
 
             respostas.push({
@@ -14948,13 +14962,25 @@ class App {
 
         // Salvar resposta
         try {
+            // Converter foto para URL se for um File/Blob
+            let fotoUrl = null;
+            if (this.pesquisaVisitaState.fotoPesquisa) {
+                const foto = this.pesquisaVisitaState.fotoPesquisa;
+                if (foto instanceof File || foto instanceof Blob) {
+                    // Criar URL temporária para preview (a foto real será enviada se necessário)
+                    fotoUrl = URL.createObjectURL(foto);
+                } else if (typeof foto === 'string') {
+                    fotoUrl = foto;
+                }
+            }
+
             const dados = {
-                pesquisaId: pesquisa.pes_id,
-                repoCod: contextoVisita.repId,
-                clienteCodigo: contextoVisita.clienteId,
-                dataResposta: new Date().toISOString(),
-                respostas: JSON.stringify(respostas),
-                foto: this.pesquisaVisitaState.fotoPesquisa
+                pesId: pesquisa.pes_id,
+                repId: contextoVisita.repId,
+                clienteCodigo: String(contextoVisita.clienteId),
+                visitaId: null, // Opcional
+                respostas: respostas, // Array de objetos, db.js faz o JSON.stringify
+                fotoUrl: fotoUrl
             };
 
             await db.salvarRespostaPesquisa(dados);

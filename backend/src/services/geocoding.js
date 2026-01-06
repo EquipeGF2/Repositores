@@ -27,6 +27,96 @@ async function fetchWithTimeout(url, options = {}, timeout = 10000) {
 }
 
 /**
+ * Expande abreviações comuns em endereços brasileiros
+ */
+function expandirAbreviacoes(texto) {
+  if (!texto) return texto;
+
+  const abreviacoes = {
+    // Títulos/Patentes
+    'GEN ': 'General ',
+    'GEN. ': 'General ',
+    'CEL ': 'Coronel ',
+    'CEL. ': 'Coronel ',
+    'MAJ ': 'Major ',
+    'MAJ. ': 'Major ',
+    'CAP ': 'Capitão ',
+    'CAP. ': 'Capitão ',
+    'TEN ': 'Tenente ',
+    'TEN. ': 'Tenente ',
+    'SGT ': 'Sargento ',
+    'SGT. ': 'Sargento ',
+    'DR ': 'Doutor ',
+    'DR. ': 'Doutor ',
+    'DRA ': 'Doutora ',
+    'DRA. ': 'Doutora ',
+    'PROF ': 'Professor ',
+    'PROF. ': 'Professor ',
+    'PROFA ': 'Professora ',
+    'PROFA. ': 'Professora ',
+    'ENG ': 'Engenheiro ',
+    'ENG. ': 'Engenheiro ',
+    'PRES ': 'Presidente ',
+    'PRES. ': 'Presidente ',
+    'GOV ': 'Governador ',
+    'GOV. ': 'Governador ',
+    'SEN ': 'Senador ',
+    'SEN. ': 'Senador ',
+    'DEP ': 'Deputado ',
+    'DEP. ': 'Deputado ',
+    'PE ': 'Padre ',
+    'PE. ': 'Padre ',
+    'FREI ': 'Frei ',
+    'DOM ': 'Dom ',
+    'STA ': 'Santa ',
+    'STA. ': 'Santa ',
+    'STO ': 'Santo ',
+    'STO. ': 'Santo ',
+    'NS ': 'Nossa Senhora ',
+    'N S ': 'Nossa Senhora ',
+    'N. S. ': 'Nossa Senhora ',
+
+    // Tipos de logradouro
+    'AV ': 'Avenida ',
+    'AV. ': 'Avenida ',
+    'R ': 'Rua ',
+    'R. ': 'Rua ',
+    'AL ': 'Alameda ',
+    'AL. ': 'Alameda ',
+    'TV ': 'Travessa ',
+    'TV. ': 'Travessa ',
+    'EST ': 'Estrada ',
+    'EST. ': 'Estrada ',
+    'ROD ': 'Rodovia ',
+    'ROD. ': 'Rodovia ',
+    'PCA ': 'Praça ',
+    'PCA. ': 'Praça ',
+    'PÇA ': 'Praça ',
+    'PÇA. ': 'Praça ',
+    'LGO ': 'Largo ',
+    'LGO. ': 'Largo ',
+    'VL ': 'Vila ',
+    'VL. ': 'Vila ',
+    'JD ': 'Jardim ',
+    'JD. ': 'Jardim ',
+    'CJ ': 'Conjunto ',
+    'CJ. ': 'Conjunto ',
+    'LOT ': 'Loteamento ',
+    'LOT. ': 'Loteamento ',
+    'RES ': 'Residencial ',
+    'RES. ': 'Residencial ',
+  };
+
+  let resultado = ' ' + texto.toUpperCase() + ' ';
+
+  for (const [abrev, expandido] of Object.entries(abreviacoes)) {
+    resultado = resultado.replace(new RegExp(' ' + abrev.replace('.', '\\.'), 'gi'), ' ' + expandido);
+  }
+
+  return resultado.trim();
+}
+
+/**
  * Parseia o endereço no formato "CIDADE • RUA, NÚMERO, BAIRRO"
  */
 function parseEndereco(endereco) {
@@ -80,11 +170,12 @@ async function geocodeGoogle(endereco) {
   const parsed = parseEndereco(endereco);
 
   // Montar endereço para Google (formato: rua numero, bairro, cidade, estado, país)
+  // Expandir abreviações comuns (GEN → General, CEL → Coronel, etc.)
   let query = '';
   if (parsed.rua) {
-    query = parsed.rua;
+    query = expandirAbreviacoes(parsed.rua);
     if (parsed.numero) query += ' ' + parsed.numero;
-    if (parsed.bairro) query += ', ' + parsed.bairro;
+    if (parsed.bairro) query += ', ' + expandirAbreviacoes(parsed.bairro);
   }
   if (parsed.cidade) query += ', ' + parsed.cidade;
   query += ', RS, Brasil';
@@ -139,11 +230,15 @@ async function geocodeNominatim(endereco) {
   // Estratégias de busca em cascata
   const estrategias = [];
 
+  // Expandir abreviações comuns (GEN → General, CEL → Coronel, etc.)
+  const ruaExpandida = expandirAbreviacoes(parsed.rua);
+  const bairroExpandido = expandirAbreviacoes(parsed.bairro);
+
   // 1. Endereço completo
   if (parsed.rua && parsed.cidade) {
-    let busca = parsed.rua;
+    let busca = ruaExpandida;
     if (parsed.numero) busca += ' ' + parsed.numero;
-    if (parsed.bairro) busca += ', ' + parsed.bairro;
+    if (parsed.bairro) busca += ', ' + bairroExpandido;
     busca += ', ' + parsed.cidade + ', RS, Brasil';
     estrategias.push({ query: busca, precisao: 'endereco' });
   }
@@ -151,7 +246,7 @@ async function geocodeNominatim(endereco) {
   // 2. Rua + Cidade (sem número e bairro)
   if (parsed.rua && parsed.cidade) {
     estrategias.push({
-      query: `${parsed.rua}, ${parsed.cidade}, RS, Brasil`,
+      query: `${ruaExpandida}, ${parsed.cidade}, RS, Brasil`,
       precisao: 'rua'
     });
   }
@@ -159,7 +254,7 @@ async function geocodeNominatim(endereco) {
   // 3. Bairro + Cidade
   if (parsed.bairro && parsed.cidade) {
     estrategias.push({
-      query: `${parsed.bairro}, ${parsed.cidade}, RS, Brasil`,
+      query: `${bairroExpandido}, ${parsed.cidade}, RS, Brasil`,
       precisao: 'bairro'
     });
   }

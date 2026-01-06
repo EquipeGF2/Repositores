@@ -545,6 +545,34 @@ small {
     background: #b91c1c;
 }
 
+/* Botões específicos do roteiro */
+.btn-checkout {
+    background: var(--primary-red);
+    color: var(--white);
+}
+
+.btn-checkout:hover {
+    background: var(--primary-red-hover);
+}
+
+.btn-campanha {
+    background: #f97316;
+    color: var(--white);
+}
+
+.btn-campanha:hover {
+    background: #ea580c;
+}
+
+.btn-checkin {
+    background: #2563eb;
+    color: var(--white);
+}
+
+.btn-checkin:hover {
+    background: #1d4ed8;
+}
+
 .btn-compact {
     padding: 0.45rem 0.75rem;
     font-size: 0.9rem;
@@ -1280,6 +1308,22 @@ tbody td {
     font-weight: 700;
     font-size: 0.78rem;
     width: fit-content;
+}
+
+/* Cores por tipo de registro */
+.captura-badge[data-tipo="checkout"] {
+    background: var(--primary-red-light);
+    color: var(--primary-red-dark);
+}
+
+.captura-badge[data-tipo="campanha"] {
+    background: #fff3e0;
+    color: #e65100;
+}
+
+.captura-badge[data-tipo="checkin"] {
+    background: #e3f2fd;
+    color: #1565c0;
 }
 
 .captura-close {
