@@ -556,12 +556,12 @@ small {
 }
 
 .btn-campanha {
-    background: #f97316;
+    background: #16a34a;
     color: var(--white);
 }
 
 .btn-campanha:hover {
-    background: #ea580c;
+    background: #15803d;
 }
 
 .btn-checkin {

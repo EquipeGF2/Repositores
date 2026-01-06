@@ -9149,10 +9149,27 @@ class App {
         }
     }
 
-    async buscarAtendimentoAberto(repId) {
+    async buscarAtendimentoAberto(repId, forceRefresh = false) {
+        const cacheKey = `atendimento_${repId}`;
+        const agora = Date.now();
+        const cacheTTL = 15000; // 15 segundos
+
+        // Verificar cache (a menos que force refresh)
+        if (!forceRefresh && this._sessaoCache?.[cacheKey]) {
+            const cached = this._sessaoCache[cacheKey];
+            if (agora - cached.timestamp < cacheTTL) {
+                return cached.data;
+            }
+        }
+
         try {
             const url = `${this.registroRotaState.backendUrl}/api/registro-rota/atendimento-aberto?repositor_id=${repId}`;
             const data = await fetchJson(url);
+
+            // Armazenar no cache
+            if (!this._sessaoCache) this._sessaoCache = {};
+            this._sessaoCache[cacheKey] = { data: data || null, timestamp: agora };
+
             return data || null;
         } catch (error) {
             console.warn('Erro ao buscar atendimento aberto:', error);
@@ -9200,13 +9217,31 @@ class App {
         return atendimento;
     }
 
-    async buscarSessaoAberta(repId, dataPlanejada) {
+    async buscarSessaoAberta(repId, dataPlanejada, forceRefresh = false) {
+        const cacheKey = `sessao_${repId}_${dataPlanejada || 'all'}`;
+        const agora = Date.now();
+        const cacheTTL = 15000; // 15 segundos
+
+        // Verificar cache (a menos que force refresh)
+        if (!forceRefresh && this._sessaoCache?.[cacheKey]) {
+            const cached = this._sessaoCache[cacheKey];
+            if (agora - cached.timestamp < cacheTTL) {
+                return cached.data;
+            }
+        }
+
         try {
             const params = new URLSearchParams({ rep_id: repId });
             if (dataPlanejada) params.append('data_planejada', dataPlanejada);
 
             const data = await fetchJson(`${this.registroRotaState.backendUrl}/api/registro-rota/sessao-aberta?${params.toString()}`);
-            return data.sessao_aberta || null;
+            const result = data.sessao_aberta || null;
+
+            // Armazenar no cache
+            if (!this._sessaoCache) this._sessaoCache = {};
+            this._sessaoCache[cacheKey] = { data: result, timestamp: agora };
+
+            return result;
         } catch (error) {
             console.warn('Erro ao buscar sessão aberta:', error);
             return null;
@@ -10606,6 +10641,8 @@ class App {
             }
 
             await this.fecharModalCaptura();
+            // Invalidar cache de sessão após alteração
+            this._sessaoCache = {};
             // Atualizar apenas o card do cliente (sem recarregar tudo)
             this.atualizarCardCliente(clienteId);
         } catch (error) {
@@ -15374,25 +15411,58 @@ class App {
                 this.pesquisaVisitaState.pesquisaAtualIndex++;
                 this.renderPesquisaAtual();
             } else {
-                // Todas as pesquisas respondidas
+                // Todas as pesquisas do lote atual respondidas
                 this.fecharModalPesquisaVisita();
-
-                // Atualizar mapa de pesquisas pendentes (remover do cliente)
-                const pesquisasPendentesMap = this.registroRotaState.pesquisasPendentesMap || new Map();
-                pesquisasPendentesMap.delete(contextoVisita.clienteId);
-                this.registroRotaState.pesquisasPendentesMap = pesquisasPendentesMap;
-
-                // Atualizar card do cliente
-                this.atualizarCardCliente(contextoVisita.clienteId);
 
                 // Se veio do checkout, continuar salvando a visita
                 if (this.pesquisaVisitaState.veioDocheckout) {
+                    // Atualizar mapa de pesquisas pendentes (remover do cliente)
+                    const pesquisasPendentesMap = this.registroRotaState.pesquisasPendentesMap || new Map();
+                    pesquisasPendentesMap.delete(contextoVisita.clienteId);
+                    this.registroRotaState.pesquisasPendentesMap = pesquisasPendentesMap;
+
+                    // Atualizar card do cliente
+                    this.atualizarCardCliente(contextoVisita.clienteId);
+
                     this.showNotification('Pesquisas respondidas. Continuando com o checkout...', 'success');
                     setTimeout(() => {
                         this.salvarVisita();
                     }, 500);
                 } else {
-                    this.showNotification('Pesquisas respondidas com sucesso!', 'success');
+                    // Veio do botão Pesquisa - verificar se há mais pesquisas pendentes
+                    const maisPesquisas = await this.buscarPesquisasPendentes(
+                        contextoVisita.repId,
+                        contextoVisita.clienteId,
+                        contextoVisita.dataVisita,
+                        false
+                    );
+
+                    if (maisPesquisas.length > 0) {
+                        // Há mais pesquisas - perguntar se quer responder
+                        this.showNotification('Pesquisa registrada! Ainda existem outras pesquisas disponíveis.', 'success');
+
+                        // Reabrir modal de seleção após breve delay
+                        setTimeout(() => {
+                            this.abrirModalSelecaoPesquisa(
+                                maisPesquisas,
+                                contextoVisita.repId,
+                                contextoVisita.clienteId,
+                                contextoVisita.clienteNome,
+                                contextoVisita.dataVisita
+                            );
+                        }, 800);
+                    } else {
+                        // Não há mais pesquisas
+                        this.showNotification('Todas as pesquisas foram respondidas!', 'success');
+
+                        // Atualizar mapa de pesquisas pendentes (remover do cliente)
+                        const pesquisasPendentesMap = this.registroRotaState.pesquisasPendentesMap || new Map();
+                        pesquisasPendentesMap.delete(contextoVisita.clienteId);
+                        this.registroRotaState.pesquisasPendentesMap = pesquisasPendentesMap;
+                    }
+
+                    // Atualizar card do cliente
+                    this.atualizarCardCliente(contextoVisita.clienteId);
                 }
             }
         } catch (error) {

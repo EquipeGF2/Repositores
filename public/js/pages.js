@@ -2611,7 +2611,7 @@ export const pages = {
             <div class="card">
                 <div class="card-header">
                     <div>
-                        <h3 class="card-title">Manutenção de Coordenadas</h3>
+                        <h3 class="card-title">Coordenadas</h3>
                         <p class="text-muted" style="margin: 4px 0 0;">
                             Gerencie as coordenadas dos clientes. Defina manualmente a localização de clientes que não foram encontrados automaticamente.
                         </p>
@@ -2633,9 +2633,12 @@ export const pages = {
                                 <option value="endereco">Endereço Exato</option>
                             </select>
                         </div>
-                        <div style="display: flex; align-items: flex-end; gap: 8px;">
-                            <button type="button" class="btn btn-primary" id="btnBuscarCoordenadas">🔍 Buscar</button>
-                            <button type="button" class="btn btn-secondary" id="btnLimparFiltrosCoordenadas">🧹 Limpar</button>
+                        <div class="form-group" style="min-width: 150px;">
+                            <label>&nbsp;</label>
+                            <div style="display: flex; gap: 8px;">
+                                <button type="button" class="btn btn-primary" id="btnBuscarCoordenadas">🔍 Buscar</button>
+                                <button type="button" class="btn btn-secondary" id="btnLimparFiltrosCoordenadas">🧹 Limpar</button>
+                            </div>
                         </div>
                     </div>
 
@@ -4935,7 +4938,7 @@ export const pageTitles = {
     'consulta-roteiro': 'Consulta de Roteiro',
     'custos-repositor': 'Custos por Repositor',
     'estrutura-banco-comercial': 'Estrutura do Banco Comercial',
-    'manutencao-coordenadas': 'Manutenção de Coordenadas',
+    'manutencao-coordenadas': 'Coordenadas',
     'configuracoes-sistema': 'Configurações do Sistema',
     'controle-acessos': 'Controle de Acessos',
     'gestao-usuarios': 'Gestão de Usuários',
