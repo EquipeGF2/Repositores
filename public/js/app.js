@@ -8739,12 +8739,27 @@ class App {
             const podeCheckout = statusBase === 'em_atendimento';
             const checkinDisponivel = statusBase !== 'em_atendimento' && !podeNovaVisita;
             const atividadesCount = Number(statusCliente.atividades_count || 0);
-            const checkoutLiberado = podeCheckout && atividadesCount > 0;
-            const textoCheckout = (!checkoutLiberado && podeCheckout)
-                ? 'disabled title="Registre atividades antes do checkout" style="opacity:0.6;cursor:not-allowed;"'
-                : (!podeCheckout
-                    ? 'disabled title="Faça o check-in primeiro" style="opacity:0.6;cursor:not-allowed;"'
-                    : '');
+
+            // Verificar pesquisas pendentes
+            const pesquisasPendentesMap = this.registroRotaState.pesquisasPendentesMap || new Map();
+            const pesquisasPendentes = pesquisasPendentesMap.get(cliId) || [];
+            const temPesquisaPendente = pesquisasPendentes.length > 0;
+            // Separar pesquisas obrigatórias das opcionais
+            const pesquisasObrigatorias = pesquisasPendentes.filter(p => p.pes_obrigatorio);
+            const temPesquisaObrigatoriaPendente = pesquisasObrigatorias.length > 0;
+
+            // Checkout só liberado se: atividades > 0 E pesquisas OBRIGATÓRIAS respondidas
+            const checkoutLiberado = podeCheckout && atividadesCount > 0 && !temPesquisaObrigatoriaPendente;
+
+            // Determinar motivo do bloqueio do checkout
+            let textoCheckout = '';
+            if (!podeCheckout) {
+                textoCheckout = 'disabled title="Faça o check-in primeiro" style="opacity:0.6;cursor:not-allowed;"';
+            } else if (atividadesCount === 0) {
+                textoCheckout = 'disabled title="Registre atividades antes do checkout" style="opacity:0.6;cursor:not-allowed;"';
+            } else if (temPesquisaObrigatoriaPendente) {
+                textoCheckout = `disabled title="Responda as ${pesquisasObrigatorias.length} pesquisa(s) obrigatória(s) antes do checkout" style="opacity:0.6;cursor:not-allowed;"`;
+            }
 
             const btnCheckin = checkinDisponivel
                 ? `<button onclick="app.abrirModalCaptura(${repId}, '${cliId}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkin', '${cadastroEsc}')" class="btn-small" ${textoBloqueioCheckin}>✅ Check-in</button>`
@@ -8752,6 +8767,12 @@ class App {
             const btnAtividades = podeCheckout
                 ? `<button onclick="app.abrirModalAtividades(${repId}, '${cliId}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-atividades">📋 Atividades</button>`
                 : '';
+
+            // Botão de pesquisa - aparece se em atendimento E tem pesquisas pendentes
+            const btnPesquisa = (podeCheckout && temPesquisaPendente)
+                ? `<button onclick="app.abrirPesquisaCliente(${repId}, '${cliId}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-pesquisa" style="background:#8b5cf6;color:white;">📝 Pesquisa (${pesquisasPendentes.length})</button>`
+                : '';
+
             // Checkout sempre aparece quando em atendimento (pode estar desabilitado)
             const btnCheckout = podeCheckout
                 ? `<button onclick="app.abrirModalCaptura(${repId}, '${cliId}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkout', '${cadastroEsc}')" class="btn-small btn-checkout" ${textoCheckout}>🚪 Checkout</button>`
@@ -8766,7 +8787,7 @@ class App {
                 ? `<button onclick="app.confirmarCancelarAtendimento(${repId}, '${cliId}', '${nomeEsc}')" class="btn-small btn-danger" title="Cancelar atendimento em aberto">🛑 Cancelar</button>`
                 : '';
 
-            const botoes = `${btnNovaVisita}${btnCheckin}${btnAtividades}${btnCampanha}${btnCheckout}${btnCancelar}`;
+            const botoes = `${btnNovaVisita}${btnCheckin}${btnAtividades}${btnPesquisa}${btnCampanha}${btnCheckout}${btnCancelar}`;
             const avisoAtraso = checkinBloqueadoPorAtraso
                 ? '<span style="display:block;color:#b91c1c;font-size:12px;margin-top:6px;">Atraso superior a 7 dias. Check-in bloqueado.</span>'
                 : '';
@@ -9068,9 +9089,12 @@ class App {
         const pesquisasPendentesMap = this.registroRotaState.pesquisasPendentesMap || new Map();
         const pesquisasPendentes = pesquisasPendentesMap.get(clienteIdNorm) || [];
         const temPesquisaPendente = pesquisasPendentes.length > 0;
+        // Separar pesquisas obrigatórias das opcionais
+        const pesquisasObrigatorias = pesquisasPendentes.filter(p => p.pes_obrigatorio);
+        const temPesquisaObrigatoriaPendente = pesquisasObrigatorias.length > 0;
 
-        // Checkout só liberado se: atividades > 0 E pesquisas respondidas
-        const checkoutLiberado = podeCheckout && atividadesCount > 0 && !temPesquisaPendente;
+        // Checkout só liberado se: atividades > 0 E pesquisas OBRIGATÓRIAS respondidas
+        const checkoutLiberado = podeCheckout && atividadesCount > 0 && !temPesquisaObrigatoriaPendente;
 
         // Determinar motivo do bloqueio do checkout
         let estadoCheckout = '';
@@ -9078,8 +9102,8 @@ class App {
             estadoCheckout = 'disabled title="Faça o check-in primeiro" style="opacity:0.6;cursor:not-allowed;"';
         } else if (atividadesCount === 0) {
             estadoCheckout = 'disabled title="Registre atividades antes do checkout" style="opacity:0.6;cursor:not-allowed;"';
-        } else if (temPesquisaPendente) {
-            estadoCheckout = 'disabled title="Responda as pesquisas obrigatórias antes do checkout" style="opacity:0.6;cursor:not-allowed;"';
+        } else if (temPesquisaObrigatoriaPendente) {
+            estadoCheckout = `disabled title="Responda as ${pesquisasObrigatorias.length} pesquisa(s) obrigatória(s) antes do checkout" style="opacity:0.6;cursor:not-allowed;"`;
         }
 
         const btnCheckin = checkinDisponivel
@@ -9964,6 +9988,42 @@ class App {
     }
 
     /**
+     * Verifica pesquisas pendentes após check-in para um cliente específico
+     * Chamado imediatamente após o check-in para popular o mapa de pesquisas
+     */
+    async verificarPesquisasAposCheckin(repId, clienteId, dataVisita) {
+        const normalizeClienteId = (v) => String(v ?? '').trim().replace(/\.0$/, '');
+        const clienteIdNorm = normalizeClienteId(clienteId);
+
+        try {
+            // Inicializar mapa se não existir
+            if (!this.registroRotaState.pesquisasPendentesMap) {
+                this.registroRotaState.pesquisasPendentesMap = new Map();
+            }
+
+            // Buscar TODAS as pesquisas pendentes (obrigatórias e não obrigatórias)
+            const pesquisasPendentes = await this.buscarPesquisasPendentes(repId, clienteIdNorm, dataVisita, false);
+
+            if (pesquisasPendentes && pesquisasPendentes.length > 0) {
+                this.registroRotaState.pesquisasPendentesMap.set(clienteIdNorm, pesquisasPendentes);
+                const obrigatorias = pesquisasPendentes.filter(p => p.pes_obrigatorio).length;
+                const opcionais = pesquisasPendentes.length - obrigatorias;
+                console.log(`✅ Check-in: Cliente ${clienteIdNorm} tem ${pesquisasPendentes.length} pesquisa(s) - ${obrigatorias} obrigatória(s), ${opcionais} opcional(is)`);
+            } else {
+                this.registroRotaState.pesquisasPendentesMap.delete(clienteIdNorm);
+            }
+
+            // Atualizar card para mostrar/esconder botão de pesquisa
+            setTimeout(() => {
+                this.atualizarCardCliente(clienteIdNorm);
+            }, 100);
+
+        } catch (error) {
+            console.warn(`Erro ao verificar pesquisas após check-in para cliente ${clienteIdNorm}:`, error);
+        }
+    }
+
+    /**
      * Obtém a posição GPS atual do dispositivo
      */
     obterPosicaoAtual() {
@@ -10466,14 +10526,8 @@ class App {
                 return;
             }
 
-            // Verificar pesquisas obrigatórias pendentes antes do checkout
-            if (tipoRegistro === 'checkout') {
-                const pesquisasPendentes = await this.verificarPesquisasObrigatoriasPendentes(repId, clienteId, dataVisita);
-                if (pesquisasPendentes && pesquisasPendentes.length > 0) {
-                    await this.abrirModalPesquisaVisita(pesquisasPendentes, repId, clienteId, clienteNome, dataVisita);
-                    return; // O checkout será retomado após completar as pesquisas
-                }
-            }
+            // Pesquisas obrigatórias devem ser respondidas via botão de pesquisa, não no checkout
+            // O checkout só será habilitado após responder as pesquisas obrigatórias
 
             if (tipoRegistro === 'checkin' && statusCliente?.status === 'em_atendimento') {
                 this.showNotification('Já existe um check-in em aberto para este cliente.', 'warning');
@@ -10600,6 +10654,9 @@ class App {
                     rv_id: rvResposta,
                     rep_id: repId
                 });
+
+                // Verificar pesquisas pendentes após checkin para habilitar botão de pesquisa
+                this.verificarPesquisasAposCheckin(repId, clienteId, dataVisita);
             }
 
             if (tipoRegistro === 'checkout') {
