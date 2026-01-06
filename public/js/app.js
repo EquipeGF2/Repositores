@@ -14820,13 +14820,23 @@ class App {
     async buscarPesquisasPendentes(repId, clienteId, dataVisita, apenasObrigatorias = false) {
         try {
             const hoje = new Date().toISOString().split('T')[0];
-            const dataRef = dataVisita || hoje;
+            // IMPORTANTE: Sempre usar data de HOJE para verificar respostas
+            // pois as respostas são salvas com a data atual, não a data da visita
+            const dataRef = hoje;
 
             // Buscar pesquisas e respostas em paralelo (otimização)
             const [pesquisas, respondidas] = await Promise.all([
                 db.getPesquisasPendentesRepositor(repId, clienteId),
                 db.getPesquisasRespondidas(repId, clienteId, dataRef)
             ]);
+
+            console.log('📋 Verificando pesquisas pendentes:', {
+                repId,
+                clienteId,
+                dataRef,
+                totalPesquisas: pesquisas.length,
+                respondidas: [...respondidas]
+            });
 
             // Filtrar pesquisas pendentes em uma única passagem
             const pendentes = pesquisas.filter(pesquisa => {
@@ -14901,36 +14911,36 @@ class App {
         }
 
         const body = document.getElementById('modalSelecaoPesquisaBody');
+        const obrigatorias = pesquisas.filter(p => p.pes_obrigatorio).length;
+        const opcionais = pesquisas.length - obrigatorias;
+
         body.innerHTML = `
-            <div style="margin-bottom: 16px; padding: 12px; background: #eff6ff; border-radius: 8px;">
-                <p style="margin: 0; font-size: 0.9rem; color: #1e40af;">
+            <div class="pesquisa-selecao-header">
+                <div class="pesquisa-selecao-cliente">
                     <strong>Cliente:</strong> ${clienteId} - ${clienteNome}
-                </p>
-                <p style="margin: 4px 0 0; font-size: 0.85rem; color: #6b7280;">
-                    Selecione qual pesquisa deseja responder:
-                </p>
+                </div>
+                <div class="pesquisa-selecao-resumo">
+                    ${obrigatorias > 0 ? `<span class="badge-obrigatoria">${obrigatorias} obrigatória${obrigatorias > 1 ? 's' : ''}</span>` : ''}
+                    ${opcionais > 0 ? `<span class="badge-opcional">${opcionais} opcional${opcionais > 1 ? 'is' : ''}</span>` : ''}
+                </div>
             </div>
-            <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div class="pesquisa-selecao-lista">
                 ${pesquisas.map((p, idx) => `
-                    <button type="button" class="btn" style="text-align: left; padding: 12px 16px; background: ${p.pes_obrigatorio ? '#fef2f2' : '#f9fafb'}; border: 1px solid ${p.pes_obrigatorio ? '#fecaca' : '#e5e7eb'}; border-radius: 8px;"
+                    <button type="button" class="pesquisa-selecao-item ${p.pes_obrigatorio ? 'obrigatoria' : 'opcional'}"
                             onclick="window.app.selecionarPesquisa(${idx}, ${repId}, '${clienteId}', '${clienteNome.replace(/'/g, "\\'")}', '${dataVisita}')">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <span style="font-size: 1.2rem;">${p.pes_obrigatorio ? '🔴' : '🟢'}</span>
-                            <div>
-                                <strong style="color: #111827;">${p.pes_titulo}</strong>
-                                ${p.pes_obrigatorio ? '<span style="color: #dc2626; font-size: 0.75rem; margin-left: 8px;">(Obrigatória)</span>' : '<span style="color: #059669; font-size: 0.75rem; margin-left: 8px;">(Opcional)</span>'}
-                                ${p.pes_descricao ? `<p style="margin: 4px 0 0; font-size: 0.8rem; color: #6b7280;">${p.pes_descricao}</p>` : ''}
-                            </div>
+                        <span class="pesquisa-selecao-icone">${p.pes_obrigatorio ? '●' : '○'}</span>
+                        <div class="pesquisa-selecao-info">
+                            <span class="pesquisa-selecao-titulo">${p.pes_titulo}</span>
+                            ${p.pes_descricao ? `<span class="pesquisa-selecao-desc">${p.pes_descricao}</span>` : ''}
                         </div>
+                        <span class="pesquisa-selecao-tipo">${p.pes_obrigatorio ? 'Obrigatória' : 'Opcional'}</span>
                     </button>
                 `).join('')}
             </div>
-            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
-                <button type="button" class="btn btn-secondary" style="width: 100%;"
-                        onclick="document.getElementById('modalSelecaoPesquisa').classList.remove('active')">
-                    Cancelar
-                </button>
-            </div>
+            <button type="button" class="pesquisa-selecao-cancelar"
+                    onclick="document.getElementById('modalSelecaoPesquisa').classList.remove('active')">
+                Cancelar
+            </button>
         `;
 
         // Guardar referência das pesquisas para uso posterior
