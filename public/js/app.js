@@ -9376,74 +9376,129 @@ class App {
             return cached.coords;
         }
 
-        try {
-            // Limpar e formatar o endereço para melhor resultado
-            // Formato esperado: "CIDADE/UF - Rua X, Bairro" ou similar
-            let enderecoFormatado = endereco
-                .replace(/\s*-\s*/g, ', ')  // Trocar " - " por ", "
-                .replace(/\//g, ', ')        // Trocar "/" por ", "
-                .replace(/\s+/g, ' ')        // Remover espaços extras
-                .trim();
-
-            // Adicionar ", Brasil" se não tiver
-            if (!enderecoFormatado.toLowerCase().includes('brasil')) {
-                enderecoFormatado += ', Brasil';
-            }
-
-            console.log('Geocodificando endereço:', enderecoFormatado);
-
-            // Tentar com o endereço completo formatado
-            const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(enderecoFormatado)}&format=json&limit=1&countrycodes=br`;
-            const data = await fetchJson(url, {
-                headers: {
-                    'User-Agent': 'RepositorApp/1.0'
-                }
+        // Função auxiliar para fazer busca no Nominatim
+        const buscarNominatim = async (query) => {
+            const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&countrycodes=br`;
+            return await fetchJson(url, {
+                headers: { 'User-Agent': 'RepositorApp/1.0' }
             });
+        };
 
-            if (data && data.length > 0) {
-                console.log('Geocodificação OK:', data[0].display_name);
-                const result = {
-                    lat: parseFloat(data[0].lat),
-                    lng: parseFloat(data[0].lon),
-                    aproximado: false,
-                    fonte: 'endereco_completo'
-                };
-                // Salvar no cache
-                this.geocodeCache[cacheKey] = { coords: result, timestamp: Date.now() };
-                return result;
+        try {
+            // Detectar formato do endereço
+            // Formato 1: "CIDADE • RUA, NÚMERO, BAIRRO"
+            // Formato 2: "CIDADE - RUA, NÚMERO, BAIRRO"
+            // Formato 3: "CIDADE/UF - RUA, NÚMERO, BAIRRO"
+
+            let cidade = '';
+            let ruaCompleta = '';
+
+            // Tentar separar por • (bullet) ou - (hífen)
+            if (endereco.includes('•')) {
+                const partes = endereco.split('•').map(p => p.trim());
+                cidade = partes[0];
+                ruaCompleta = partes[1] || '';
+            } else if (endereco.includes(' - ')) {
+                const partes = endereco.split(' - ').map(p => p.trim());
+                cidade = partes[0];
+                ruaCompleta = partes.slice(1).join(', ');
+            } else {
+                // Formato não reconhecido, usar endereço como está
+                ruaCompleta = endereco;
             }
 
-            // Se não encontrou, tentar apenas com cidade/UF
-            // Formato: "CIDADE - RUA..." ou "CIDADE/UF - RUA..."
-            const partes = endereco.split(/\s*-\s*/);
-            if (partes.length > 0) {
-                // Pegar primeira parte (cidade ou cidade/UF) e limpar
-                let cidadeParte = partes[0].trim();
-                // Se tiver "/", pegar só a cidade (antes da barra)
-                if (cidadeParte.includes('/')) {
-                    cidadeParte = cidadeParte.split('/')[0].trim();
+            // Limpar cidade (remover UF se tiver)
+            if (cidade.includes('/')) {
+                cidade = cidade.split('/')[0].trim();
+            }
+
+            console.log('Geocodificando:', { cidade, ruaCompleta, original: endereco });
+
+            // Extrair componentes do endereço: "RUA NOME, NÚMERO, BAIRRO"
+            const partesRua = ruaCompleta.split(',').map(p => p.trim());
+            const rua = partesRua[0] || '';
+            const numero = partesRua[1] || '';
+            const bairro = partesRua[2] || '';
+
+            // ESTRATÉGIA 1: Busca estruturada (melhor para Nominatim)
+            // Formato: "Rua Nome Número, Bairro, Cidade, RS, Brasil"
+            if (rua && cidade) {
+                let buscaEstruturada = rua;
+                if (numero) buscaEstruturada += ' ' + numero;
+                if (bairro) buscaEstruturada += ', ' + bairro;
+                buscaEstruturada += ', ' + cidade + ', RS, Brasil';
+
+                console.log('Tentativa 1 (estruturada):', buscaEstruturada);
+                const data1 = await buscarNominatim(buscaEstruturada);
+
+                if (data1 && data1.length > 0) {
+                    console.log('✓ Geocodificação OK (estruturada):', data1[0].display_name);
+                    const result = {
+                        lat: parseFloat(data1[0].lat),
+                        lng: parseFloat(data1[0].lon),
+                        aproximado: false,
+                        fonte: 'endereco_completo'
+                    };
+                    this.geocodeCache[cacheKey] = { coords: result, timestamp: Date.now() };
+                    return result;
                 }
+            }
 
-                const cidadeBusca = cidadeParte + ', RS, Brasil';
-                console.log('Tentando apenas cidade:', cidadeBusca);
+            // ESTRATÉGIA 2: Rua + Cidade (sem número e bairro)
+            if (rua && cidade) {
+                const buscaRuaCidade = `${rua}, ${cidade}, RS, Brasil`;
+                console.log('Tentativa 2 (rua+cidade):', buscaRuaCidade);
+                const data2 = await buscarNominatim(buscaRuaCidade);
 
-                const urlCidade = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cidadeBusca)}&format=json&limit=1&countrycodes=br`;
-                const dataCidade = await fetchJson(urlCidade, {
-                    headers: {
-                        'User-Agent': 'RepositorApp/1.0'
-                    }
-                });
+                if (data2 && data2.length > 0) {
+                    console.log('✓ Geocodificação OK (rua+cidade):', data2[0].display_name);
+                    const result = {
+                        lat: parseFloat(data2[0].lat),
+                        lng: parseFloat(data2[0].lon),
+                        aproximado: false,
+                        fonte: 'rua_cidade'
+                    };
+                    this.geocodeCache[cacheKey] = { coords: result, timestamp: Date.now() };
+                    return result;
+                }
+            }
+
+            // ESTRATÉGIA 3: Bairro + Cidade
+            if (bairro && cidade) {
+                const buscaBairroCidade = `${bairro}, ${cidade}, RS, Brasil`;
+                console.log('Tentativa 3 (bairro+cidade):', buscaBairroCidade);
+                const data3 = await buscarNominatim(buscaBairroCidade);
+
+                if (data3 && data3.length > 0) {
+                    console.log('✓ Geocodificação OK (bairro+cidade):', data3[0].display_name);
+                    const result = {
+                        lat: parseFloat(data3[0].lat),
+                        lng: parseFloat(data3[0].lon),
+                        aproximado: true,  // Bairro é menos preciso que rua
+                        fonte: 'bairro',
+                        cidade: cidade,
+                        bairro: bairro
+                    };
+                    this.geocodeCache[cacheKey] = { coords: result, timestamp: Date.now() };
+                    return result;
+                }
+            }
+
+            // ESTRATÉGIA 4 (FALLBACK): Apenas cidade
+            if (cidade) {
+                const cidadeBusca = cidade + ', RS, Brasil';
+                console.log('Tentativa 4 (fallback cidade):', cidadeBusca);
+                const dataCidade = await buscarNominatim(cidadeBusca);
 
                 if (dataCidade && dataCidade.length > 0) {
-                    console.log('Geocodificação por cidade (APROXIMADO):', dataCidade[0].display_name);
+                    console.log('⚠ Geocodificação por cidade (APROXIMADO):', dataCidade[0].display_name);
                     const result = {
                         lat: parseFloat(dataCidade[0].lat),
                         lng: parseFloat(dataCidade[0].lon),
                         aproximado: true,
                         fonte: 'cidade',
-                        cidade: cidadeParte
+                        cidade: cidade
                     };
-                    // Salvar no cache
                     this.geocodeCache[cacheKey] = { coords: result, timestamp: Date.now() };
                     return result;
                 }
@@ -9606,8 +9661,11 @@ class App {
 
                 // Atualizar display da distância
                 if (ehAproximado) {
-                    // Distância aproximada (baseada só na cidade) - não bloqueia check-in
-                    elDistancia.innerHTML = `📍 ~${distanciaKm} km <span style="font-size:10px;color:#6b7280;">(aprox. via ${coordsCliente.cidade || 'cidade'})</span>`;
+                    // Distância aproximada (baseada em bairro ou cidade) - não bloqueia check-in
+                    const fonteTexto = coordsCliente.fonte === 'bairro'
+                        ? (coordsCliente.bairro || 'bairro')
+                        : (coordsCliente.cidade || 'cidade');
+                    elDistancia.innerHTML = `📍 ~${distanciaKm} km <span style="font-size:10px;color:#6b7280;">(aprox. via ${fonteTexto})</span>`;
                     elDistancia.style.color = '#f59e0b'; // amarelo/laranja
                 } else if (foraDoPer) {
                     elDistancia.innerHTML = `📍 <strong style="color:#b91c1c;">${distanciaKm} km</strong> (fora do perímetro de ${distanciaMaximaKm}km)`;
