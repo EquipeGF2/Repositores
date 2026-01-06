@@ -5244,3 +5244,260 @@ body.modal-open {
 .tag-selecionado button:hover {
     color: #dc2626;
 }
+
+/* ==================== MODAL DE PESQUISA (Visita) ==================== */
+#modalPesquisaVisita .modal-content {
+    max-width: 600px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+#modalPesquisaVisita .modal-header h3 {
+    font-size: 1rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#modalPesquisaVisitaBody {
+    padding: 16px;
+}
+
+#modalPesquisaVisitaBody .form-group {
+    margin-bottom: 16px;
+}
+
+#modalPesquisaVisitaBody .form-group label {
+    font-weight: 600;
+    margin-bottom: 6px;
+    display: block;
+    font-size: 0.95rem;
+    color: var(--gray-800);
+}
+
+#modalPesquisaVisitaBody .form-control {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--gray-300);
+    border-radius: var(--radius);
+    font-size: 1rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+#modalPesquisaVisitaBody .form-control:focus {
+    outline: none;
+    border-color: var(--info);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Botões do formulário de pesquisa */
+#formPesquisaVisita .btn {
+    padding: 10px 20px;
+    font-size: 0.95rem;
+    font-weight: 500;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all 0.2s;
+    border: none;
+    min-width: 100px;
+}
+
+#formPesquisaVisita .btn-primary {
+    background: var(--info);
+    color: white;
+}
+
+#formPesquisaVisita .btn-primary:hover {
+    background: #2563eb;
+}
+
+#formPesquisaVisita .btn-secondary {
+    background: var(--gray-200);
+    color: var(--gray-700);
+}
+
+#formPesquisaVisita .btn-secondary:hover {
+    background: var(--gray-300);
+}
+
+/* Radio e Checkbox groups */
+#modalPesquisaVisitaBody .radio-group,
+#modalPesquisaVisitaBody .checkbox-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#modalPesquisaVisitaBody .radio-inline,
+#modalPesquisaVisitaBody .checkbox-inline {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--gray-100);
+    border-radius: var(--radius);
+    border: 1px solid var(--gray-200);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+#modalPesquisaVisitaBody .radio-inline:hover,
+#modalPesquisaVisitaBody .checkbox-inline:hover {
+    background: var(--gray-200);
+    border-color: var(--gray-300);
+}
+
+#modalPesquisaVisitaBody .radio-inline input,
+#modalPesquisaVisitaBody .checkbox-inline input {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    cursor: pointer;
+}
+
+#modalPesquisaVisitaBody .radio-inline span,
+#modalPesquisaVisitaBody .checkbox-inline span {
+    font-size: 0.95rem;
+    color: var(--gray-700);
+}
+
+/* Seção de foto */
+#modalPesquisaVisitaBody .form-group:has(#pesquisaFotoPreview) {
+    background: var(--gray-100);
+    padding: 16px;
+    border-radius: var(--radius-lg);
+    margin-top: 20px;
+}
+
+/* Área de ações (botões Cancelar/Próxima/Finalizar) */
+#formPesquisaVisita > div:last-child {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--gray-200);
+}
+
+/* Info do cliente */
+.pesquisa-visita-info {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: var(--radius-lg);
+    padding: 12px 16px;
+    margin-bottom: 20px;
+}
+
+.pesquisa-visita-info p {
+    margin: 0;
+    font-size: 0.9rem;
+    color: #1e40af;
+}
+
+/* Modal de seleção de pesquisa */
+#modalSelecaoPesquisa .modal-content {
+    max-width: 500px;
+}
+
+#modalSelecaoPesquisaBody {
+    padding: 16px;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.pesquisa-opcao-card {
+    display: flex;
+    flex-direction: column;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-lg);
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.pesquisa-opcao-card:hover {
+    border-color: var(--info);
+    background: #f0f9ff;
+    transform: translateY(-1px);
+}
+
+.pesquisa-opcao-card.obrigatoria {
+    border-left: 4px solid #ef4444;
+}
+
+.pesquisa-opcao-card h4 {
+    margin: 0 0 4px 0;
+    font-size: 1rem;
+    color: var(--gray-800);
+}
+
+.pesquisa-opcao-card p {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--gray-500);
+}
+
+/* Botão de pesquisa no card */
+.btn-pesquisa {
+    background: #8b5cf6 !important;
+    color: white !important;
+    border: none;
+    padding: 6px 12px;
+    border-radius: var(--radius);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-pesquisa:hover {
+    background: #7c3aed !important;
+}
+
+/* Modal câmera pesquisa */
+#modalCameraPesquisa .modal-content {
+    max-width: 500px;
+}
+
+#modalCameraPesquisa .modal-body {
+    padding: 16px;
+}
+
+#cameraPesquisaArea {
+    position: relative;
+    background: var(--gray-800);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    min-height: 300px;
+}
+
+#cameraPesquisaArea video {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+/* Responsivo para mobile */
+@media (max-width: 640px) {
+    #modalPesquisaVisita .modal-content {
+        max-width: 100%;
+        margin: 10px;
+        max-height: calc(100vh - 20px);
+    }
+
+    #formPesquisaVisita .btn {
+        padding: 12px 16px;
+        font-size: 1rem;
+        flex: 1;
+    }
+
+    #formPesquisaVisita > div:last-child {
+        flex-direction: column-reverse;
+    }
+
+    #modalPesquisaVisitaBody .radio-inline,
+    #modalPesquisaVisitaBody .checkbox-inline {
+        padding: 12px 16px;
+    }
+}

@@ -4471,7 +4471,10 @@ class TursoDatabase {
         try {
             const { pesId, repId, clienteCodigo, visitaId, respostas, fotoUrl } = dados;
             const dataHoje = new Date().toISOString().split('T')[0];
-            const clienteCodigoNorm = clienteCodigo || null;
+            // Normalizar cliente: remover .0 do final e garantir string
+            const clienteCodigoNorm = clienteCodigo ? String(clienteCodigo).trim().replace(/\.0$/, '') : null;
+
+            console.log('📝 Salvando resposta pesquisa:', { pesId, repId, clienteCodigoNorm, dataHoje });
 
             // Verificar se já existe uma resposta para esta combinação
             const existente = await this.mainClient.execute({
@@ -4607,15 +4610,21 @@ class TursoDatabase {
      */
     async getPesquisasRespondidas(repId, clienteCodigo, data) {
         try {
+            // Normalizar cliente: remover .0 do final e garantir string
+            const clienteNorm = clienteCodigo ? String(clienteCodigo).trim().replace(/\.0$/, '') : null;
+
             const result = await this.mainClient.execute({
                 sql: `
                     SELECT DISTINCT res_pes_id
                     FROM cc_pesquisa_respostas
                     WHERE res_rep_id = ? AND res_data = ?
-                    ${clienteCodigo ? 'AND res_cliente_codigo = ?' : ''}
+                    ${clienteNorm ? 'AND res_cliente_codigo = ?' : ''}
                 `,
-                args: clienteCodigo ? [repId, data, clienteCodigo] : [repId, data]
+                args: clienteNorm ? [repId, data, clienteNorm] : [repId, data]
             });
+
+            console.log('🔍 Pesquisas respondidas:', { repId, clienteNorm, data, respondidas: result.rows.map(r => r.res_pes_id) });
+
             return new Set(result.rows.map(r => r.res_pes_id));
         } catch (error) {
             console.error('Erro ao buscar pesquisas respondidas:', error);
