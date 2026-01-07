@@ -5,19 +5,21 @@ const CACHE_NAME = 'germani-repositores-v1';
 const RUNTIME_CACHE = 'germani-runtime-v1';
 
 // Arquivos essenciais para funcionar offline
+// Usar caminhos relativos para funcionar com GitHub Pages (subdiretório)
 const ESSENTIAL_FILES = [
-  '/',
-  '/index.html',
-  '/css/style.css',
-  '/js/auth.js',
-  '/js/app.js',
-  '/js/db.js',
-  '/js/pages.js',
-  '/js/utils.js',
-  '/js/geo.js',
-  '/js/acl-resources.js',
-  '/js/turso-config.js',
-  '/icon-512.png'
+  './',
+  './index.html',
+  './css/style.css',
+  './js/auth.js',
+  './js/app.js',
+  './js/db.js',
+  './js/pages.js',
+  './js/utils.js',
+  './js/geo.js',
+  './js/acl-resources.js',
+  './js/turso-config.js',
+  './icon-512.png',
+  './manifest.json'
 ];
 
 // URLs da API que devem funcionar offline (Network First)

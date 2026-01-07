@@ -4733,7 +4733,18 @@ class App {
     limparRoteiroPendente() {
         const indicador = document.getElementById('roteiroPendentesIndicador');
         if (indicador) {
-            indicador.style.display = 'none';
+            // Mostrar "Roteiro salvo" em verde por 3 segundos
+            indicador.textContent = 'Roteiro salvo';
+            indicador.classList.remove('badge-warning');
+            indicador.classList.add('badge-success-roteiro');
+            indicador.style.display = 'inline-block';
+
+            setTimeout(() => {
+                indicador.style.display = 'none';
+                indicador.textContent = 'Alterações pendentes';
+                indicador.classList.remove('badge-success-roteiro');
+                indicador.classList.add('badge-warning');
+            }, 3000);
         }
     }
 
@@ -4863,9 +4874,7 @@ class App {
             this.renderModalClientesCidade();
             this.showNotification('Cliente adicionado ao roteiro.', 'success');
 
-            if (possuiRateio) {
-                await this.sugerirCadastroRateio(clienteCodigo);
-            }
+            // Auto-verificação de rateio roda em segundo plano (sem prompt)
         } catch (error) {
             this.showNotification(error.message || 'Não foi possível adicionar o cliente.', 'error');
         }
@@ -4942,8 +4951,8 @@ class App {
                                 <td>${formatarGrupo(cliente.grupo_desc)}</td>
                                 <td class="table-actions">
                                     ${jaIncluido
-                                        ? '<span class="badge badge-success">Incluído</span>'
-                                        : `<button class="btn btn-primary btn-sm" data-acao="adicionar-cliente" data-id="${cliente.cliente}">Adicionar</button>`}
+                                        ? '<span class="badge badge-success">✓</span>'
+                                        : `<button class="btn btn-primary btn-sm btn-adicionar-cliente" data-acao="adicionar-cliente" data-id="${cliente.cliente}">+<span class="btn-text"> Adicionar</span></button>`}
                                 </td>
                             </tr>
                         `;

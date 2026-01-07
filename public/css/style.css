@@ -5690,3 +5690,316 @@ body.modal-open {
 .pesquisa-selecao-lista::-webkit-scrollbar-thumb:hover {
     background: var(--gray-400);
 }
+
+/* ==================== MOBILE: ROTEIRO FIXES ==================== */
+
+/* Notificações SEMPRE acima de modais */
+.notification {
+    z-index: 99999 !important;
+}
+
+/* Mobile específico para roteiro */
+@media (max-width: 768px) {
+    /* Reduzir margens dos cards no mobile */
+    .card {
+        padding: 0.75rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .card-header {
+        padding: 0.5rem 0;
+        margin-bottom: 0.5rem;
+    }
+
+    .card-body {
+        padding: 0;
+    }
+
+    /* Roteiro header compacto */
+    .roteiro-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+        padding: 0.5rem 0;
+    }
+
+    .roteiro-badges {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    /* Grid de detalhes compacto */
+    .roteiro-detalhes-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .roteiro-detalhe {
+        padding: 0.5rem 0.75rem;
+    }
+
+    .roteiro-detalhe small {
+        font-size: 0.7rem;
+    }
+
+    .roteiro-detalhe strong {
+        font-size: 0.85rem;
+    }
+
+    /* Busca de cidades */
+    .cidades-busca-container {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .cidades-busca-container .autocomplete-input {
+        flex: 1 1 100%;
+    }
+
+    .cidades-busca-container .cidade-ordem-wrapper {
+        flex: 0 0 60px;
+    }
+
+    .cidades-busca-container .btn {
+        flex: 1;
+        min-width: unset;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.85rem;
+    }
+
+    /* Tabela de cidades - ícone de remover visível */
+    .roteiro-cidades-table {
+        width: 100%;
+        table-layout: fixed;
+    }
+
+    .roteiro-cidades-table td,
+    .roteiro-cidades-table th {
+        padding: 0.5rem 0.4rem;
+        font-size: 0.85rem;
+    }
+
+    .roteiro-cidades-table .btn {
+        padding: 0.4rem 0.6rem;
+        font-size: 0.8rem;
+    }
+
+    /* Layout dos cards */
+    .roteiro-layout {
+        gap: 0.75rem;
+    }
+
+    /* Salvar container */
+    .roteiro-salvar-container {
+        margin-top: 0.75rem;
+    }
+
+    .roteiro-salvar-container .btn {
+        width: 100%;
+        min-width: unset;
+    }
+}
+
+/* Modal Adicionar Cliente - Mobile */
+@media (max-width: 768px) {
+    #modalAdicionarCliente .modal-content {
+        margin: 0;
+        max-height: 100vh;
+        height: 100vh;
+        border-radius: 0;
+        width: 100%;
+        max-width: 100%;
+    }
+
+    #modalAdicionarCliente .modal-header {
+        padding: 0.75rem 1rem;
+        position: sticky;
+        top: 0;
+        background: white;
+        z-index: 20;
+        border-bottom: 1px solid var(--gray-200);
+    }
+
+    #modalAdicionarCliente .modal-header h3 {
+        font-size: 1rem;
+    }
+
+    #modalAdicionarCliente .modal-body {
+        padding: 0.75rem;
+        flex: 1;
+        overflow-y: auto;
+    }
+
+    /* Campos busca e ordem lado a lado */
+    #modalAdicionarCliente .form-row {
+        display: flex;
+        gap: 0.5rem;
+        padding: 0.5rem 0.75rem !important;
+        margin-bottom: 0.5rem !important;
+        position: sticky;
+        top: 0;
+        background: white;
+        z-index: 15;
+        border-bottom: 1px solid var(--gray-200);
+    }
+
+    #modalAdicionarCliente .form-row .form-group:first-child {
+        flex: 1 !important;
+    }
+
+    #modalAdicionarCliente .form-row .form-group:last-child {
+        flex: 0 0 70px !important;
+        min-width: 70px !important;
+    }
+
+    #modalAdicionarCliente .form-row label {
+        font-size: 0.75rem;
+        margin-bottom: 0.25rem;
+    }
+
+    #modalAdicionarCliente .form-row input {
+        padding: 0.5rem;
+        font-size: 0.9rem;
+    }
+
+    #modalAdicionarCliente .form-row small {
+        display: none;
+    }
+
+    /* Tabela de clientes no modal */
+    #modalAdicionarCliente .roteiro-clientes-table {
+        font-size: 0.8rem;
+    }
+
+    #modalAdicionarCliente .roteiro-clientes-table th,
+    #modalAdicionarCliente .roteiro-clientes-table td {
+        padding: 0.5rem 0.4rem;
+    }
+
+    /* Botão adicionar como ícone + */
+    #modalAdicionarCliente .roteiro-clientes-table .btn-adicionar-cliente {
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        font-size: 1.2rem;
+        line-height: 1;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    #modalAdicionarCliente .roteiro-clientes-table .btn-adicionar-cliente span.btn-text {
+        display: none;
+    }
+
+    #modalAdicionarCliente .modal-footer {
+        padding: 0.5rem 0.75rem;
+        position: sticky;
+        bottom: 0;
+        background: white;
+        border-top: 1px solid var(--gray-200);
+    }
+}
+
+/* Modal Registro de Visita - Mobile */
+@media (max-width: 768px) {
+    .modal-registro-visita .modal-content,
+    #modalRegistroVisita .modal-content {
+        margin: 0;
+        max-height: 100vh;
+        height: auto;
+        max-height: calc(100vh - 20px);
+        width: calc(100% - 20px);
+        margin: 10px;
+        border-radius: 12px;
+        overflow: hidden;
+    }
+
+    .modal-registro-visita .modal-header,
+    #modalRegistroVisita .modal-header {
+        padding: 0.75rem;
+    }
+
+    .modal-registro-visita .modal-header h3,
+    #modalRegistroVisita .modal-header h3 {
+        font-size: 0.95rem;
+        line-height: 1.2;
+        word-break: break-word;
+    }
+
+    .modal-registro-visita .modal-body,
+    #modalRegistroVisita .modal-body {
+        padding: 0.75rem;
+        overflow-y: auto;
+        max-height: calc(100vh - 180px);
+    }
+
+    .modal-registro-visita .form-row,
+    #modalRegistroVisita .form-row {
+        gap: 0.5rem;
+    }
+
+    .modal-registro-visita .form-group,
+    #modalRegistroVisita .form-group {
+        margin-bottom: 0.75rem;
+    }
+
+    .modal-registro-visita label,
+    #modalRegistroVisita label {
+        font-size: 0.8rem;
+        margin-bottom: 0.25rem;
+    }
+
+    .modal-registro-visita input,
+    .modal-registro-visita select,
+    #modalRegistroVisita input,
+    #modalRegistroVisita select {
+        padding: 0.5rem;
+        font-size: 0.9rem;
+    }
+
+    /* Checkboxes de atividades */
+    .modal-registro-visita .checkbox-grid,
+    #modalRegistroVisita .checkbox-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem;
+    }
+
+    .modal-registro-visita .checkbox-item,
+    #modalRegistroVisita .checkbox-item {
+        padding: 0.5rem;
+        font-size: 0.8rem;
+    }
+
+    .modal-registro-visita .modal-footer,
+    #modalRegistroVisita .modal-footer {
+        padding: 0.75rem;
+        gap: 0.5rem;
+    }
+
+    .modal-registro-visita .modal-footer .btn,
+    #modalRegistroVisita .modal-footer .btn {
+        padding: 0.6rem 1rem;
+        font-size: 0.9rem;
+    }
+}
+
+/* Indicador de alterações pendentes - linha única */
+#roteiroPendentesIndicador {
+    white-space: nowrap;
+}
+
+/* Badge roteiro salvo verde */
+.badge-success-roteiro {
+    background: #10b981 !important;
+    color: white !important;
+}
+
+/* Fix para main-content em mobile */
+@media (max-width: 768px) {
+    .main-content {
+        padding: 0.75rem;
+    }
+}

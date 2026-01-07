@@ -631,9 +631,9 @@ export const pages = {
                     <p class="text-muted">Configure os dias, cidades e clientes atendidos. As alterações serão salvas ao clicar no botão "Salvar Roteiro".</p>
                 </div>
                 <div class="roteiro-badges">
-                    <span class="badge badge-info">Código ${repositor.repo_cod}</span>
+                    <span class="badge badge-info">Cód. ${repositor.repo_cod}</span>
                     <span class="badge">${repositor.repo_vinculo === 'agencia' ? 'Agência' : 'Repositor'}</span>
-                    <span id="roteiroPendentesIndicador" class="badge badge-warning" style="display: none; margin-left: 0.5rem;">Alterações pendentes</span>
+                    <span id="roteiroPendentesIndicador" class="badge badge-warning" style="display: none;">Alterações pendentes</span>
                 </div>
             </div>
 
@@ -732,14 +732,14 @@ export const pages = {
                         <button class="modal-close" onclick="window.app.fecharModalAdicionarCliente()">&times;</button>
                     </div>
                     <div class="modal-body">
-                        <div class="form-row" style="position: sticky; top: 0; background: white; z-index: 10; padding-bottom: 12px; margin-bottom: 16px; border-bottom: 1px solid #e5e7eb;">
-                            <div class="form-group" style="flex: 2;">
+                        <div class="form-row" style="position: sticky; top: 0; background: white; z-index: 10; padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid #e5e7eb;">
+                            <div class="form-group" style="flex: 1;">
                                 <label for="modalBuscaClientesCidade">Buscar cliente</label>
                                 <input type="text" id="modalBuscaClientesCidade" placeholder="Nome, fantasia, bairro ou código">
                             </div>
-                            <div class="form-group" style="flex: 1; min-width: 150px;">
-                                <label for="modalOrdemCliente">Ordem de atendimento</label>
-                                <input type="number" id="modalOrdemCliente" min="1" step="1" placeholder="Ordem" required>
+                            <div class="form-group" style="flex: 0 0 80px; min-width: 80px;">
+                                <label for="modalOrdemCliente">Ordem</label>
+                                <input type="number" id="modalOrdemCliente" min="1" step="1" placeholder="1" required>
                                 <small id="modalOrdemHelper" class="text-muted"></small>
                             </div>
                         </div>
