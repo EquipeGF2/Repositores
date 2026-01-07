@@ -1134,6 +1134,12 @@ class App {
                     this.carregarTiposDocumentos();
                 } else if (tabName === 'rubricas') {
                     this.carregarTiposGasto();
+                } else if (tabName === 'coordenadas') {
+                    this.inicializarAbaCoordenadasConfig();
+                } else if (tabName === 'usuarios') {
+                    this.inicializarAbaUsuariosConfig();
+                } else if (tabName === 'acessos') {
+                    this.inicializarAbaAcessosConfig();
                 }
             });
         });
@@ -1168,8 +1174,8 @@ class App {
                 const repositores = await db.getRepositoresDetalhados({ status: 'ativos' });
                 repositores.forEach(rep => {
                     const opt = document.createElement('option');
-                    opt.value = rep.rep_id;
-                    opt.textContent = `${rep.rep_id} - ${rep.rep_nome}`;
+                    opt.value = rep.repo_cod;
+                    opt.textContent = `${rep.repo_cod} - ${rep.repo_nome}`;
                     selectRepositor.appendChild(opt);
                 });
             } catch (error) {
@@ -1206,6 +1212,597 @@ class App {
         const btnSalvarTipoGasto = document.getElementById('btnSalvarTipoGasto');
         if (btnSalvarTipoGasto) {
             btnSalvarTipoGasto.addEventListener('click', () => this.salvarTipoGasto());
+        }
+    }
+
+    // ==================== ABA COORDENADAS (CONFIG) ====================
+
+    async inicializarAbaCoordenadasConfig() {
+        const btnBuscar = document.getElementById('btnConfigBuscarCoordenadas');
+        const btnLimpar = document.getElementById('btnConfigLimparFiltrosCoordenadas');
+        const inputBusca = document.getElementById('configCoordBuscaCliente');
+
+        if (btnBuscar) {
+            btnBuscar.addEventListener('click', () => this.buscarCoordenadasClientesConfig());
+        }
+
+        if (btnLimpar) {
+            btnLimpar.addEventListener('click', () => {
+                document.getElementById('configCoordBuscaCliente').value = '';
+                document.getElementById('configCoordFiltroPrecisao').value = '';
+                document.getElementById('configCoordenadasResultados').innerHTML = `
+                    <p class="text-muted" style="text-align: center; padding: 40px;">
+                        Use os filtros acima para buscar clientes e gerenciar suas coordenadas.
+                    </p>
+                `;
+            });
+        }
+
+        if (inputBusca) {
+            inputBusca.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') this.buscarCoordenadasClientesConfig();
+            });
+        }
+    }
+
+    async buscarCoordenadasClientesConfig() {
+        const container = document.getElementById('configCoordenadasResultados');
+        const busca = document.getElementById('configCoordBuscaCliente')?.value?.trim() || '';
+        const precisao = document.getElementById('configCoordFiltroPrecisao')?.value || '';
+
+        if (!container) return;
+
+        container.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px;">Buscando clientes...</p>';
+
+        try {
+            const backendUrl = this.registroRotaState?.backendUrl || 'https://repositor-backend.onrender.com';
+            const params = new URLSearchParams();
+            if (busca) params.append('busca', busca);
+            if (precisao) params.append('precisao', precisao);
+            params.append('limite', '50');
+
+            const response = await fetchJson(`${backendUrl}/api/registro-rota/coordenadas/listar?${params.toString()}`);
+
+            if (!response || !response.ok) {
+                throw new Error(response?.message || 'Erro ao buscar coordenadas');
+            }
+
+            const clientes = response.clientes || [];
+
+            if (clientes.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state" style="padding: 40px;">
+                        <div class="empty-state-icon">📍</div>
+                        <p>Nenhum cliente encontrado com os filtros selecionados.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            this.renderizarListaCoordenadasConfig(clientes);
+        } catch (error) {
+            console.error('Erro ao buscar coordenadas:', error);
+            container.innerHTML = `<p style="color: #b91c1c; text-align: center; padding: 20px;">Erro: ${error.message}</p>`;
+        }
+    }
+
+    renderizarListaCoordenadasConfig(clientes) {
+        const container = document.getElementById('configCoordenadasResultados');
+        if (!container) return;
+
+        const getPrecisaoClass = (precisao) => {
+            if (precisao === 'manual') return 'badge-purple';
+            if (precisao === 'endereco') return 'badge-success';
+            if (precisao === 'rua') return 'badge-success';
+            if (precisao === 'bairro') return 'badge-warning';
+            if (precisao === 'cidade') return 'badge-gray';
+            return 'badge-gray';
+        };
+
+        const getPrecisaoTexto = (precisao, aproximado) => {
+            if (precisao === 'manual') return '📌 Manual';
+            if (aproximado) return '⚠️ Aproximado';
+            if (precisao === 'endereco') return '✅ Preciso';
+            return precisao || 'Desconhecido';
+        };
+
+        container.innerHTML = `
+            <p style="margin-bottom: 16px; color: var(--gray-600);">
+                Encontrados <strong>${clientes.length}</strong> cliente(s)
+            </p>
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 100px;">Código</th>
+                            <th>Nome</th>
+                            <th>Endereço</th>
+                            <th style="width: 120px;">Precisão</th>
+                            <th style="width: 180px;">Coordenadas</th>
+                            <th style="width: 80px;">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${clientes.map(c => `
+                            <tr>
+                                <td><strong>${c.cliente_id}</strong></td>
+                                <td>${c.cli_nome || '-'}</td>
+                                <td style="font-size: 13px;">${c.endereco || '-'}</td>
+                                <td>
+                                    <span class="badge ${getPrecisaoClass(c.precisao)}">
+                                        ${getPrecisaoTexto(c.precisao, c.aproximado)}
+                                    </span>
+                                </td>
+                                <td style="font-size: 12px; font-family: monospace;">
+                                    ${c.latitude && c.longitude
+                                        ? `${Number(c.latitude).toFixed(6)}, ${Number(c.longitude).toFixed(6)}`
+                                        : '<span class="text-muted">Não definido</span>'}
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-primary" onclick="app.abrirModalCoordenadasConfig('${c.cliente_id}')" title="Editar Coordenadas">
+                                        📍
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    async abrirModalCoordenadasConfig(clienteId) {
+        const modal = document.getElementById('modalEditarCoordenadasConfig');
+        const body = document.getElementById('modalEditarCoordenadasConfigBody');
+
+        if (!modal || !body) return;
+
+        body.innerHTML = '<p class="text-muted">Carregando informações...</p>';
+        modal.classList.add('active');
+
+        try {
+            const backendUrl = this.registroRotaState?.backendUrl || 'https://repositor-backend.onrender.com';
+            const response = await fetchJson(`${backendUrl}/api/registro-rota/coordenadas/${clienteId}`);
+
+            if (!response || !response.ok) {
+                throw new Error(response?.message || 'Erro ao carregar cliente');
+            }
+
+            const cliente = response.cliente;
+
+            body.innerHTML = `
+                <div style="margin-bottom: 16px;">
+                    <p><strong>Cliente:</strong> ${cliente.cliente_id} - ${cliente.cli_nome || 'Sem nome'}</p>
+                    <p><strong>Endereço:</strong> ${cliente.endereco || '-'}</p>
+                </div>
+                <div class="form-group">
+                    <label>Latitude</label>
+                    <input type="number" id="configCoordLatitude" step="0.000001" value="${cliente.latitude || ''}" placeholder="-23.550520">
+                </div>
+                <div class="form-group">
+                    <label>Longitude</label>
+                    <input type="number" id="configCoordLongitude" step="0.000001" value="${cliente.longitude || ''}" placeholder="-46.633308">
+                </div>
+                <div class="form-group">
+                    <button type="button" class="btn btn-secondary btn-sm" id="btnUsarLocalizacaoConfig">
+                        📍 Usar Minha Localização Atual
+                    </button>
+                </div>
+                <div class="modal-footer" style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+                    <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalEditarCoordenadasConfig').classList.remove('active')">Cancelar</button>
+                    <button type="button" class="btn btn-primary" id="btnSalvarCoordenadasConfig">Salvar</button>
+                </div>
+            `;
+
+            document.getElementById('btnUsarLocalizacaoConfig').addEventListener('click', async () => {
+                try {
+                    const pos = await new Promise((resolve, reject) => {
+                        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true });
+                    });
+                    document.getElementById('configCoordLatitude').value = pos.coords.latitude.toFixed(6);
+                    document.getElementById('configCoordLongitude').value = pos.coords.longitude.toFixed(6);
+                    this.showNotification('Localização capturada!', 'success');
+                } catch (error) {
+                    this.showNotification('Erro ao obter localização: ' + error.message, 'error');
+                }
+            });
+
+            document.getElementById('btnSalvarCoordenadasConfig').addEventListener('click', async () => {
+                await this.salvarCoordenadasManualConfig(clienteId);
+            });
+        } catch (error) {
+            body.innerHTML = `<p style="color: #b91c1c;">Erro: ${error.message}</p>`;
+        }
+    }
+
+    async salvarCoordenadasManualConfig(clienteId) {
+        const latitude = document.getElementById('configCoordLatitude')?.value;
+        const longitude = document.getElementById('configCoordLongitude')?.value;
+
+        if (!latitude || !longitude) {
+            this.showNotification('Por favor, informe latitude e longitude.', 'warning');
+            return;
+        }
+
+        const lat = parseFloat(latitude);
+        const lng = parseFloat(longitude);
+
+        if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+            this.showNotification('Coordenadas inválidas.', 'error');
+            return;
+        }
+
+        try {
+            const backendUrl = this.registroRotaState?.backendUrl || 'https://repositor-backend.onrender.com';
+            const response = await fetchJson(`${backendUrl}/api/registro-rota/coordenadas/manual`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    cliente_id: clienteId,
+                    latitude: lat,
+                    longitude: lng
+                })
+            });
+
+            if (!response || !response.ok) {
+                throw new Error(response?.message || 'Erro ao salvar coordenadas');
+            }
+
+            this.showNotification('Coordenadas salvas com sucesso!', 'success');
+            document.getElementById('modalEditarCoordenadasConfig').classList.remove('active');
+            await this.buscarCoordenadasClientesConfig();
+        } catch (error) {
+            console.error('Erro ao salvar coordenadas:', error);
+            this.showNotification('Erro ao salvar: ' + error.message, 'error');
+        }
+    }
+
+    // ==================== ABA USUÁRIOS (CONFIG) ====================
+
+    async inicializarAbaUsuariosConfig() {
+        this.usuariosFiltradosConfig = [];
+        this.usuarioEditandoConfig = null;
+
+        // Carregar repositores para o select
+        const repositores = await db.getAllRepositors();
+        const selectRepositor = document.getElementById('usuarioRepositorConfig');
+        if (selectRepositor) {
+            selectRepositor.innerHTML = '<option value="">Nenhum (usuário administrativo)</option>' +
+                repositores.map(repo => `<option value="${repo.repo_cod}">${repo.repo_cod} - ${repo.repo_nome}</option>`).join('');
+        }
+
+        // Event Listeners
+        document.getElementById('btnNovoUsuarioConfig')?.addEventListener('click', () => this.abrirModalUsuarioConfig());
+        document.getElementById('btnFecharModalUsuarioConfig')?.addEventListener('click', () => this.fecharModalUsuarioConfig());
+        document.getElementById('btnCancelarUsuarioConfig')?.addEventListener('click', () => this.fecharModalUsuarioConfig());
+        document.getElementById('btnSalvarUsuarioConfig')?.addEventListener('click', () => this.salvarUsuarioConfig());
+
+        // Filtros
+        document.getElementById('configFiltroUsuarioNome')?.addEventListener('input', () => this.filtrarUsuariosConfig());
+        document.getElementById('configFiltroUsuarioPerfil')?.addEventListener('change', () => this.filtrarUsuariosConfig());
+        document.getElementById('configFiltroUsuarioStatus')?.addEventListener('change', () => this.filtrarUsuariosConfig());
+
+        // Carregar usuários
+        await this.carregarUsuariosConfig();
+    }
+
+    async carregarUsuariosConfig() {
+        try {
+            const token = localStorage.getItem('auth_token');
+            const url = `${API_BASE_URL}/api/usuarios`;
+            const headers = {};
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const data = await fetchJson(url, { headers });
+            this.usuariosFiltradosConfig = data.usuarios || [];
+            this.renderizarTabelaUsuariosConfig();
+        } catch (error) {
+            console.error('Erro ao carregar usuários:', error);
+            this.showNotification('Erro ao carregar usuários: ' + error.message, 'error');
+        }
+    }
+
+    filtrarUsuariosConfig() {
+        const filtroNome = document.getElementById('configFiltroUsuarioNome')?.value.toLowerCase() || '';
+        const filtroPerfil = document.getElementById('configFiltroUsuarioPerfil')?.value || '';
+        const filtroStatus = document.getElementById('configFiltroUsuarioStatus')?.value || '';
+
+        this.renderizarTabelaUsuariosConfig(filtroNome, filtroPerfil, filtroStatus);
+    }
+
+    renderizarTabelaUsuariosConfig(filtroNome = '', filtroPerfil = '', filtroStatus = '') {
+        const tbody = document.getElementById('usuariosTableBodyConfig');
+        if (!tbody) return;
+
+        let usuarios = [...(this.usuariosFiltradosConfig || [])];
+
+        if (filtroNome) {
+            usuarios = usuarios.filter(u =>
+                u.nome_completo?.toLowerCase().includes(filtroNome) ||
+                u.username?.toLowerCase().includes(filtroNome)
+            );
+        }
+        if (filtroPerfil) {
+            usuarios = usuarios.filter(u => u.perfil === filtroPerfil);
+        }
+        if (filtroStatus !== '') {
+            usuarios = usuarios.filter(u => u.ativo === Number(filtroStatus));
+        }
+
+        if (usuarios.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="9" style="text-align: center; padding: 20px; color: #6b7280;">
+                        Nenhum usuário encontrado
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = usuarios.map(usuario => {
+            const statusBadge = usuario.ativo
+                ? '<span class="badge badge-success">Ativo</span>'
+                : '<span class="badge badge-danger">Inativo</span>';
+
+            const perfilBadge = usuario.perfil === 'admin'
+                ? '<span class="badge badge-primary">Admin</span>'
+                : '<span class="badge badge-secondary">Repositor</span>';
+
+            const ultimoLogin = usuario.ultimo_login
+                ? new Date(usuario.ultimo_login).toLocaleString('pt-BR')
+                : '-';
+
+            return `
+                <tr>
+                    <td>${usuario.usuario_id}</td>
+                    <td><strong>${usuario.username}</strong></td>
+                    <td>${usuario.nome_completo || '-'}</td>
+                    <td>${usuario.email || '-'}</td>
+                    <td>${usuario.rep_id ? `${usuario.rep_id} - ${usuario.repo_nome || ''}` : '-'}</td>
+                    <td>${perfilBadge}</td>
+                    <td>${statusBadge}</td>
+                    <td style="font-size: 13px;">${ultimoLogin}</td>
+                    <td style="white-space: nowrap;">
+                        <button class="btn btn-sm btn-primary" onclick="app.editarUsuarioConfig(${usuario.usuario_id})" title="Editar" style="margin-right: 4px;">
+                            ✏️
+                        </button>
+                        <button class="btn btn-sm ${usuario.ativo ? 'btn-danger' : 'btn-success'}"
+                                onclick="app.toggleStatusUsuarioConfig(${usuario.usuario_id}, ${usuario.ativo})"
+                                title="${usuario.ativo ? 'Desativar' : 'Ativar'}">
+                            ${usuario.ativo ? '🚫' : '✅'}
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    abrirModalUsuarioConfig(usuario = null) {
+        this.usuarioEditandoConfig = usuario;
+        const modal = document.getElementById('modalUsuarioConfig');
+        const titulo = document.getElementById('modalUsuarioTituloConfig');
+        const form = document.getElementById('formUsuarioConfig');
+
+        if (!modal || !titulo || !form) return;
+
+        titulo.textContent = usuario ? 'Editar Usuário' : 'Novo Usuário';
+        form.reset();
+        document.getElementById('usuarioIdConfig').value = '';
+        document.getElementById('labelSenhaOpcionalConfig').style.display = usuario ? 'inline' : 'none';
+        document.getElementById('usuarioSenhaConfig').required = !usuario;
+        document.getElementById('grupoUsuarioAtivoConfig').style.display = usuario ? 'block' : 'none';
+
+        if (usuario) {
+            document.getElementById('usuarioIdConfig').value = usuario.usuario_id;
+            document.getElementById('usuarioUsernameConfig').value = usuario.username;
+            document.getElementById('usuarioNomeCompletoConfig').value = usuario.nome_completo || '';
+            document.getElementById('usuarioEmailConfig').value = usuario.email || '';
+            document.getElementById('usuarioRepositorConfig').value = usuario.rep_id || '';
+            document.getElementById('usuarioPerfilConfig').value = usuario.perfil || 'repositor';
+            document.getElementById('usuarioAtivoConfig').checked = usuario.ativo;
+        }
+
+        modal.style.display = 'flex';
+        modal.classList.add('active');
+    }
+
+    fecharModalUsuarioConfig() {
+        const modal = document.getElementById('modalUsuarioConfig');
+        if (modal) {
+            modal.style.display = 'none';
+            modal.classList.remove('active');
+        }
+    }
+
+    async editarUsuarioConfig(usuarioId) {
+        const usuario = this.usuariosFiltradosConfig.find(u => u.usuario_id === usuarioId);
+        if (usuario) {
+            this.abrirModalUsuarioConfig(usuario);
+        }
+    }
+
+    async salvarUsuarioConfig() {
+        const id = document.getElementById('usuarioIdConfig')?.value;
+        const username = document.getElementById('usuarioUsernameConfig')?.value?.trim();
+        const nome_completo = document.getElementById('usuarioNomeCompletoConfig')?.value?.trim();
+        const email = document.getElementById('usuarioEmailConfig')?.value?.trim();
+        const rep_id = document.getElementById('usuarioRepositorConfig')?.value || null;
+        const perfil = document.getElementById('usuarioPerfilConfig')?.value;
+        const senha = document.getElementById('usuarioSenhaConfig')?.value;
+        const ativo = document.getElementById('usuarioAtivoConfig')?.checked ? 1 : 0;
+
+        if (!username || !nome_completo || !perfil) {
+            this.showNotification('Preencha os campos obrigatórios.', 'warning');
+            return;
+        }
+
+        if (!id && !senha) {
+            this.showNotification('Senha é obrigatória para novos usuários.', 'warning');
+            return;
+        }
+
+        try {
+            const token = localStorage.getItem('auth_token');
+            const url = id ? `${API_BASE_URL}/api/usuarios/${id}` : `${API_BASE_URL}/api/usuarios`;
+            const method = id ? 'PUT' : 'POST';
+
+            const body = { username, nome_completo, email, rep_id, perfil };
+            if (senha) body.senha = senha;
+            if (id) body.ativo = ativo;
+
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            const data = await fetchJson(url, {
+                method,
+                headers,
+                body: JSON.stringify(body)
+            });
+
+            if (data.success || data.usuario) {
+                this.showNotification(`Usuário ${id ? 'atualizado' : 'criado'} com sucesso!`, 'success');
+                this.fecharModalUsuarioConfig();
+                await this.carregarUsuariosConfig();
+            } else {
+                throw new Error(data.message || 'Erro ao salvar usuário');
+            }
+        } catch (error) {
+            console.error('Erro ao salvar usuário:', error);
+            this.showNotification('Erro ao salvar: ' + error.message, 'error');
+        }
+    }
+
+    async toggleStatusUsuarioConfig(usuarioId, ativoAtual) {
+        if (!confirm(`Deseja ${ativoAtual ? 'desativar' : 'ativar'} este usuário?`)) return;
+
+        try {
+            const token = localStorage.getItem('auth_token');
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            const data = await fetchJson(`${API_BASE_URL}/api/usuarios/${usuarioId}`, {
+                method: 'PUT',
+                headers,
+                body: JSON.stringify({ ativo: ativoAtual ? 0 : 1 })
+            });
+
+            if (data.success || data.usuario) {
+                this.showNotification(`Usuário ${ativoAtual ? 'desativado' : 'ativado'} com sucesso!`, 'success');
+                await this.carregarUsuariosConfig();
+            } else {
+                throw new Error(data.message || 'Erro ao alterar status');
+            }
+        } catch (error) {
+            console.error('Erro ao alterar status:', error);
+            this.showNotification('Erro: ' + error.message, 'error');
+        }
+    }
+
+    // ==================== ABA CONTROLE DE ACESSOS (CONFIG) ====================
+
+    async inicializarAbaAcessosConfig() {
+        const seletorUsuario = document.getElementById('configControleAcessoUsuario');
+        const matrizPermissoes = document.getElementById('configControleAcessoMatriz');
+        const botaoSalvar = document.getElementById('btnSalvarPermissoesConfig');
+
+        if (!seletorUsuario || !matrizPermissoes) return;
+
+        matrizPermissoes.innerHTML = '<p class="text-muted">Selecione um usuário para exibir as permissões.</p>';
+
+        const usuarios = await db.listarUsuariosComercial();
+        seletorUsuario.innerHTML = '<option value="">Selecione um usuário</option>' +
+            usuarios.map(user => `<option value="${user.id}" data-username="${user.username}">${user.username}</option>`).join('');
+
+        seletorUsuario.addEventListener('change', async () => {
+            const selectedOption = seletorUsuario.selectedOptions[0];
+            if (selectedOption && selectedOption.value) {
+                this.usuarioSelecionadoAclConfig = {
+                    id: selectedOption.value,
+                    username: selectedOption.dataset.username
+                };
+                await this.carregarPermissoesParaUsuarioConfig();
+            } else {
+                this.usuarioSelecionadoAclConfig = null;
+                matrizPermissoes.innerHTML = '<p class="text-muted">Selecione um usuário para configurar.</p>';
+            }
+        });
+
+        if (botaoSalvar) {
+            botaoSalvar.addEventListener('click', () => this.salvarPermissoesConfig());
+        }
+    }
+
+    async carregarPermissoesParaUsuarioConfig() {
+        const matrizPermissoes = document.getElementById('configControleAcessoMatriz');
+        if (!this.usuarioSelecionadoAclConfig) {
+            matrizPermissoes.innerHTML = '<p class="text-muted">Selecione um usuário para configurar.</p>';
+            return;
+        }
+
+        matrizPermissoes.innerHTML = '<p class="text-muted">Carregando permissões...</p>';
+
+        try {
+            const permissoes = await db.getPermissoesUsuario(this.usuarioSelecionadoAclConfig.id);
+            this.permissoesAtuaisConfig = permissoes || {};
+            this.renderMatrizPermissoesConfig();
+        } catch (error) {
+            console.error('Erro ao carregar permissões:', error);
+            matrizPermissoes.innerHTML = '<p style="color: #b91c1c;">Erro ao carregar permissões.</p>';
+        }
+    }
+
+    renderMatrizPermissoesConfig() {
+        const matrizPermissoes = document.getElementById('configControleAcessoMatriz');
+        if (!matrizPermissoes) return;
+
+        const modulos = [
+            { id: 'dashboard', nome: 'Dashboard', icon: '📊' },
+            { id: 'registro-rota', nome: 'Registro de Rota', icon: '📍' },
+            { id: 'consultar-alteracoes', nome: 'Consultar Alterações', icon: '🔍' },
+            { id: 'consulta-roteiro', nome: 'Consulta Roteiro', icon: '🗺️' },
+            { id: 'cadastro-repositor', nome: 'Cadastro Repositor', icon: '👤' },
+            { id: 'custos-repositor', nome: 'Custos Repositor', icon: '💰' },
+            { id: 'configuracoes', nome: 'Configurações', icon: '⚙️' }
+        ];
+
+        matrizPermissoes.innerHTML = `
+            <div style="display: grid; gap: 8px; margin-top: 16px;">
+                ${modulos.map(modulo => {
+                    const ativo = this.permissoesAtuaisConfig?.[modulo.id] ?? true;
+                    return `
+                        <label style="display: flex; align-items: center; gap: 8px; padding: 8px; background: #f9fafb; border-radius: 6px; cursor: pointer;">
+                            <input type="checkbox" data-modulo="${modulo.id}" ${ativo ? 'checked' : ''}>
+                            <span>${modulo.icon} ${modulo.nome}</span>
+                        </label>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    }
+
+    async salvarPermissoesConfig() {
+        if (!this.usuarioSelecionadoAclConfig) {
+            this.showNotification('Selecione um usuário primeiro.', 'warning');
+            return;
+        }
+
+        const matrizPermissoes = document.getElementById('configControleAcessoMatriz');
+        const checkboxes = matrizPermissoes.querySelectorAll('input[type="checkbox"]');
+
+        const permissoes = {};
+        checkboxes.forEach(cb => {
+            permissoes[cb.dataset.modulo] = cb.checked;
+        });
+
+        try {
+            await db.salvarPermissoesUsuario(this.usuarioSelecionadoAclConfig.id, permissoes);
+            this.showNotification('Permissões salvas com sucesso!', 'success');
+        } catch (error) {
+            console.error('Erro ao salvar permissões:', error);
+            this.showNotification('Erro ao salvar permissões: ' + error.message, 'error');
         }
     }
 
@@ -1344,8 +1941,8 @@ class App {
                             ${t.dct_ativo ? 'Ativo' : 'Inativo'}
                         </span>
                     </td>
-                    <td style="text-align: center;">
-                        <button class="btn btn-sm btn-secondary" onclick="app.editarTipoDocumento(${t.dct_id})" title="Editar">✏️</button>
+                    <td style="text-align: center; white-space: nowrap;">
+                        <button class="btn btn-sm btn-secondary" onclick="app.editarTipoDocumento(${t.dct_id})" title="Editar" style="margin-right: 4px;">✏️</button>
                         <button class="btn btn-sm btn-danger" onclick="app.excluirTipoDocumento(${t.dct_id})" title="Excluir">🗑️</button>
                     </td>
                 </tr>
@@ -1442,8 +2039,8 @@ class App {
                             ${t.gst_ativo ? 'Ativo' : 'Inativo'}
                         </span>
                     </td>
-                    <td style="text-align: center;">
-                        <button class="btn btn-sm btn-secondary" onclick="app.editarTipoGasto(${t.gst_id})" title="Editar">✏️</button>
+                    <td style="text-align: center; white-space: nowrap;">
+                        <button class="btn btn-sm btn-secondary" onclick="app.editarTipoGasto(${t.gst_id})" title="Editar" style="margin-right: 4px;">✏️</button>
                         <button class="btn btn-sm btn-danger" onclick="app.excluirTipoGasto(${t.gst_id})" title="Excluir">🗑️</button>
                     </td>
                 </tr>
