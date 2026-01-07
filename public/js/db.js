@@ -1509,6 +1509,129 @@ class TursoDatabase {
         }
     }
 
+    // Buscar cidades que têm respostas de pesquisas (para filtros em cascata)
+    async getCidadesComRespostasPesquisa(filtros = {}) {
+        try {
+            let sql = `
+                SELECT DISTINCT cid.rot_cidade as cidade
+                FROM cc_pesquisa_respostas r
+                LEFT JOIN rot_roteiro_cliente cli ON cli.rot_cliente_codigo = r.res_cliente_codigo
+                LEFT JOIN rot_roteiro_cidade cid ON cid.rot_cid_id = cli.rot_cid_id
+                WHERE cid.rot_cidade IS NOT NULL AND cid.rot_cidade != ''
+            `;
+            const args = [];
+
+            if (filtros.pesquisaId) {
+                sql += ` AND r.res_pes_id = ?`;
+                args.push(filtros.pesquisaId);
+            }
+
+            if (filtros.repositorId) {
+                sql += ` AND r.res_rep_id = ?`;
+                args.push(filtros.repositorId);
+            }
+
+            if (filtros.dataInicio) {
+                sql += ` AND r.res_data >= ?`;
+                args.push(filtros.dataInicio);
+            }
+
+            if (filtros.dataFim) {
+                sql += ` AND r.res_data <= ?`;
+                args.push(filtros.dataFim);
+            }
+
+            sql += ` ORDER BY cid.rot_cidade`;
+
+            const resultado = await this.mainClient.execute({ sql, args });
+            console.log('Cidades com respostas de pesquisa:', resultado.rows);
+            return resultado.rows;
+        } catch (error) {
+            console.error('Erro ao buscar cidades com respostas:', error);
+            return [];
+        }
+    }
+
+    // Buscar clientes que têm respostas de pesquisas (para filtros em cascata)
+    async getClientesComRespostasPesquisa(filtros = {}) {
+        try {
+            let sql = `
+                SELECT DISTINCT
+                    r.res_cliente_codigo as cliente,
+                    cid.rot_cidade as cidade
+                FROM cc_pesquisa_respostas r
+                LEFT JOIN rot_roteiro_cliente cli ON cli.rot_cliente_codigo = r.res_cliente_codigo
+                LEFT JOIN rot_roteiro_cidade cid ON cid.rot_cid_id = cli.rot_cid_id
+                WHERE r.res_cliente_codigo IS NOT NULL AND r.res_cliente_codigo != ''
+            `;
+            const args = [];
+
+            if (filtros.pesquisaId) {
+                sql += ` AND r.res_pes_id = ?`;
+                args.push(filtros.pesquisaId);
+            }
+
+            if (filtros.repositorId) {
+                sql += ` AND r.res_rep_id = ?`;
+                args.push(filtros.repositorId);
+            }
+
+            if (filtros.dataInicio) {
+                sql += ` AND r.res_data >= ?`;
+                args.push(filtros.dataInicio);
+            }
+
+            if (filtros.dataFim) {
+                sql += ` AND r.res_data <= ?`;
+                args.push(filtros.dataFim);
+            }
+
+            if (filtros.cidades && filtros.cidades.length > 0) {
+                const placeholders = filtros.cidades.map(() => '?').join(',');
+                sql += ` AND cid.rot_cidade IN (${placeholders})`;
+                args.push(...filtros.cidades);
+            }
+
+            sql += ` ORDER BY r.res_cliente_codigo`;
+
+            const resultado = await this.mainClient.execute({ sql, args });
+            const clientes = resultado.rows;
+
+            if (clientes.length === 0) return [];
+
+            // Buscar nomes do banco comercial
+            await this.connectComercial();
+            if (this.comercialClient) {
+                const codigos = clientes.map(c => c.cliente);
+                const placeholders = codigos.map(() => '?').join(',');
+
+                try {
+                    const nomes = await this.comercialClient.execute({
+                        sql: `SELECT cliente, nome, fantasia FROM tab_cliente WHERE cliente IN (${placeholders})`,
+                        args: codigos
+                    });
+
+                    const nomesMap = {};
+                    nomes.rows.forEach(n => {
+                        nomesMap[n.cliente] = n.nome || n.fantasia || '';
+                    });
+
+                    return clientes.map(c => ({
+                        ...c,
+                        nome: nomesMap[c.cliente] || ''
+                    }));
+                } catch (e) {
+                    console.warn('Erro ao buscar nomes dos clientes:', e);
+                }
+            }
+
+            return clientes;
+        } catch (error) {
+            console.error('Erro ao buscar clientes com respostas:', error);
+            return [];
+        }
+    }
+
     async buscarClientesPorGrupo(grupoDesc) {
         await this.connectComercial();
         if (!this.comercialClient || !grupoDesc) return [];

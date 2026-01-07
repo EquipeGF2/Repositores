@@ -12441,12 +12441,94 @@ class App {
 
             const btnFiltrar = document.getElementById('btnFiltrarConsultaDocumentos');
             const btnDownloadZip = document.getElementById('btnDownloadZip');
+            const btnMostrarTodos = document.getElementById('btnMostrarTodosDocumentos');
 
             if (btnFiltrar) btnFiltrar.onclick = () => this.filtrarDocumentosConsulta();
             if (btnDownloadZip) btnDownloadZip.onclick = () => this.downloadZip();
+            if (btnMostrarTodos) btnMostrarTodos.onclick = () => this.carregarTodosDocumentos();
+
+            // Carregar automaticamente os documentos recentes (últimos 30 dias)
+            await this.carregarDocumentosRecentes();
         } catch (error) {
             console.error('Erro ao inicializar consulta de documentos:', error);
             this.showNotification('Não foi possível carregar a consulta de documentos agora. Tente novamente mais tarde.', 'warning');
+        }
+    }
+
+    async carregarDocumentosRecentes() {
+        try {
+            const container = document.getElementById('documentosContainer');
+            if (!container) return;
+
+            container.innerHTML = '<div style="text-align: center; padding: 40px;"><div class="spinner"></div><p style="margin-top: 16px;">Carregando documentos recentes...</p></div>';
+
+            // Buscar documentos dos últimos 30 dias
+            const hoje = new Date();
+            const trintaDiasAtras = new Date();
+            trintaDiasAtras.setDate(hoje.getDate() - 30);
+
+            const dataInicio = trintaDiasAtras.toISOString().split('T')[0];
+            const dataFim = hoje.toISOString().split('T')[0];
+
+            const params = new URLSearchParams();
+            params.append('data_inicio', dataInicio);
+            params.append('data_fim', dataFim);
+
+            const data = await fetchJson(`${API_BASE_URL}/api/documentos?${params.toString()}`);
+            const documentos = data.documentos || [];
+
+            if (documentos.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📁</div>
+                        <p>Nenhum documento encontrado nos últimos 30 dias</p>
+                        <small>Use os filtros acima para buscar documentos de outras datas ou clique em "Mostrar Todos"</small>
+                    </div>
+                `;
+                return;
+            }
+
+            this.renderizarDocumentos(documentos);
+        } catch (error) {
+            console.error('Erro ao carregar documentos recentes:', error);
+            // Se falhar, mostrar estado vazio padrão
+            const container = document.getElementById('documentosContainer');
+            if (container) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📁</div>
+                        <p>Use os filtros para buscar documentos ou clique em "Mostrar Todos"</p>
+                    </div>
+                `;
+            }
+        }
+    }
+
+    async carregarTodosDocumentos() {
+        try {
+            const container = document.getElementById('documentosContainer');
+            if (!container) return;
+
+            container.innerHTML = '<div style="text-align: center; padding: 40px;"><div class="spinner"></div><p style="margin-top: 16px;">Carregando todos os documentos...</p></div>';
+
+            const data = await fetchJson(`${API_BASE_URL}/api/documentos?todos=true`);
+            const documentos = data.documentos || [];
+
+            if (documentos.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📁</div>
+                        <p>Nenhum documento cadastrado no sistema</p>
+                    </div>
+                `;
+                return;
+            }
+
+            this.renderizarDocumentos(documentos);
+            this.showNotification(`Carregados ${documentos.length} documento(s)`, 'success');
+        } catch (error) {
+            console.error('Erro ao carregar todos os documentos:', error);
+            this.showNotification('Erro ao carregar documentos: ' + error.message, 'error');
         }
     }
 
@@ -12468,7 +12550,6 @@ class App {
         const container = document.getElementById('despesasContainer');
         if (!container) return;
 
-        const repositorId = document.getElementById('despesaRepositor')?.value;
         const dataInicio = document.getElementById('despesaDataInicio')?.value;
         const dataFim = document.getElementById('despesaDataFim')?.value;
 
@@ -12480,12 +12561,29 @@ class App {
         container.innerHTML = '<div style="text-align: center; padding: 40px;"><div class="spinner"></div><p style="margin-top: 16px;">Carregando despesas...</p></div>';
 
         try {
-            // Buscar documentos do tipo despesa de viagem
+            // Primeiro, buscar o dct_id do tipo "despesa_viagem"
+            const tiposData = await fetchJson(`${API_BASE_URL}/api/documentos/tipos`);
+            const tipos = tiposData.tipos || [];
+            const tipoDespesa = tipos.find(t =>
+                t.dct_codigo === 'despesa_viagem' ||
+                (t.dct_nome || '').toLowerCase().includes('despesa')
+            );
+
+            if (!tipoDespesa) {
+                container.innerHTML = `
+                    <div class="empty-state" style="padding: 40px;">
+                        <div class="empty-state-icon">⚠️</div>
+                        <p>Tipo de documento "Despesa de Viagem" não encontrado. Cadastre em Configurações.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Buscar documentos do tipo despesa de viagem usando dct_id
             const params = new URLSearchParams();
-            if (repositorId) params.append('repositor_id', repositorId);
+            params.append('dct_id', tipoDespesa.dct_id);
             params.append('data_inicio', dataInicio);
             params.append('data_fim', dataFim);
-            params.append('tipo_codigo', 'despesa_viagem');
 
             const data = await fetchJson(`${API_BASE_URL}/api/documentos?${params.toString()}`);
             const documentos = data.documentos || [];
@@ -12768,15 +12866,8 @@ class App {
                 codigo: r.gst_codigo,
                 nome: r.gst_nome,
                 valor: 0,
-                detalhes: '', // Campo para assento, observações, etc
                 fotos: [] // Array de fotos (até 10)
             }));
-
-            // Verificar se a rubrica é de passagem/ônibus para mostrar campo de assento
-            const isPassagem = (codigo) => {
-                const c = (codigo || '').toLowerCase();
-                return c.includes('passagem') || c.includes('onibus') || c.includes('ônibus');
-            };
 
             container.innerHTML = rubricas.map(r => `
                 <div class="rubrica-card" data-rubrica-id="${r.gst_id}">
@@ -12790,14 +12881,6 @@ class App {
                                placeholder="0,00" onchange="app.atualizarValorRubrica(${r.gst_id}, this.value)"
                                onkeyup="app.atualizarValorRubrica(${r.gst_id}, this.value)">
                     </div>
-                    ${isPassagem(r.gst_codigo) ? `
-                    <div class="rubrica-detalhes" style="margin-top: 8px;">
-                        <label style="font-size: 12px; color: #6b7280;">Assento/Poltrona</label>
-                        <input type="text" id="rubrica_detalhes_${r.gst_id}"
-                               placeholder="Ex: 15" style="width: 100%; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;"
-                               onchange="app.atualizarDetalhesRubrica(${r.gst_id}, this.value)">
-                    </div>
-                    ` : ''}
                     <div class="rubrica-foto">
                         <button type="button" class="rubrica-foto-btn" id="rubrica_foto_btn_${r.gst_id}"
                                 onclick="app.capturarFotoRubrica(${r.gst_id})">
@@ -12839,12 +12922,6 @@ class App {
 
         // Atualizar total
         this.atualizarTotalDespesas();
-    }
-
-    atualizarDetalhesRubrica(rubricaId, detalhes) {
-        const rubrica = this.documentosState.rubricas?.find(r => r.id === rubricaId);
-        if (!rubrica) return;
-        rubrica.detalhes = detalhes || '';
     }
 
     capturarFotoRubrica(rubricaId) {
@@ -16074,24 +16151,47 @@ class App {
     // ==================== CONSULTA DE PESQUISAS ====================
 
     async inicializarConsultaPesquisa() {
-        // Carregar lista de pesquisas e dados do roteiro
+        // Definir datas padrão primeiro (últimos 30 dias)
+        const hoje = new Date();
+        const inicio = new Date(hoje);
+        inicio.setDate(inicio.getDate() - 30);
+
+        const dataFimInput = document.getElementById('filtroConsultaDataFim');
+        const dataInicioInput = document.getElementById('filtroConsultaDataInicio');
+
+        if (dataFimInput) dataFimInput.value = hoje.toISOString().split('T')[0];
+        if (dataInicioInput) dataInicioInput.value = inicio.toISOString().split('T')[0];
+
+        // Carregar lista de pesquisas e dados filtrados
         await Promise.all([
             this.carregarFiltrosPesquisas(),
             this.carregarDadosRoteiroConsultaPesquisa()
         ]);
 
-        // Definir datas padrão (últimos 30 dias)
-        const hoje = new Date();
-        const inicio = new Date(hoje);
-        inicio.setDate(inicio.getDate() - 30);
-
-        document.getElementById('filtroConsultaDataFim').value = hoje.toISOString().split('T')[0];
-        document.getElementById('filtroConsultaDataInicio').value = inicio.toISOString().split('T')[0];
-
         // Configurar botão exportar
         const btnExportar = document.getElementById('btnExportarRespostasPesquisa');
         if (btnExportar) {
             btnExportar.onclick = () => this.exportarRespostasPesquisa();
+        }
+
+        // Configurar listeners para filtros em cascata
+        const selectPesquisa = document.getElementById('filtroConsultaPesquisa');
+        const selectRepositor = document.getElementById('filtroConsultaRepositor');
+
+        if (selectPesquisa) {
+            selectPesquisa.onchange = () => this.atualizarFiltrosCascata('pesquisa');
+        }
+
+        if (selectRepositor) {
+            selectRepositor.onchange = () => this.atualizarFiltrosCascata('repositor');
+        }
+
+        if (dataInicioInput) {
+            dataInicioInput.onchange = () => this.atualizarFiltrosCascata('data');
+        }
+
+        if (dataFimInput) {
+            dataFimInput.onchange = () => this.atualizarFiltrosCascata('data');
         }
 
         // Fechar dropdowns ao clicar fora
@@ -16129,19 +16229,68 @@ class App {
     consultaCidadesDoRoteiro = [];
     consultaClientesDoRoteiro = [];
 
-    // Carregar dados do roteiro para consulta de pesquisas
+    // Obter filtros atuais de consulta de pesquisas
+    getConsultaPesquisaFiltros() {
+        return {
+            pesquisaId: document.getElementById('filtroConsultaPesquisa')?.value || null,
+            repositorId: document.getElementById('filtroConsultaRepositor')?.value || null,
+            dataInicio: document.getElementById('filtroConsultaDataInicio')?.value || null,
+            dataFim: document.getElementById('filtroConsultaDataFim')?.value || null,
+            cidades: this.consultaPesquisaCidadesSelecionadas || []
+        };
+    }
+
+    // Carregar dados filtrados para consulta de pesquisas
     async carregarDadosRoteiroConsultaPesquisa() {
         try {
+            const filtros = this.getConsultaPesquisaFiltros();
+
+            // Buscar cidades e clientes que têm respostas de pesquisas
             const [cidades, clientes] = await Promise.all([
-                db.getCidadesDoRoteiro(),
-                db.getClientesDoRoteiro()
+                db.getCidadesComRespostasPesquisa(filtros),
+                db.getClientesComRespostasPesquisa(filtros)
             ]);
+
             this.consultaCidadesDoRoteiro = cidades;
             this.consultaClientesDoRoteiro = clientes;
             this.renderDropdownConsultaCidades('');
             this.renderDropdownConsultaClientes('');
         } catch (error) {
-            console.error('Erro ao carregar dados do roteiro para consulta:', error);
+            console.error('Erro ao carregar dados para consulta:', error);
+        }
+    }
+
+    // Atualizar filtros em cascata quando um filtro pai mudar
+    async atualizarFiltrosCascata(origem = 'all') {
+        try {
+            const filtros = this.getConsultaPesquisaFiltros();
+
+            // Se mudou pesquisa, repositor ou data, recarregar cidades
+            if (['all', 'pesquisa', 'repositor', 'data'].includes(origem)) {
+                const cidades = await db.getCidadesComRespostasPesquisa(filtros);
+                this.consultaCidadesDoRoteiro = cidades;
+
+                // Remover cidades selecionadas que não estão mais disponíveis
+                const cidadesDisponiveis = new Set(cidades.map(c => c.cidade));
+                this.consultaPesquisaCidadesSelecionadas = this.consultaPesquisaCidadesSelecionadas.filter(c => cidadesDisponiveis.has(c));
+
+                this.renderDropdownConsultaCidades('');
+                this.renderConsultaCidadesSelecionadas();
+            }
+
+            // Recarregar clientes com os filtros atuais (incluindo cidades selecionadas)
+            const filtrosClientes = { ...filtros, cidades: this.consultaPesquisaCidadesSelecionadas };
+            const clientes = await db.getClientesComRespostasPesquisa(filtrosClientes);
+            this.consultaClientesDoRoteiro = clientes;
+
+            // Remover clientes selecionados que não estão mais disponíveis
+            const clientesDisponiveis = new Set(clientes.map(c => c.cliente));
+            this.consultaPesquisaClientesSelecionados = this.consultaPesquisaClientesSelecionados.filter(c => clientesDisponiveis.has(c.codigo));
+
+            this.renderDropdownConsultaClientes('');
+            this.renderConsultaClientesSelecionados();
+        } catch (error) {
+            console.error('Erro ao atualizar filtros em cascata:', error);
         }
     }
 
@@ -16195,12 +16344,16 @@ class App {
         }
         this.renderDropdownConsultaCidades(document.getElementById('filtroConsultaCidadeBusca')?.value || '');
         this.renderConsultaCidadesSelecionadas();
+        // Atualizar clientes em cascata quando cidade mudar
+        this.atualizarFiltrosCascata('cidade');
     }
 
     limparConsultaCidades() {
         this.consultaPesquisaCidadesSelecionadas = [];
         this.renderDropdownConsultaCidades('');
         this.renderConsultaCidadesSelecionadas();
+        // Atualizar clientes em cascata
+        this.atualizarFiltrosCascata('cidade');
     }
 
     atualizarContadorConsultaCidades() {
@@ -16448,47 +16601,100 @@ class App {
         const pesquisaTitulo = respostasDaPesquisa[0]?.pes_titulo || 'Pesquisa';
         if (header) header.textContent = `${pesquisaTitulo} - ${respostasDaPesquisa.length} resposta(s)`;
 
+        // Coletar todas as perguntas únicas para criar colunas
+        const perguntasSet = new Set();
+        respostasDaPesquisa.forEach(r => {
+            const respostasCampos = r.res_respostas || [];
+            respostasCampos.forEach(rc => {
+                const pergunta = rc.pergunta || rc.campo || '';
+                if (pergunta) perguntasSet.add(pergunta);
+            });
+        });
+        const perguntas = Array.from(perguntasSet);
+
         body.innerHTML = `
-            <div class="respostas-lista-modal">
-                ${respostasDaPesquisa.map((r, idx) => {
-                    const data = r.res_data_resposta ? new Date(r.res_data_resposta).toLocaleString('pt-BR') : '-';
-                    const respostasCampos = r.res_respostas || [];
+            <div class="respostas-grid-container">
+                <table class="respostas-grid-table">
+                    <thead>
+                        <tr>
+                            <th style="min-width: 120px;">Repositor</th>
+                            <th style="min-width: 150px;">Cliente</th>
+                            <th style="min-width: 130px;">Data</th>
+                            ${perguntas.map(p => `<th style="min-width: 150px;">${p}</th>`).join('')}
+                            <th style="min-width: 60px;">Foto</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${respostasDaPesquisa.map(r => {
+                            const data = r.res_data_resposta ? new Date(r.res_data_resposta).toLocaleString('pt-BR') : '-';
+                            const respostasCampos = r.res_respostas || [];
 
-                    return `
-                        <div class="resposta-item-card ${idx === 0 ? 'expanded' : ''}" data-res-id="${r.res_id}">
-                            <div class="resposta-item-header" onclick="window.app.toggleRespostaItem(this)">
-                                <div class="resposta-item-info">
-                                    <span class="resposta-data">${data}</span>
-                                    <span class="resposta-repositor">${r.res_repo_cod} - ${r.repo_nome || ''}</span>
-                                    <span class="resposta-cliente">${r.res_cliente_codigo}${r.cliente_nome ? ' - ' + r.cliente_nome : ''}</span>
-                                </div>
-                                <div class="resposta-item-icons">
-                                    ${r.res_foto_url ? '<span class="has-foto">📷</span>' : ''}
-                                    <span class="expand-icon">▼</span>
-                                </div>
-                            </div>
-                            <div class="resposta-item-body">
-                                ${respostasCampos.length > 0 ? `
-                                    <div class="respostas-campos-lista">
-                                        ${respostasCampos.map(rc => `
-                                            <div class="campo-resposta-row">
-                                                <span class="campo-pergunta">${rc.pergunta || rc.campo || '-'}</span>
-                                                <span class="campo-valor">${rc.resposta || '-'}</span>
-                                            </div>
-                                        `).join('')}
-                                    </div>
-                                ` : '<p class="text-muted">Sem respostas de campos</p>'}
+                            // Criar um mapa de pergunta -> resposta
+                            const respostasMap = {};
+                            respostasCampos.forEach(rc => {
+                                const pergunta = rc.pergunta || rc.campo || '';
+                                respostasMap[pergunta] = rc.resposta || '-';
+                            });
 
-                                ${r.res_foto_url ? `
-                                    <div class="resposta-foto-container">
-                                        <img src="${r.res_foto_url}" alt="Foto da pesquisa" onclick="window.open('${r.res_foto_url}', '_blank')" onerror="this.parentElement.innerHTML='<span class=\\'foto-erro\\'>Foto não disponível</span>'">
-                                    </div>
-                                ` : ''}
-                            </div>
-                        </div>
-                    `;
-                }).join('')}
+                            return `
+                                <tr>
+                                    <td>
+                                        <strong>${r.res_repo_cod}</strong>
+                                        <br><small>${r.repo_nome || ''}</small>
+                                    </td>
+                                    <td>
+                                        <strong>${r.res_cliente_codigo}</strong>
+                                        <br><small>${r.cliente_nome || ''}</small>
+                                    </td>
+                                    <td>${data}</td>
+                                    ${perguntas.map(p => `<td>${respostasMap[p] || '-'}</td>`).join('')}
+                                    <td style="text-align: center;">
+                                        ${r.res_foto_url ? `
+                                            <a href="${r.res_foto_url}" target="_blank" title="Ver foto">
+                                                📷
+                                            </a>
+                                        ` : '-'}
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
             </div>
+            <style>
+                .respostas-grid-container {
+                    overflow-x: auto;
+                    width: 100%;
+                }
+                .respostas-grid-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-size: 14px;
+                }
+                .respostas-grid-table th,
+                .respostas-grid-table td {
+                    padding: 10px 12px;
+                    border: 1px solid #e5e7eb;
+                    text-align: left;
+                    vertical-align: top;
+                }
+                .respostas-grid-table th {
+                    background: #f3f4f6;
+                    font-weight: 600;
+                    color: #374151;
+                    white-space: nowrap;
+                }
+                .respostas-grid-table tbody tr:hover {
+                    background: #f9fafb;
+                }
+                .respostas-grid-table td small {
+                    color: #6b7280;
+                }
+                .respostas-grid-table a {
+                    font-size: 18px;
+                    text-decoration: none;
+                }
+            </style>
         `;
 
         modal.classList.add('active');

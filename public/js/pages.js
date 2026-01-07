@@ -3984,7 +3984,8 @@ export const pages = {
                                 <input type="date" id="consultaDataFim" value="${hoje}">
                             </div>
                         </div>
-                        <div style="margin-top: 20px; display: flex; justify-content: flex-end;">
+                        <div style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 12px;">
+                            <button class="btn btn-outline" id="btnMostrarTodosDocumentos" style="min-width: 140px;">📂 Mostrar Todos</button>
                             <button class="btn btn-secondary" id="btnFiltrarConsultaDocumentos" style="min-width: 160px;">🔍 Buscar Documentos</button>
                         </div>
                     </div>
@@ -3997,7 +3998,7 @@ export const pages = {
                     <div id="documentosContainer" style="margin-top: 1.5rem;">
                         <div class="empty-state">
                             <div class="empty-state-icon">📁</div>
-                            <p>Informe o tipo de documento ou selecione um repositor e clique em Buscar</p>
+                            <p>Carregando documentos recentes...</p>
                         </div>
                     </div>
                 </div>
@@ -4207,11 +4208,6 @@ export const pages = {
     },
 
     'consulta-despesas': async () => {
-        const repositores = await db.getAllRepositors();
-        const repositorOptions = repositores
-            .map(repo => `<option value="${repo.repo_cod}">${repo.repo_cod} - ${repo.repo_nome}</option>`)
-            .join('');
-
         const hoje = new Date().toISOString().split('T')[0];
         const umMesAtras = new Date();
         umMesAtras.setMonth(umMesAtras.getMonth() - 1);
@@ -4228,13 +4224,6 @@ export const pages = {
                 <div class="card-body">
                     <div class="despesa-filter-section">
                         <div class="filter-row" style="display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px;">
-                            <div class="filter-group" style="flex: 1; min-width: 200px;">
-                                <label for="despesaRepositor">Repositor</label>
-                                <select id="despesaRepositor">
-                                    <option value="">Todos</option>
-                                    ${repositorOptions}
-                                </select>
-                            </div>
                             <div class="filter-group" style="min-width: 150px;">
                                 <label for="despesaDataInicio">Data Inicial</label>
                                 <input type="date" id="despesaDataInicio" value="${dataInicio}">
@@ -5526,8 +5515,7 @@ export const pages = {
             <div class="card">
                 <div class="card-header">
                     <div>
-                        <h3 class="card-title">Consulta de Pesquisas</h3>
-                        <p class="text-muted" style="margin: 4px 0 0; font-size: 0.9rem;">
+                        <p class="text-muted" style="margin: 0; font-size: 0.9rem;">
                             Visualize as respostas das pesquisas realizadas pelos repositores.
                         </p>
                     </div>
@@ -5618,12 +5606,12 @@ export const pages = {
 
             <!-- Modal Detalhes Resposta -->
             <div class="modal modal-detalhes-resposta" id="modalDetalhesResposta">
-                <div class="modal-content" style="max-width: 700px;">
+                <div class="modal-content" style="max-width: 95vw; width: 1200px; max-height: 90vh;">
                     <div class="modal-header">
-                        <h3>Detalhes da Resposta</h3>
+                        <h3>Respostas da Pesquisa</h3>
                         <button class="modal-close" onclick="window.app.fecharModalDetalhesResposta()">&times;</button>
                     </div>
-                    <div class="modal-body" id="modalDetalhesRespostaBody">
+                    <div class="modal-body" id="modalDetalhesRespostaBody" style="overflow-y: auto; max-height: calc(90vh - 80px);">
                     </div>
                 </div>
             </div>
@@ -5743,8 +5731,20 @@ export const pages = {
                 /* Cards de Pesquisas Agrupadas */
                 .pesquisas-cards-grid {
                     display: grid;
-                    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-                    gap: 16px;
+                    grid-template-columns: repeat(3, 1fr);
+                    gap: 20px;
+                }
+
+                @media (max-width: 1024px) {
+                    .pesquisas-cards-grid {
+                        grid-template-columns: repeat(2, 1fr);
+                    }
+                }
+
+                @media (max-width: 640px) {
+                    .pesquisas-cards-grid {
+                        grid-template-columns: 1fr;
+                    }
                 }
 
                 .pesquisa-card {

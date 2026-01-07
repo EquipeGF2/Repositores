@@ -307,11 +307,7 @@ router.post('/tipos', async (req, res) => {
 // GET /api/documentos - Consulta documentos com filtros
 router.get('/', async (req, res) => {
   try {
-    const { repositor_id, dct_id, date_from, date_to, data_inicio, data_fim } = req.query;
-
-    if (!repositor_id && !dct_id) {
-      return res.status(400).json({ ok: false, message: 'Informe o repositor ou o tipo de documento para consultar' });
-    }
+    const { repositor_id, dct_id, date_from, date_to, data_inicio, data_fim, todos } = req.query;
 
     const filtros = [];
     const args = [];
@@ -339,12 +335,22 @@ router.get('/', async (req, res) => {
       args.push(fim);
     }
 
+    // Se não há filtros e não foi solicitado 'todos', retornar erro
+    if (filtros.length === 0 && todos !== 'true' && todos !== '1') {
+      return res.status(400).json({ ok: false, message: 'Informe ao menos um filtro (repositor, tipo ou período) para consultar' });
+    }
+
+    const whereClause = filtros.length > 0 ? `WHERE ${filtros.join(' AND ')}` : '';
+    const limitClause = filtros.length === 0 ? 'LIMIT 500' : ''; // Limitar se buscar todos
+
     const sql = `
-      SELECT d.*, t.dct_nome, t.dct_codigo
+      SELECT d.*, t.dct_nome, t.dct_codigo, r.repo_nome
       FROM cc_documentos d
       LEFT JOIN cc_documento_tipos t ON t.dct_id = d.doc_dct_id
-      WHERE ${filtros.join(' AND ')}
+      LEFT JOIN cad_repositor r ON r.repo_cod = d.doc_repositor_id
+      ${whereClause}
       ORDER BY d.doc_data_ref DESC, d.doc_hora_ref DESC, d.doc_id DESC
+      ${limitClause}
     `;
 
     const result = await tursoService.execute(sql, args);
