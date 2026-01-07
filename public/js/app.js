@@ -1362,13 +1362,16 @@ class App {
 
         try {
             const backendUrl = this.registroRotaState?.backendUrl || 'https://repositor-backend.onrender.com';
-            const response = await fetchJson(`${backendUrl}/api/registro-rota/coordenadas/${clienteId}`);
+            let cliente = { cliente_id: clienteId, cli_nome: '', endereco: '', latitude: '', longitude: '' };
 
-            if (!response || !response.ok) {
-                throw new Error(response?.message || 'Erro ao carregar cliente');
+            try {
+                const response = await fetchJson(`${backendUrl}/api/registro-rota/coordenadas/${clienteId}`);
+                if (response?.ok && response?.cliente) {
+                    cliente = response.cliente;
+                }
+            } catch (apiError) {
+                console.warn('Erro ao buscar coordenadas do backend, usando dados básicos:', apiError);
             }
-
-            const cliente = response.cliente;
 
             body.innerHTML = `
                 <div style="margin-bottom: 16px;">
@@ -13073,7 +13076,15 @@ class App {
         rubrica.fotos.push(novaFoto);
 
         // Atualizar UI
-        this.atualizarVisualRubricaFotos(rubricaId);
+        this.renderizarFotosRubrica(rubricaId);
+        this.atualizarContadorFotosRubrica(rubricaId);
+
+        // Atualizar visual do card
+        const card = document.querySelector(`.rubrica-card[data-rubrica-id="${rubricaId}"]`);
+        if (card) {
+            card.classList.add('preenchido');
+            card.classList.remove('erro');
+        }
 
         // Fechar câmera e mostrar sucesso
         this.fecharCameraRubrica();
