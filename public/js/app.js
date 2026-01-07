@@ -13073,7 +13073,15 @@ class App {
         rubrica.fotos.push(novaFoto);
 
         // Atualizar UI
-        this.atualizarVisualRubricaFotos(rubricaId);
+        this.renderizarFotosRubrica(rubricaId);
+        this.atualizarContadorFotosRubrica(rubricaId);
+
+        // Atualizar visual do card
+        const card = document.querySelector(`.rubrica-card[data-rubrica-id="${rubricaId}"]`);
+        if (card) {
+            card.classList.add('preenchido');
+            card.classList.remove('erro');
+        }
 
         // Fechar câmera e mostrar sucesso
         this.fecharCameraRubrica();
