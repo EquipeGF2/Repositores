@@ -13632,8 +13632,7 @@ class App {
             if (inputObservacao) inputObservacao.value = '';
 
             // Se foi despesa de viagem, limpar rubricas
-            const areaDespesa = document.getElementById('areaDespesaViagem');
-            if (areaDespesa && areaDespesa.style.display !== 'none' && enviadosComSucesso > 0) {
+            if (isDespesaViagem && enviadosComSucesso > 0) {
                 this.documentosState.rubricas = [];
                 await this.carregarRubricasGasto(); // Recarregar para limpar os campos
                 this.atualizarTotalDespesas();
