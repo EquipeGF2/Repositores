@@ -2571,40 +2571,9 @@ router.post('/coordenadas/lote', async (req, res) => {
 });
 
 /**
- * GET /coordenadas/:cliente_id - Busca coordenadas de um cliente do cache
- */
-router.get('/coordenadas/:cliente_id', async (req, res) => {
-  try {
-    const { cliente_id } = req.params;
-    const { endereco } = req.query; // Opcional: para verificar se mudou
-
-    const clienteIdNorm = normalizeClienteId(cliente_id);
-    const coordenadas = await tursoService.buscarCoordenadasCliente(clienteIdNorm, endereco);
-
-    if (!coordenadas) {
-      return res.status(404).json({
-        ok: false,
-        message: 'Coordenadas não encontradas para este cliente'
-      });
-    }
-
-    res.json({
-      ok: true,
-      coordenadas
-    });
-
-  } catch (error) {
-    console.error('Erro ao buscar coordenadas:', error);
-    res.status(500).json({
-      ok: false,
-      error: error.message
-    });
-  }
-});
-
-/**
  * GET /coordenadas/listar - Lista clientes com suas coordenadas
  * Query params: busca, precisao, limite
+ * IMPORTANTE: Esta rota deve vir ANTES de /coordenadas/:cliente_id
  */
 router.get('/coordenadas/listar', async (req, res) => {
   try {
@@ -2701,6 +2670,39 @@ router.get('/coordenadas/listar', async (req, res) => {
     res.status(500).json({
       ok: false,
       message: 'Erro ao listar coordenadas: ' + error.message
+    });
+  }
+});
+
+/**
+ * GET /coordenadas/:cliente_id - Busca coordenadas de um cliente do cache
+ * IMPORTANTE: Esta rota deve vir DEPOIS de /coordenadas/listar
+ */
+router.get('/coordenadas/:cliente_id', async (req, res) => {
+  try {
+    const { cliente_id } = req.params;
+    const { endereco } = req.query; // Opcional: para verificar se mudou
+
+    const clienteIdNorm = normalizeClienteId(cliente_id);
+    const coordenadas = await tursoService.buscarCoordenadasCliente(clienteIdNorm, endereco);
+
+    if (!coordenadas) {
+      return res.status(404).json({
+        ok: false,
+        message: 'Coordenadas não encontradas para este cliente'
+      });
+    }
+
+    res.json({
+      ok: true,
+      coordenadas
+    });
+
+  } catch (error) {
+    console.error('Erro ao buscar coordenadas:', error);
+    res.status(500).json({
+      ok: false,
+      error: error.message
     });
   }
 });
