@@ -1314,22 +1314,22 @@ class App {
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th style="width: 100px;">Código</th>
-                            <th>Nome</th>
+                            <th style="width: 80px;">Código</th>
+                            <th style="min-width: 120px;">Nome</th>
                             <th>Endereço</th>
-                            <th style="width: 120px;">Precisão</th>
+                            <th style="width: 110px; white-space: nowrap;">Precisão</th>
                             <th style="width: 180px;">Coordenadas</th>
-                            <th style="width: 80px;">Ações</th>
+                            <th style="width: 60px;">Ações</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${clientes.map(c => `
                             <tr>
                                 <td><strong>${c.cliente_id}</strong></td>
-                                <td>${c.cli_nome || '-'}</td>
+                                <td>${c.nome || c.cli_nome || '-'}</td>
                                 <td style="font-size: 13px;">${c.endereco || '-'}</td>
-                                <td>
-                                    <span class="badge ${getPrecisaoClass(c.precisao)}">
+                                <td style="white-space: nowrap;">
+                                    <span class="badge ${getPrecisaoClass(c.precisao)}" style="white-space: nowrap;">
                                         ${getPrecisaoTexto(c.precisao, c.aproximado)}
                                     </span>
                                 </td>
@@ -1921,13 +1921,20 @@ class App {
 
     async carregarTiposDocumentos() {
         const tbody = document.getElementById('tiposDocumentosBody');
-        if (!tbody) return;
+        if (!tbody) {
+            console.warn('Elemento tiposDocumentosBody não encontrado');
+            return;
+        }
+
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px;">Carregando...</td></tr>';
 
         try {
+            console.log('Carregando tipos de documentos...');
             const tipos = await db.listarTiposDocumentos();
+            console.log('Tipos de documentos carregados:', tipos?.length || 0);
 
-            if (tipos.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #6b7280;">Nenhum tipo cadastrado</td></tr>';
+            if (!tipos || tipos.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #6b7280; padding: 20px;">Nenhum tipo cadastrado. Clique em "+ Novo Tipo" para adicionar.</td></tr>';
                 return;
             }
 
@@ -1949,7 +1956,7 @@ class App {
             `).join('');
         } catch (error) {
             console.error('Erro ao carregar tipos de documentos:', error);
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #dc2626;">Erro ao carregar</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #dc2626; padding: 20px;">Erro ao carregar: ' + (error.message || 'Erro desconhecido') + '</td></tr>';
         }
     }
 
@@ -2213,22 +2220,22 @@ class App {
                 <table>
                     <thead>
                         <tr>
-                            <th>Cliente</th>
-                            <th>Nome</th>
+                            <th style="width: 80px;">Código</th>
+                            <th style="min-width: 120px;">Nome</th>
                             <th>Endereço</th>
-                            <th>Precisão</th>
-                            <th>Coordenadas</th>
-                            <th>Ações</th>
+                            <th style="width: 110px; white-space: nowrap;">Precisão</th>
+                            <th style="width: 180px;">Coordenadas</th>
+                            <th style="width: 80px;">Ações</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${clientes.map(c => `
                             <tr>
                                 <td><strong>${c.cliente_id}</strong></td>
-                                <td>${c.nome || '-'}</td>
+                                <td>${c.cli_nome || c.nome || '-'}</td>
                                 <td style="max-width: 300px; white-space: normal;">${c.endereco || '-'}</td>
-                                <td>
-                                    <span class="badge ${getPrecisaoClass(c.precisao)}">
+                                <td style="white-space: nowrap;">
+                                    <span class="badge ${getPrecisaoClass(c.precisao)}" style="white-space: nowrap;">
                                         ${getPrecisaoTexto(c.precisao, c.aproximado)}
                                     </span>
                                 </td>
@@ -2943,6 +2950,8 @@ class App {
                 await this.inicializarRegistroDocumentos();
             } else if (pageName === 'consulta-documentos') {
                 await this.inicializarConsultaDocumentos();
+            } else if (pageName === 'consulta-despesas') {
+                await this.inicializarConsultaDespesas();
             } else if (pageName === 'analise-performance') {
                 await this.inicializarAnalisePerformance();
             } else if (pageName === 'consulta-campanha') {
@@ -12441,6 +12450,259 @@ class App {
         }
     }
 
+    // ==================== CONSULTA DE DESPESAS ====================
+
+    async inicializarConsultaDespesas() {
+        try {
+            const btnFiltrar = document.getElementById('btnFiltrarDespesas');
+            if (btnFiltrar) {
+                btnFiltrar.onclick = () => this.filtrarDespesas();
+            }
+        } catch (error) {
+            console.error('Erro ao inicializar consulta de despesas:', error);
+            this.showNotification('Erro ao inicializar página', 'error');
+        }
+    }
+
+    async filtrarDespesas() {
+        const container = document.getElementById('despesasContainer');
+        if (!container) return;
+
+        const repositorId = document.getElementById('despesaRepositor')?.value;
+        const dataInicio = document.getElementById('despesaDataInicio')?.value;
+        const dataFim = document.getElementById('despesaDataFim')?.value;
+
+        if (!dataInicio || !dataFim) {
+            this.showNotification('Informe o período para consulta', 'warning');
+            return;
+        }
+
+        container.innerHTML = '<div style="text-align: center; padding: 40px;"><div class="spinner"></div><p style="margin-top: 16px;">Carregando despesas...</p></div>';
+
+        try {
+            // Buscar documentos do tipo despesa de viagem
+            const params = new URLSearchParams();
+            if (repositorId) params.append('repositor_id', repositorId);
+            params.append('data_inicio', dataInicio);
+            params.append('data_fim', dataFim);
+            params.append('tipo_codigo', 'despesa_viagem');
+
+            const data = await fetchJson(`${API_BASE_URL}/api/documentos?${params.toString()}`);
+            const documentos = data.documentos || [];
+
+            if (documentos.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state" style="padding: 40px;">
+                        <div class="empty-state-icon">💰</div>
+                        <p>Nenhuma despesa encontrada no período selecionado</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Agrupar por repositor
+            const despesasPorRepositor = this.agruparDespesasPorRepositor(documentos);
+
+            // Buscar rubricas cadastradas
+            const rubricas = await db.listarTiposGasto(true);
+
+            // Renderizar tabela
+            this.renderizarTabelaDespesas(despesasPorRepositor, rubricas);
+        } catch (error) {
+            console.error('Erro ao filtrar despesas:', error);
+            container.innerHTML = `<div style="color: #dc2626; text-align: center; padding: 40px;">Erro ao carregar despesas: ${error.message}</div>`;
+        }
+    }
+
+    agruparDespesasPorRepositor(documentos) {
+        const grupos = {};
+        const repositores = {};
+
+        for (const doc of documentos) {
+            const repId = doc.doc_repositor_id || doc.repositor_id;
+            if (!repId) continue;
+
+            if (!grupos[repId]) {
+                grupos[repId] = {
+                    repositorId: repId,
+                    repositorNome: doc.repo_nome || `Repositor ${repId}`,
+                    rubricas: {},
+                    total: 0,
+                    documentos: []
+                };
+            }
+
+            grupos[repId].documentos.push(doc);
+
+            // Tentar extrair rubrica do metadados do documento
+            if (doc.doc_observacao || doc.observacao) {
+                const obs = doc.doc_observacao || doc.observacao;
+                // Tentar extrair valor do campo observação (formato: "rubrica: R$ valor")
+                const match = obs.match(/(\w+):\s*R?\$?\s*([\d,\.]+)/i);
+                if (match) {
+                    const rubricaCodigo = match[1].toLowerCase();
+                    const valor = parseFloat(match[2].replace(',', '.')) || 0;
+                    if (!grupos[repId].rubricas[rubricaCodigo]) {
+                        grupos[repId].rubricas[rubricaCodigo] = { valor: 0, fotos: [] };
+                    }
+                    grupos[repId].rubricas[rubricaCodigo].valor += valor;
+                    grupos[repId].total += valor;
+                }
+            }
+        }
+
+        return Object.values(grupos);
+    }
+
+    renderizarTabelaDespesas(despesasPorRepositor, rubricas) {
+        const container = document.getElementById('despesasContainer');
+        if (!container) return;
+
+        if (despesasPorRepositor.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state" style="padding: 40px;">
+                    <div class="empty-state-icon">💰</div>
+                    <p>Nenhuma despesa encontrada</p>
+                </div>
+            `;
+            return;
+        }
+
+        // Criar cabeçalhos das rubricas
+        const rubricaHeaders = rubricas.map(r => `<th style="text-align: right; min-width: 100px;">${r.gst_nome}</th>`).join('');
+
+        let totalGeral = 0;
+        const rows = despesasPorRepositor.map(grupo => {
+            const rubricaCells = rubricas.map(r => {
+                const rubrica = grupo.rubricas[r.gst_codigo.toLowerCase()] || { valor: 0 };
+                return `<td class="valor">R$ ${rubrica.valor.toFixed(2).replace('.', ',')}</td>`;
+            }).join('');
+
+            // Calcular total do repositor
+            const total = Object.values(grupo.rubricas).reduce((sum, r) => sum + r.valor, 0);
+            totalGeral += total;
+
+            return `
+                <tr>
+                    <td><strong>${grupo.repositorNome}</strong></td>
+                    ${rubricaCells}
+                    <td class="valor total">R$ ${total.toFixed(2).replace('.', ',')}</td>
+                    <td style="text-align: center;">
+                        <button class="btn btn-sm btn-primary" onclick="app.abrirModalDetalhesDespesas('${grupo.repositorId}', '${grupo.repositorNome.replace(/'/g, "\\'")}')">
+                            👁️ Ver
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        // Footer com totais
+        const rubricaTotals = rubricas.map(r => {
+            const total = despesasPorRepositor.reduce((sum, g) => {
+                return sum + (g.rubricas[r.gst_codigo.toLowerCase()]?.valor || 0);
+            }, 0);
+            return `<td class="valor" style="font-weight: 600;">R$ ${total.toFixed(2).replace('.', ',')}</td>`;
+        }).join('');
+
+        container.innerHTML = `
+            <div style="margin-bottom: 16px; color: #6b7280;">
+                Encontrados <strong>${despesasPorRepositor.length}</strong> repositor(es) com despesas
+            </div>
+            <div class="table-responsive">
+                <table class="despesas-table">
+                    <thead>
+                        <tr>
+                            <th style="min-width: 150px;">Repositor</th>
+                            ${rubricaHeaders}
+                            <th style="text-align: right; min-width: 120px;">Total</th>
+                            <th style="text-align: center; width: 80px;">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows}
+                    </tbody>
+                    <tfoot>
+                        <tr style="background: #f3f4f6; font-weight: 600;">
+                            <td>TOTAL GERAL</td>
+                            ${rubricaTotals}
+                            <td class="valor total">R$ ${totalGeral.toFixed(2).replace('.', ',')}</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        `;
+    }
+
+    async abrirModalDetalhesDespesas(repositorId, repositorNome) {
+        const modal = document.getElementById('modalDetalhesDespesas');
+        const titulo = document.getElementById('modalDetalhesDespesasTitulo');
+        const body = document.getElementById('modalDetalhesDespesasBody');
+
+        if (!modal || !body) return;
+
+        titulo.textContent = `Despesas - ${repositorNome}`;
+        body.innerHTML = '<div style="text-align: center; padding: 20px;"><div class="spinner"></div></div>';
+        modal.classList.add('active');
+
+        try {
+            const dataInicio = document.getElementById('despesaDataInicio')?.value;
+            const dataFim = document.getElementById('despesaDataFim')?.value;
+
+            const params = new URLSearchParams();
+            params.append('repositor_id', repositorId);
+            if (dataInicio) params.append('data_inicio', dataInicio);
+            if (dataFim) params.append('data_fim', dataFim);
+            params.append('tipo_codigo', 'despesa_viagem');
+
+            const data = await fetchJson(`${API_BASE_URL}/api/documentos?${params.toString()}`);
+            const documentos = data.documentos || [];
+
+            if (documentos.length === 0) {
+                body.innerHTML = '<p style="text-align: center; color: #6b7280;">Nenhum documento encontrado</p>';
+                return;
+            }
+
+            // Buscar rubricas
+            const rubricas = await db.listarTiposGasto(true);
+
+            // Agrupar documentos por data
+            const docsPorData = {};
+            documentos.forEach(doc => {
+                const data = doc.doc_data_ref || doc.doc_criado_em?.split('T')[0] || 'Sem data';
+                if (!docsPorData[data]) docsPorData[data] = [];
+                docsPorData[data].push(doc);
+            });
+
+            body.innerHTML = Object.entries(docsPorData).map(([data, docs]) => `
+                <div class="despesa-rubrica-section">
+                    <div class="despesa-rubrica-header">
+                        <span>📅 ${new Date(data + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                        <span style="font-size: 14px; color: #6b7280;">${docs.length} documento(s)</span>
+                    </div>
+                    <div class="despesa-rubrica-body">
+                        <div class="despesa-fotos-grid">
+                            ${docs.map(doc => `
+                                <div class="despesa-foto-item">
+                                    <img src="${doc.doc_url_drive || doc.url_drive || ''}"
+                                         alt="Comprovante"
+                                         onclick="window.open('${doc.doc_url_drive || doc.url_drive || ''}', '_blank')"
+                                         onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📄</text></svg>'">
+                                    <div class="despesa-foto-info">
+                                        ${doc.doc_observacao || doc.observacao || doc.doc_nome_drive || 'Sem descrição'}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        } catch (error) {
+            console.error('Erro ao carregar detalhes:', error);
+            body.innerHTML = `<p style="color: #dc2626;">Erro ao carregar: ${error.message}</p>`;
+        }
+    }
+
     async carregarTiposDocumentos() {
         const tipos = await this.fetchTiposDocumentos();
 
@@ -12506,8 +12768,15 @@ class App {
                 codigo: r.gst_codigo,
                 nome: r.gst_nome,
                 valor: 0,
+                detalhes: '', // Campo para assento, observações, etc
                 fotos: [] // Array de fotos (até 10)
             }));
+
+            // Verificar se a rubrica é de passagem/ônibus para mostrar campo de assento
+            const isPassagem = (codigo) => {
+                const c = (codigo || '').toLowerCase();
+                return c.includes('passagem') || c.includes('onibus') || c.includes('ônibus');
+            };
 
             container.innerHTML = rubricas.map(r => `
                 <div class="rubrica-card" data-rubrica-id="${r.gst_id}">
@@ -12521,6 +12790,14 @@ class App {
                                placeholder="0,00" onchange="app.atualizarValorRubrica(${r.gst_id}, this.value)"
                                onkeyup="app.atualizarValorRubrica(${r.gst_id}, this.value)">
                     </div>
+                    ${isPassagem(r.gst_codigo) ? `
+                    <div class="rubrica-detalhes" style="margin-top: 8px;">
+                        <label style="font-size: 12px; color: #6b7280;">Assento/Poltrona</label>
+                        <input type="text" id="rubrica_detalhes_${r.gst_id}"
+                               placeholder="Ex: 15" style="width: 100%; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;"
+                               onchange="app.atualizarDetalhesRubrica(${r.gst_id}, this.value)">
+                    </div>
+                    ` : ''}
                     <div class="rubrica-foto">
                         <button type="button" class="rubrica-foto-btn" id="rubrica_foto_btn_${r.gst_id}"
                                 onclick="app.capturarFotoRubrica(${r.gst_id})">
@@ -12562,6 +12839,12 @@ class App {
 
         // Atualizar total
         this.atualizarTotalDespesas();
+    }
+
+    atualizarDetalhesRubrica(rubricaId, detalhes) {
+        const rubrica = this.documentosState.rubricas?.find(r => r.id === rubricaId);
+        if (!rubrica) return;
+        rubrica.detalhes = detalhes || '';
     }
 
     capturarFotoRubrica(rubricaId) {

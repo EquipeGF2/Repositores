@@ -3734,18 +3734,23 @@ class TursoDatabase {
     // ==================== TIPOS DE DOCUMENTOS ====================
 
     async listarTiposDocumentos(apenasAtivos = false) {
-        await this.connect();
-        if (!this.mainClient) {
-            console.warn('Banco principal não configurado, retornando lista vazia de tipos de documentos');
-            return [];
+        try {
+            await this.connect();
+            if (!this.mainClient) {
+                console.warn('Banco principal não configurado, retornando lista vazia de tipos de documentos');
+                return [];
+            }
+            let sql = 'SELECT * FROM cc_documento_tipos';
+            if (apenasAtivos) {
+                sql += ' WHERE dct_ativo = 1';
+            }
+            sql += ' ORDER BY dct_ordem, dct_nome';
+            const result = await this.mainClient.execute(sql);
+            return result.rows || [];
+        } catch (error) {
+            console.error('Erro ao listar tipos de documentos:', error);
+            throw error; // Re-throw para permitir tratamento pelo chamador
         }
-        let sql = 'SELECT * FROM cc_documento_tipos';
-        if (apenasAtivos) {
-            sql += ' WHERE dct_ativo = 1';
-        }
-        sql += ' ORDER BY dct_ordem, dct_nome';
-        const result = await this.mainClient.execute(sql);
-        return result.rows || [];
     }
 
     async salvarTipoDocumento(dados) {
@@ -3794,18 +3799,23 @@ class TursoDatabase {
     // ==================== TIPOS DE GASTO (RUBRICAS) ====================
 
     async listarTiposGasto(apenasAtivos = false) {
-        await this.connect();
-        if (!this.mainClient) {
-            console.warn('Banco principal não configurado, retornando lista vazia de tipos de gasto');
-            return [];
+        try {
+            await this.connect();
+            if (!this.mainClient) {
+                console.warn('Banco principal não configurado, retornando lista vazia de tipos de gasto');
+                return [];
+            }
+            let sql = 'SELECT * FROM cc_gasto_tipos';
+            if (apenasAtivos) {
+                sql += ' WHERE gst_ativo = 1';
+            }
+            sql += ' ORDER BY gst_ordem, gst_nome';
+            const result = await this.mainClient.execute(sql);
+            return result.rows || [];
+        } catch (error) {
+            console.error('Erro ao listar tipos de gasto:', error);
+            throw error;
         }
-        let sql = 'SELECT * FROM cc_gasto_tipos';
-        if (apenasAtivos) {
-            sql += ' WHERE gst_ativo = 1';
-        }
-        sql += ' ORDER BY gst_ordem, gst_nome';
-        const result = await this.mainClient.execute(sql);
-        return result.rows || [];
     }
 
     async salvarTipoGasto(dados) {
