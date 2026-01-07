@@ -2709,11 +2709,20 @@ export const pages = {
                 <div class="card-header">
                     <div>
                         <h3 class="card-title">Configurações do Sistema</h3>
-                        <p class="text-muted" style="margin: 4px 0 0;">Defina parâmetros gerais do sistema.</p>
+                        <p class="text-muted" style="margin: 4px 0 0;">Gerencie as configurações e cadastros do sistema.</p>
                     </div>
                 </div>
                 <div class="card-body">
-                    <div class="config-section">
+                    <!-- Tabs de Configuração -->
+                    <div class="config-tabs">
+                        <button class="config-tab active" data-config-tab="geral">⚙️ Geral</button>
+                        <button class="config-tab" data-config-tab="sessoes">📋 Sessões</button>
+                        <button class="config-tab" data-config-tab="documentos">📄 Tipos de Documentos</button>
+                        <button class="config-tab" data-config-tab="rubricas">💰 Rubricas de Gasto</button>
+                    </div>
+
+                    <!-- Aba Geral -->
+                    <div class="config-tab-content active" id="config-tab-geral">
                         <h4 style="margin-bottom: 16px; color: var(--text-primary);">Validação de Check-in</h4>
 
                         <div class="form-group" style="max-width: 400px;">
@@ -2724,18 +2733,16 @@ export const pages = {
                                    style="width: 100%;">
                             <small class="text-muted" style="display: block; margin-top: 4px;">
                                 Define a distância máxima permitida entre o repositor e o cliente para realizar check-in.
-                                O check-in será bloqueado se a distância for maior que este valor.
                             </small>
                         </div>
 
-                        <div class="modal-footer" style="justify-content: flex-start; margin-top: 16px; padding: 0;">
-                            <button type="button" class="btn btn-primary" id="btnSalvarConfigSistema">Salvar Configurações</button>
+                        <div style="margin-top: 20px;">
+                            <button type="button" class="btn btn-primary" id="btnSalvarConfigSistema">💾 Salvar Configurações</button>
                         </div>
                     </div>
 
-                    <hr style="margin: 24px 0; border: none; border-top: 1px solid var(--border-color);">
-
-                    <div class="config-section">
+                    <!-- Aba Sessões -->
+                    <div class="config-tab-content" id="config-tab-sessoes">
                         <h4 style="margin-bottom: 8px; color: var(--text-primary);">Gerenciamento de Sessões</h4>
                         <p class="text-muted" style="margin-bottom: 16px; font-size: 13px;">
                             Visualize e exclua sessões de check-in abertas (sem checkout).
@@ -2760,9 +2767,8 @@ export const pages = {
                         </div>
                     </div>
 
-                    <hr style="margin: 24px 0; border: none; border-top: 1px solid var(--border-color);">
-
-                    <div class="config-section">
+                    <!-- Aba Tipos de Documentos -->
+                    <div class="config-tab-content" id="config-tab-documentos">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                             <div>
                                 <h4 style="color: var(--text-primary); margin: 0;">Tipos de Documentos</h4>
@@ -2787,18 +2793,17 @@ export const pages = {
                                     </tr>
                                 </thead>
                                 <tbody id="tiposDocumentosBody">
-                                    <tr><td colspan="5" style="text-align: center;">Carregando...</td></tr>
+                                    <tr><td colspan="5" style="text-align: center; padding: 20px;">Carregando...</td></tr>
                                 </tbody>
                             </table>
                         </div>
                     </div>
 
-                    <hr style="margin: 24px 0; border: none; border-top: 1px solid var(--border-color);">
-
-                    <div class="config-section">
+                    <!-- Aba Rubricas de Gasto -->
+                    <div class="config-tab-content" id="config-tab-rubricas">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                             <div>
-                                <h4 style="color: var(--text-primary); margin: 0;">Tipos de Gasto (Rubricas)</h4>
+                                <h4 style="color: var(--text-primary); margin: 0;">Rubricas de Gasto</h4>
                                 <p class="text-muted" style="margin: 4px 0 0; font-size: 13px;">
                                     Cadastre as rubricas de gasto para despesas de viagem.
                                 </p>
@@ -2820,7 +2825,7 @@ export const pages = {
                                     </tr>
                                 </thead>
                                 <tbody id="tiposGastoBody">
-                                    <tr><td colspan="5" style="text-align: center;">Carregando...</td></tr>
+                                    <tr><td colspan="5" style="text-align: center; padding: 20px;">Carregando...</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -2907,6 +2912,53 @@ export const pages = {
                     </div>
                 </div>
             </div>
+
+            <style>
+                .config-tabs {
+                    display: flex;
+                    gap: 4px;
+                    border-bottom: 2px solid #e5e7eb;
+                    margin-bottom: 24px;
+                    flex-wrap: wrap;
+                }
+
+                .config-tab {
+                    padding: 12px 20px;
+                    background: transparent;
+                    border: none;
+                    border-bottom: 3px solid transparent;
+                    color: #6b7280;
+                    font-size: 14px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                    margin-bottom: -2px;
+                }
+
+                .config-tab:hover {
+                    color: #374151;
+                    background: #f9fafb;
+                }
+
+                .config-tab.active {
+                    color: #dc2626;
+                    border-bottom-color: #dc2626;
+                }
+
+                .config-tab-content {
+                    display: none;
+                }
+
+                .config-tab-content.active {
+                    display: block;
+                    animation: fadeIn 0.2s ease;
+                }
+
+                @keyframes fadeIn {
+                    from { opacity: 0; }
+                    to { opacity: 1; }
+                }
+            </style>
         `;
     },
 
@@ -3197,11 +3249,23 @@ export const pages = {
                                     💰 Despesa de Viagem
                                 </h5>
                                 <p style="margin: 0; font-size: 13px; color: #78350f;">
-                                    Preencha os valores gastos em cada rubrica. Para cada rubrica preenchida, é obrigatório anexar a foto do comprovante.
+                                    Preencha os valores gastos em cada rubrica. Para cada rubrica com valor, é <strong>obrigatório</strong> tirar foto do comprovante (até 10 fotos por rubrica).
                                 </p>
                             </div>
                             <div id="listaRubricas" class="rubricas-grid">
                                 <!-- Rubricas serão carregadas dinamicamente -->
+                            </div>
+                            <!-- Card de Total -->
+                            <div id="totalDespesasCard" class="despesa-total-card" style="display: none;">
+                                <div class="despesa-total-header">
+                                    <span>📊 Total das Despesas</span>
+                                </div>
+                                <div class="despesa-total-valor">
+                                    R$ <span id="totalDespesasValor">0,00</span>
+                                </div>
+                                <div class="despesa-total-resumo" id="resumoRubricas">
+                                    <!-- Resumo será preenchido dinamicamente -->
+                                </div>
                             </div>
                         </div>
 
@@ -3581,6 +3645,97 @@ export const pages = {
                     border-radius: 6px;
                     object-fit: cover;
                     border: 1px solid #d1d5db;
+                }
+
+                /* Fotos múltiplas da rubrica */
+                .rubrica-fotos-container {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 6px;
+                    margin-top: 8px;
+                }
+
+                .rubrica-foto-thumb {
+                    position: relative;
+                    width: 48px;
+                    height: 48px;
+                }
+
+                .rubrica-foto-thumb img {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                    border-radius: 4px;
+                    border: 1px solid #d1d5db;
+                }
+
+                .rubrica-foto-thumb .remover-foto {
+                    position: absolute;
+                    top: -6px;
+                    right: -6px;
+                    width: 18px;
+                    height: 18px;
+                    border-radius: 50%;
+                    background: #ef4444;
+                    color: white;
+                    border: none;
+                    font-size: 10px;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+
+                .rubrica-contador-fotos {
+                    font-size: 11px;
+                    color: #6b7280;
+                    margin-top: 4px;
+                }
+
+                /* Card de Total de Despesas */
+                .despesa-total-card {
+                    background: linear-gradient(135deg, #065f46 0%, #047857 100%);
+                    border-radius: 12px;
+                    padding: 20px;
+                    margin-top: 20px;
+                    color: white;
+                }
+
+                .despesa-total-header {
+                    font-size: 14px;
+                    font-weight: 600;
+                    opacity: 0.9;
+                    margin-bottom: 8px;
+                }
+
+                .despesa-total-valor {
+                    font-size: 32px;
+                    font-weight: 700;
+                    margin-bottom: 16px;
+                }
+
+                .despesa-total-resumo {
+                    font-size: 12px;
+                    opacity: 0.85;
+                    border-top: 1px solid rgba(255,255,255,0.2);
+                    padding-top: 12px;
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 12px;
+                }
+
+                .despesa-total-item {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                }
+
+                .despesa-total-item .check {
+                    color: #10b981;
+                }
+
+                .despesa-total-item .warn {
+                    color: #fbbf24;
                 }
             </style>
         `;
@@ -5228,6 +5383,199 @@ export const pages = {
                     max-height: 400px;
                     border-radius: 8px;
                     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                }
+
+                /* Cards de Pesquisas Agrupadas */
+                .pesquisas-cards-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+                    gap: 16px;
+                }
+
+                .pesquisa-card {
+                    background: white;
+                    border: 1px solid #e5e7eb;
+                    border-radius: 12px;
+                    padding: 16px;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+                }
+
+                .pesquisa-card:hover {
+                    border-color: #3b82f6;
+                    box-shadow: 0 4px 12px rgba(59,130,246,0.15);
+                    transform: translateY(-2px);
+                }
+
+                .pesquisa-card-header h4 {
+                    margin: 0 0 12px;
+                    font-size: 1rem;
+                    color: #1f2937;
+                    font-weight: 600;
+                }
+
+                .pesquisa-card-stats {
+                    display: grid;
+                    grid-template-columns: repeat(4, 1fr);
+                    gap: 8px;
+                    margin-bottom: 12px;
+                }
+
+                .pesquisa-card-stats .stat-item {
+                    text-align: center;
+                    padding: 8px 4px;
+                    background: #f9fafb;
+                    border-radius: 6px;
+                }
+
+                .pesquisa-card-stats .stat-value {
+                    display: block;
+                    font-size: 1.25rem;
+                    font-weight: 700;
+                    color: #3b82f6;
+                }
+
+                .pesquisa-card-stats .stat-label {
+                    font-size: 0.7rem;
+                    color: #6b7280;
+                    text-transform: uppercase;
+                }
+
+                .pesquisa-card-footer {
+                    text-align: right;
+                    padding-top: 8px;
+                    border-top: 1px solid #f3f4f6;
+                }
+
+                .btn-ver-mais {
+                    color: #3b82f6;
+                    font-weight: 500;
+                    font-size: 0.9rem;
+                }
+
+                /* Modal de Respostas por Pesquisa */
+                .respostas-lista-modal {
+                    max-height: 70vh;
+                    overflow-y: auto;
+                }
+
+                .resposta-item-card {
+                    border: 1px solid #e5e7eb;
+                    border-radius: 8px;
+                    margin-bottom: 10px;
+                    overflow: hidden;
+                }
+
+                .resposta-item-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 12px 16px;
+                    background: #f9fafb;
+                    cursor: pointer;
+                    user-select: none;
+                }
+
+                .resposta-item-header:hover {
+                    background: #f3f4f6;
+                }
+
+                .resposta-item-info {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 12px;
+                    font-size: 0.85rem;
+                }
+
+                .resposta-data {
+                    color: #6b7280;
+                    font-weight: 500;
+                }
+
+                .resposta-repositor {
+                    color: #3b82f6;
+                }
+
+                .resposta-cliente {
+                    color: #374151;
+                }
+
+                .resposta-item-icons {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+
+                .has-foto {
+                    font-size: 1rem;
+                }
+
+                .expand-icon {
+                    font-size: 0.7rem;
+                    color: #9ca3af;
+                    transition: transform 0.2s;
+                }
+
+                .resposta-item-card.expanded .expand-icon {
+                    transform: rotate(180deg);
+                }
+
+                .resposta-item-body {
+                    display: none;
+                    padding: 16px;
+                    background: white;
+                    border-top: 1px solid #e5e7eb;
+                }
+
+                .resposta-item-card.expanded .resposta-item-body {
+                    display: block;
+                }
+
+                .respostas-campos-lista {
+                    margin-bottom: 16px;
+                }
+
+                .campo-resposta-row {
+                    display: flex;
+                    justify-content: space-between;
+                    padding: 8px 0;
+                    border-bottom: 1px solid #f3f4f6;
+                }
+
+                .campo-resposta-row:last-child {
+                    border-bottom: none;
+                }
+
+                .campo-pergunta {
+                    font-weight: 500;
+                    color: #374151;
+                    flex: 1;
+                }
+
+                .campo-valor {
+                    color: #111827;
+                    text-align: right;
+                    flex: 1;
+                    max-width: 50%;
+                }
+
+                .resposta-foto-container {
+                    text-align: center;
+                    margin-top: 12px;
+                }
+
+                .resposta-foto-container img {
+                    max-width: 100%;
+                    max-height: 300px;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                }
+
+                .foto-erro {
+                    color: #9ca3af;
+                    font-style: italic;
                 }
 
                 @media (max-width: 768px) {

@@ -1115,6 +1115,29 @@ class App {
     }
 
     async inicializarConfiguracoesSistema() {
+        // ==================== LÓGICA DE TABS ====================
+        const configTabs = document.querySelectorAll('.config-tab');
+        configTabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                // Remover active de todos
+                configTabs.forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.config-tab-content').forEach(c => c.classList.remove('active'));
+
+                // Ativar a aba clicada
+                tab.classList.add('active');
+                const tabName = tab.dataset.configTab;
+                const content = document.getElementById(`config-tab-${tabName}`);
+                if (content) content.classList.add('active');
+
+                // Carregar dados específicos da aba
+                if (tabName === 'documentos') {
+                    this.carregarTiposDocumentos();
+                } else if (tabName === 'rubricas') {
+                    this.carregarTiposGasto();
+                }
+            });
+        });
+
         const btnSalvar = document.getElementById('btnSalvarConfigSistema');
         const inputDistancia = document.getElementById('configDistanciaMaxima');
         const btnCarregarSessoes = document.getElementById('btnCarregarSessoesAbertas');
@@ -8892,9 +8915,7 @@ class App {
 
         this.salvarContextoRegistroRota(repId, dataVisita);
 
-        await this.syncAtendimentoAberto(repId);
-
-        // Mostrar loading
+        // Mostrar loading PRIMEIRO para feedback imediato
         container.innerHTML = `
             <div style="text-align:center;padding:40px;">
                 <div class="spinner"></div>
@@ -8912,10 +8933,12 @@ class App {
 
         const normalizeClienteId = (v) => String(v ?? '').trim().replace(/\.0$/, '');
 
-        const [roteiro, resumo, atendimentosAbertos] = await Promise.all([
+        // Executar TODAS as chamadas em paralelo para máxima performance
+        const [roteiro, resumo, atendimentosAbertos, _sync] = await Promise.all([
             db.carregarRoteiroRepositorDia(repId, diaSemana),
             this.buscarResumoVisitas(repId, dataVisita),
-            this.buscarAtendimentosAbertos(repId)
+            this.buscarAtendimentosAbertos(repId),
+            this.syncAtendimentoAberto(repId) // Agora em paralelo
         ]);
 
         if (!roteiro || roteiro.length === 0) {
@@ -9135,14 +9158,23 @@ class App {
 
         this.showNotification(`${roteiro.length} cliente(s) no roteiro`, 'success');
 
+        // Executar tarefas em background SEM bloquear a UI
+        // Estas são fire-and-forget - não usamos await
+
         // Calcular distâncias em background após carregar a lista
-        this.calcularDistanciasRoteiro(roteiro, repId, dataVisita);
+        this.calcularDistanciasRoteiro(roteiro, repId, dataVisita).catch(err =>
+            console.warn('Erro ao calcular distâncias:', err)
+        );
 
-        // Verificar pesquisas pendentes para cada cliente em atendimento
-        this.verificarPesquisasDoRoteiro(roteiro, repId, dataVisita);
+        // Verificar pesquisas pendentes para cada cliente (background)
+        this.verificarPesquisasDoRoteiro(roteiro, repId, dataVisita).catch(err =>
+            console.warn('Erro ao verificar pesquisas:', err)
+        );
 
-        // Verificar clientes não atendidos do último dia útil
-        await this.verificarClientesPendentes();
+        // Verificar clientes não atendidos do último dia útil (background)
+        this.verificarClientesPendentes().catch(err =>
+            console.warn('Erro ao verificar clientes pendentes:', err)
+        );
     } catch (error) {
         console.error('Erro ao carregar roteiro:', error);
         this.showNotification('Erro ao carregar roteiro: ' + error.message, 'error');
@@ -10172,7 +10204,7 @@ class App {
             console.warn('Não foi possível obter posição GPS:', error);
             // Atualizar todos os cards indicando que GPS não está disponível
             roteiro.forEach(cli => {
-                const cliId = String(cli.cliente_id || cli.cod_cliente || '').trim().replace(/\.0$/, '');
+                const cliId = String(cli.cli_codigo || cli.cod_cliente || '').trim().replace(/\.0$/, '');
                 const elDistancia = document.getElementById(`distancia-${cliId}`);
                 if (elDistancia) {
                     elDistancia.innerHTML = '📍 GPS indisponível';
@@ -10182,77 +10214,85 @@ class App {
             return;
         }
 
-        // 2. Para cada cliente, calcular distância (com delay para evitar rate limit do Nominatim)
-        for (let i = 0; i < roteiro.length; i++) {
-            const cli = roteiro[i];
-            // IMPORTANTE: O campo correto é cli_codigo (igual ao usado na renderização do card)
-            const cliId = String(cli.cli_codigo || cli.cliente_id || cli.cod_cliente || '').trim().replace(/\.0$/, '');
-            const elDistancia = document.getElementById(`distancia-${cliId}`);
-            const itemElement = document.querySelector(`.route-item[data-cliente-id="${cliId}"]`);
+        // 2. Processar clientes em paralelo usando chunks para melhor performance
+        // Processa 5 clientes simultaneamente para evitar sobrecarga
+        const CHUNK_SIZE = 5;
+        const chunks = [];
+        for (let i = 0; i < roteiro.length; i += CHUNK_SIZE) {
+            chunks.push(roteiro.slice(i, i + CHUNK_SIZE));
+        }
 
-            console.log(`Processando cliente ${cliId}, elemento encontrado:`, !!elDistancia);
+        console.log(`📍 Calculando distâncias para ${roteiro.length} clientes em ${chunks.length} chunks`);
 
-            if (!elDistancia) continue;
+        for (const chunk of chunks) {
+            // Processar chunk em paralelo
+            await Promise.all(chunk.map(async (cli) => {
+                const cliId = String(cli.cli_codigo || cli.cliente_id || cli.cod_cliente || '').trim().replace(/\.0$/, '');
+                const elDistancia = document.getElementById(`distancia-${cliId}`);
+                const itemElement = document.querySelector(`.route-item[data-cliente-id="${cliId}"]`);
 
-            // Montar endereço do cadastro
-            const enderecoCadastro = this.formatarEnderecoCadastro(cli);
+                if (!elDistancia) return;
 
-            if (!enderecoCadastro) {
-                elDistancia.innerHTML = '📍 Endereço não cadastrado';
-                elDistancia.style.color = '#b91c1c';
-                continue;
-            }
+                // Montar endereço do cadastro
+                const enderecoCadastro = this.formatarEnderecoCadastro(cli);
 
-            try {
-                // Aguardar um pouco entre requisições (300ms - backend tem cache)
-                if (i > 0) {
-                    await new Promise(resolve => setTimeout(resolve, 300));
-                }
-
-                // Geocodificar endereço do cliente (passa clienteId para cache no banco)
-                const coordsCliente = await this.obterCoordenadasPorEndereco(enderecoCadastro, cliId);
-
-                if (!coordsCliente) {
-                    elDistancia.innerHTML = '📍 Não foi possível localizar';
-                    elDistancia.style.color = '#f59e0b';
-                    continue;
-                }
-
-                // Calcular distância
-                const distanciaMetros = this.calcularDistanciaHaversine(
-                    posicaoAtual.lat,
-                    posicaoAtual.lng,
-                    coordsCliente.lat,
-                    coordsCliente.lng
-                );
-
-                const distanciaKm = (distanciaMetros / 1000).toFixed(1);
-                const foraDoPer = distanciaMetros > (distanciaMaximaKm * 1000);
-                const ehAproximado = coordsCliente.aproximado === true;
-
-                // Atualizar display da distância
-                if (ehAproximado) {
-                    // Distância aproximada (baseada em bairro ou cidade) - não bloqueia check-in
-                    const fonteTexto = coordsCliente.fonte === 'bairro'
-                        ? (coordsCliente.bairro || 'bairro')
-                        : (coordsCliente.cidade || 'cidade');
-                    elDistancia.innerHTML = `📍 ~${distanciaKm} km <span style="font-size:10px;color:#6b7280;">(aprox. via ${fonteTexto})</span>`;
-                    elDistancia.style.color = '#f59e0b'; // amarelo/laranja
-                } else if (foraDoPer) {
-                    elDistancia.innerHTML = `📍 <strong style="color:#b91c1c;">${distanciaKm} km</strong> (fora do perímetro de ${distanciaMaximaKm}km)`;
+                if (!enderecoCadastro) {
+                    elDistancia.innerHTML = '📍 Endereço não cadastrado';
                     elDistancia.style.color = '#b91c1c';
-
-                    // Desabilitar botão de check-in APENAS se distância for precisa e fora do perímetro
-                    this.desabilitarCheckinCliente(itemElement, cliId, distanciaKm, distanciaMaximaKm);
-                } else {
-                    elDistancia.innerHTML = `📍 ${distanciaKm} km`;
-                    elDistancia.style.color = '#059669'; // verde
+                    return;
                 }
 
-            } catch (error) {
-                console.warn(`Erro ao calcular distância para cliente ${cliId}:`, error);
-                elDistancia.innerHTML = '📍 Erro ao calcular';
-                elDistancia.style.color = '#b91c1c';
+                try {
+                    // Geocodificar endereço do cliente (passa clienteId para cache no banco)
+                    const coordsCliente = await this.obterCoordenadasPorEndereco(enderecoCadastro, cliId);
+
+                    if (!coordsCliente) {
+                        elDistancia.innerHTML = '📍 Não foi possível localizar';
+                        elDistancia.style.color = '#f59e0b';
+                        return;
+                    }
+
+                    // Calcular distância
+                    const distanciaMetros = this.calcularDistanciaHaversine(
+                        posicaoAtual.lat,
+                        posicaoAtual.lng,
+                        coordsCliente.lat,
+                        coordsCliente.lng
+                    );
+
+                    const distanciaKm = (distanciaMetros / 1000).toFixed(1);
+                    const foraDoPer = distanciaMetros > (distanciaMaximaKm * 1000);
+                    const ehAproximado = coordsCliente.aproximado === true;
+
+                    // Atualizar display da distância
+                    if (ehAproximado) {
+                        // Distância aproximada (baseada em bairro ou cidade) - não bloqueia check-in
+                        const fonteTexto = coordsCliente.fonte === 'bairro'
+                            ? (coordsCliente.bairro || 'bairro')
+                            : (coordsCliente.cidade || 'cidade');
+                        elDistancia.innerHTML = `📍 ~${distanciaKm} km <span style="font-size:10px;color:#6b7280;">(aprox. via ${fonteTexto})</span>`;
+                        elDistancia.style.color = '#f59e0b'; // amarelo/laranja
+                    } else if (foraDoPer) {
+                        elDistancia.innerHTML = `📍 <strong style="color:#b91c1c;">${distanciaKm} km</strong> (fora do perímetro de ${distanciaMaximaKm}km)`;
+                        elDistancia.style.color = '#b91c1c';
+
+                        // Desabilitar botão de check-in APENAS se distância for precisa e fora do perímetro
+                        this.desabilitarCheckinCliente(itemElement, cliId, distanciaKm, distanciaMaximaKm);
+                    } else {
+                        elDistancia.innerHTML = `📍 ${distanciaKm} km`;
+                        elDistancia.style.color = '#059669'; // verde
+                    }
+
+                } catch (error) {
+                    console.warn(`Erro ao calcular distância para cliente ${cliId}:`, error);
+                    elDistancia.innerHTML = '📍 Erro ao calcular';
+                    elDistancia.style.color = '#b91c1c';
+                }
+            }));
+
+            // Pequeno delay entre chunks para não sobrecarregar o backend
+            if (chunks.indexOf(chunk) < chunks.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 100));
             }
         }
 
@@ -10260,7 +10300,7 @@ class App {
     }
 
     /**
-     * Verifica pesquisas pendentes para cada cliente do roteiro em atendimento
+     * Verifica pesquisas pendentes para TODOS os clientes do roteiro
      * Atualiza o card para mostrar botão de pesquisa quando necessário
      * Busca TODAS as pesquisas (obrigatórias e não obrigatórias)
      */
@@ -10272,34 +10312,42 @@ class App {
             this.registroRotaState.pesquisasPendentesMap = new Map();
         }
 
-        const mapaResumo = this.registroRotaState.resumoVisitas || new Map();
-
-        // Para cada cliente em atendimento, verificar se há pesquisas pendentes
-        for (const cliente of roteiro) {
-            const cliId = String(cliente.cli_codigo || '').trim().replace(/\.0$/, '');
-            const statusCliente = mapaResumo.get(cliId) || {};
-
-            // Só verifica pesquisas para clientes em atendimento
-            if (statusCliente.status !== 'em_atendimento') continue;
-
-            try {
-                // Busca TODAS as pesquisas (obrigatórias e não obrigatórias)
-                const pesquisasPendentes = await this.buscarPesquisasPendentes(repId, cliId, dataVisita, false);
-
-                if (pesquisasPendentes && pesquisasPendentes.length > 0) {
-                    this.registroRotaState.pesquisasPendentesMap.set(cliId, pesquisasPendentes);
-                    // Atualizar o card para mostrar botão de pesquisa
-                    this.atualizarCardCliente(cliId);
-                    const obrigatorias = pesquisasPendentes.filter(p => p.pes_obrigatorio).length;
-                    const opcionais = pesquisasPendentes.length - obrigatorias;
-                    console.log(`Cliente ${cliId}: ${pesquisasPendentes.length} pesquisa(s) - ${obrigatorias} obrigatória(s), ${opcionais} opcional(is)`);
-                } else {
-                    this.registroRotaState.pesquisasPendentesMap.delete(cliId);
-                }
-            } catch (error) {
-                console.warn(`Erro ao verificar pesquisas do cliente ${cliId}:`, error);
-            }
+        // Processar em chunks de 8 clientes para melhor performance
+        const CHUNK_SIZE = 8;
+        const chunks = [];
+        for (let i = 0; i < roteiro.length; i += CHUNK_SIZE) {
+            chunks.push(roteiro.slice(i, i + CHUNK_SIZE));
         }
+
+        console.log(`📋 Verificando pesquisas para ${roteiro.length} clientes em ${chunks.length} chunks`);
+
+        for (const chunk of chunks) {
+            // Processar chunk em paralelo
+            await Promise.all(chunk.map(async (cliente) => {
+                const cliId = String(cliente.cli_codigo || '').trim().replace(/\.0$/, '');
+
+                try {
+                    // Busca TODAS as pesquisas (obrigatórias e não obrigatórias)
+                    const pesquisasPendentes = await this.buscarPesquisasPendentes(repId, cliId, dataVisita, false);
+
+                    if (pesquisasPendentes && pesquisasPendentes.length > 0) {
+                        this.registroRotaState.pesquisasPendentesMap.set(cliId, pesquisasPendentes);
+                    } else {
+                        this.registroRotaState.pesquisasPendentesMap.delete(cliId);
+                    }
+                } catch (error) {
+                    console.warn(`Erro ao verificar pesquisas do cliente ${cliId}:`, error);
+                }
+            }));
+
+            // Atualizar cards deste chunk imediatamente (UI progressiva)
+            chunk.forEach(cliente => {
+                const cliId = String(cliente.cli_codigo || '').trim().replace(/\.0$/, '');
+                this.atualizarCardCliente(cliId);
+            });
+        }
+
+        console.log('📋 Verificação de pesquisas concluída');
     }
 
     /**
@@ -11081,12 +11129,20 @@ class App {
             if (sessaoAberta) {
                 this.reconciliarSessaoAbertaLocal(sessaoAberta, repIdAtual);
             } else if (clienteIdAtual) {
-                this.atualizarStatusClienteLocal(clienteIdAtual, {
-                    status: 'sem_checkin',
-                    rv_id: null,
-                    atividades_count: 0,
-                    rep_id: repIdAtual
-                });
+                // Verificar se o status atual é 'finalizado' (checkout concluído)
+                // Nesse caso, NÃO sobrescrever para 'sem_checkin' pois o botão "Nova visita" deve aparecer
+                const normalizeClienteId = (v) => String(v ?? '').trim().replace(/\.0$/, '');
+                const clienteIdNorm = normalizeClienteId(clienteIdAtual);
+                const statusAtual = this.registroRotaState.resumoVisitas?.get(clienteIdNorm);
+
+                if (statusAtual?.status !== 'finalizado') {
+                    this.atualizarStatusClienteLocal(clienteIdAtual, {
+                        status: 'sem_checkin',
+                        rv_id: null,
+                        atividades_count: 0,
+                        rep_id: repIdAtual
+                    });
+                }
             }
         }
     }
@@ -11847,14 +11903,13 @@ class App {
                 return;
             }
 
-            // Inicializar estado das rubricas
+            // Inicializar estado das rubricas (suporta múltiplas fotos - até 10 por rubrica)
             this.documentosState.rubricas = rubricas.map(r => ({
                 id: r.gst_id,
                 codigo: r.gst_codigo,
                 nome: r.gst_nome,
                 valor: 0,
-                foto: null,
-                fotoPreview: null
+                fotos: [] // Array de fotos (até 10)
             }));
 
             container.innerHTML = rubricas.map(r => `
@@ -11866,18 +11921,26 @@ class App {
                     <div class="rubrica-valor">
                         <label>R$</label>
                         <input type="text" inputmode="decimal" id="rubrica_valor_${r.gst_id}"
-                               placeholder="0,00" onchange="app.atualizarValorRubrica(${r.gst_id}, this.value)">
+                               placeholder="0,00" onchange="app.atualizarValorRubrica(${r.gst_id}, this.value)"
+                               onkeyup="app.atualizarValorRubrica(${r.gst_id}, this.value)">
                     </div>
                     <div class="rubrica-foto">
                         <button type="button" class="rubrica-foto-btn" id="rubrica_foto_btn_${r.gst_id}"
                                 onclick="app.capturarFotoRubrica(${r.gst_id})">
-                            📷 Anexar comprovante
+                            📷 Tirar foto do comprovante
                         </button>
                         <input type="file" id="rubrica_foto_input_${r.gst_id}" accept="image/*" capture="environment"
                                style="display: none;" onchange="app.processarFotoRubrica(${r.gst_id}, this.files)">
+                        <div class="rubrica-contador-fotos" id="rubrica_contador_${r.gst_id}">0/10 fotos</div>
+                    </div>
+                    <div class="rubrica-fotos-container" id="rubrica_fotos_${r.gst_id}">
+                        <!-- Miniaturas das fotos aparecem aqui -->
                     </div>
                 </div>
             `).join('');
+
+            // Mostrar card de total
+            this.atualizarTotalDespesas();
         } catch (error) {
             console.error('Erro ao carregar rubricas:', error);
             container.innerHTML = '<p style="color: #dc2626;">Erro ao carregar rubricas</p>';
@@ -11895,14 +11958,26 @@ class App {
         // Atualizar visual do card
         const card = document.querySelector(`.rubrica-card[data-rubrica-id="${rubricaId}"]`);
         if (card) {
-            card.classList.toggle('preenchido', valor > 0 && rubrica.foto);
-            card.classList.toggle('erro', valor > 0 && !rubrica.foto);
+            const temFotos = rubrica.fotos && rubrica.fotos.length > 0;
+            card.classList.toggle('preenchido', valor > 0 && temFotos);
+            card.classList.toggle('erro', valor > 0 && !temFotos);
         }
+
+        // Atualizar total
+        this.atualizarTotalDespesas();
     }
 
     capturarFotoRubrica(rubricaId) {
+        const rubrica = this.documentosState.rubricas?.find(r => r.id === rubricaId);
+        if (rubrica && rubrica.fotos && rubrica.fotos.length >= 10) {
+            this.showNotification('Limite de 10 fotos atingido para esta rubrica.', 'warning');
+            return;
+        }
         const input = document.getElementById(`rubrica_foto_input_${rubricaId}`);
-        if (input) input.click();
+        if (input) {
+            input.value = ''; // Limpar para permitir selecionar a mesma foto novamente
+            input.click();
+        }
     }
 
     processarFotoRubrica(rubricaId, files) {
@@ -11911,29 +11986,135 @@ class App {
         const rubrica = this.documentosState.rubricas?.find(r => r.id === rubricaId);
         if (!rubrica) return;
 
+        // Inicializar array de fotos se não existir
+        if (!rubrica.fotos) rubrica.fotos = [];
+
+        // Verificar limite
+        if (rubrica.fotos.length >= 10) {
+            this.showNotification('Limite de 10 fotos atingido para esta rubrica.', 'warning');
+            return;
+        }
+
         const arquivo = files[0];
-        rubrica.foto = arquivo;
+        const fotoIndex = rubrica.fotos.length;
+
+        // Adicionar ao array
+        const novaFoto = {
+            arquivo: arquivo,
+            preview: null
+        };
+        rubrica.fotos.push(novaFoto);
 
         // Criar preview
         const reader = new FileReader();
         reader.onload = (e) => {
-            rubrica.fotoPreview = e.target.result;
-
-            // Atualizar botão
-            const btn = document.getElementById(`rubrica_foto_btn_${rubricaId}`);
-            if (btn) {
-                btn.classList.add('tem-foto');
-                btn.innerHTML = `✅ ${arquivo.name.substring(0, 15)}...`;
-            }
-
-            // Atualizar visual do card
-            const card = document.querySelector(`.rubrica-card[data-rubrica-id="${rubricaId}"]`);
-            if (card && rubrica.valor > 0) {
-                card.classList.add('preenchido');
-                card.classList.remove('erro');
-            }
+            novaFoto.preview = e.target.result;
+            this.renderizarFotosRubrica(rubricaId);
         };
         reader.readAsDataURL(arquivo);
+
+        // Atualizar contador
+        this.atualizarContadorFotosRubrica(rubricaId);
+
+        // Atualizar visual do card
+        const card = document.querySelector(`.rubrica-card[data-rubrica-id="${rubricaId}"]`);
+        if (card && rubrica.valor > 0) {
+            card.classList.add('preenchido');
+            card.classList.remove('erro');
+        }
+
+        // Atualizar botão
+        const btn = document.getElementById(`rubrica_foto_btn_${rubricaId}`);
+        if (btn && rubrica.fotos.length > 0) {
+            btn.classList.add('tem-foto');
+        }
+    }
+
+    renderizarFotosRubrica(rubricaId) {
+        const rubrica = this.documentosState.rubricas?.find(r => r.id === rubricaId);
+        const container = document.getElementById(`rubrica_fotos_${rubricaId}`);
+        if (!rubrica || !container) return;
+
+        if (!rubrica.fotos || rubrica.fotos.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+
+        container.innerHTML = rubrica.fotos.map((foto, idx) => `
+            <div class="rubrica-foto-thumb">
+                <img src="${foto.preview || ''}" alt="Foto ${idx + 1}">
+                <button class="remover-foto" onclick="app.removerFotoRubrica(${rubricaId}, ${idx})" title="Remover">×</button>
+            </div>
+        `).join('');
+    }
+
+    removerFotoRubrica(rubricaId, fotoIndex) {
+        const rubrica = this.documentosState.rubricas?.find(r => r.id === rubricaId);
+        if (!rubrica || !rubrica.fotos) return;
+
+        rubrica.fotos.splice(fotoIndex, 1);
+        this.renderizarFotosRubrica(rubricaId);
+        this.atualizarContadorFotosRubrica(rubricaId);
+
+        // Atualizar visual do card
+        const card = document.querySelector(`.rubrica-card[data-rubrica-id="${rubricaId}"]`);
+        if (card) {
+            const temFotos = rubrica.fotos.length > 0;
+            card.classList.toggle('preenchido', rubrica.valor > 0 && temFotos);
+            card.classList.toggle('erro', rubrica.valor > 0 && !temFotos);
+        }
+
+        // Atualizar botão
+        const btn = document.getElementById(`rubrica_foto_btn_${rubricaId}`);
+        if (btn) {
+            btn.classList.toggle('tem-foto', rubrica.fotos.length > 0);
+        }
+    }
+
+    atualizarContadorFotosRubrica(rubricaId) {
+        const rubrica = this.documentosState.rubricas?.find(r => r.id === rubricaId);
+        const contador = document.getElementById(`rubrica_contador_${rubricaId}`);
+        if (contador && rubrica) {
+            const qtd = rubrica.fotos?.length || 0;
+            contador.textContent = `${qtd}/10 fotos`;
+            contador.style.color = qtd > 0 ? '#10b981' : '#6b7280';
+        }
+    }
+
+    atualizarTotalDespesas() {
+        const totalCard = document.getElementById('totalDespesasCard');
+        const totalValor = document.getElementById('totalDespesasValor');
+        const resumoContainer = document.getElementById('resumoRubricas');
+
+        if (!totalCard || !totalValor || !resumoContainer) return;
+
+        const rubricas = this.documentosState.rubricas || [];
+        const rubricasComValor = rubricas.filter(r => r.valor > 0);
+
+        if (rubricasComValor.length === 0) {
+            totalCard.style.display = 'none';
+            return;
+        }
+
+        totalCard.style.display = 'block';
+
+        // Calcular total
+        const total = rubricasComValor.reduce((sum, r) => sum + r.valor, 0);
+        totalValor.textContent = total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        // Montar resumo
+        resumoContainer.innerHTML = rubricasComValor.map(r => {
+            const temFoto = r.fotos && r.fotos.length > 0;
+            const icon = temFoto ? '✓' : '⚠';
+            const classe = temFoto ? 'check' : 'warn';
+            return `
+                <div class="despesa-total-item">
+                    <span class="${classe}">${icon}</span>
+                    <span>${r.nome}: R$ ${r.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                    <span style="opacity: 0.7;">(${r.fotos?.length || 0} foto${r.fotos?.length !== 1 ? 's' : ''})</span>
+                </div>
+            `;
+        }).join('');
     }
 
     validarRubricasDespesa() {
@@ -11944,10 +12125,11 @@ class App {
             return { ok: false, erro: 'Preencha pelo menos uma rubrica com valor.' };
         }
 
-        const semFoto = rubricasComValor.filter(r => !r.foto);
+        // Verificar se todas as rubricas com valor têm pelo menos 1 foto
+        const semFoto = rubricasComValor.filter(r => !r.fotos || r.fotos.length === 0);
         if (semFoto.length > 0) {
             const nomes = semFoto.map(r => r.nome).join(', ');
-            return { ok: false, erro: `Anexe foto do comprovante para: ${nomes}` };
+            return { ok: false, erro: `Tire foto do comprovante para: ${nomes}` };
         }
 
         return { ok: true, rubricas: rubricasComValor };
@@ -15301,44 +15483,62 @@ class App {
                 return;
             }
 
-            container.innerHTML = `
-                <div class="table-container" style="overflow-x: auto;">
-                    <table class="respostas-table">
-                        <thead>
-                            <tr>
-                                <th>Data</th>
-                                <th>Pesquisa</th>
-                                <th>Repositor</th>
-                                <th>Cliente</th>
-                                <th>Foto</th>
-                                <th>Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${respostas.map(r => {
-                                const data = r.res_data_resposta ? new Date(r.res_data_resposta).toLocaleDateString('pt-BR') : '-';
-                                const fotoThumb = r.res_foto_url ? `<img src="${r.res_foto_url}" class="resposta-foto-thumb" onclick="window.open('${r.res_foto_url}', '_blank')">` : '-';
+            // Agrupar respostas por pesquisa
+            const pesquisasMap = new Map();
+            respostas.forEach(r => {
+                const pesId = r.res_pes_id;
+                if (!pesquisasMap.has(pesId)) {
+                    pesquisasMap.set(pesId, {
+                        pes_id: pesId,
+                        pes_titulo: r.pes_titulo,
+                        respostas: [],
+                        repositores: new Set(),
+                        clientes: new Set(),
+                        comFoto: 0
+                    });
+                }
+                const grupo = pesquisasMap.get(pesId);
+                grupo.respostas.push(r);
+                grupo.repositores.add(r.res_repo_cod);
+                grupo.clientes.add(r.res_cliente_codigo);
+                if (r.res_foto_url) grupo.comFoto++;
+            });
 
-                                return `
-                                    <tr>
-                                        <td>${data}</td>
-                                        <td>${r.pes_titulo || '-'}</td>
-                                        <td>${r.res_repo_cod} - ${r.repo_nome || ''}</td>
-                                        <td>${r.res_cliente_codigo} - ${r.cliente_nome || ''}</td>
-                                        <td>${fotoThumb}</td>
-                                        <td>
-                                            <button class="btn btn-secondary btn-sm" onclick="window.app.verDetalhesResposta(${r.res_id})">
-                                                Ver
-                                            </button>
-                                        </td>
-                                    </tr>
-                                `;
-                            }).join('')}
-                        </tbody>
-                    </table>
+            const pesquisasAgrupadas = Array.from(pesquisasMap.values());
+
+            container.innerHTML = `
+                <div class="pesquisas-cards-grid">
+                    ${pesquisasAgrupadas.map(p => `
+                        <div class="pesquisa-card" onclick="window.app.abrirModalRespostasPesquisa(${p.pes_id})">
+                            <div class="pesquisa-card-header">
+                                <h4>${p.pes_titulo || 'Pesquisa sem título'}</h4>
+                            </div>
+                            <div class="pesquisa-card-stats">
+                                <div class="stat-item">
+                                    <span class="stat-value">${p.respostas.length}</span>
+                                    <span class="stat-label">Respostas</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-value">${p.repositores.size}</span>
+                                    <span class="stat-label">Repositores</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-value">${p.clientes.size}</span>
+                                    <span class="stat-label">Clientes</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-value">${p.comFoto}</span>
+                                    <span class="stat-label">Com Foto</span>
+                                </div>
+                            </div>
+                            <div class="pesquisa-card-footer">
+                                <span class="btn-ver-mais">Ver respostas →</span>
+                            </div>
+                        </div>
+                    `).join('')}
                 </div>
-                <p class="text-muted" style="margin-top: 10px; font-size: 0.85rem;">
-                    ${respostas.length} resposta(s) encontrada(s)
+                <p class="text-muted" style="margin-top: 15px; font-size: 0.85rem;">
+                    ${respostas.length} resposta(s) em ${pesquisasAgrupadas.length} pesquisa(s)
                 </p>
             `;
         } catch (error) {
@@ -15349,6 +15549,75 @@ class App {
                     <p>Erro ao buscar respostas: ${error.message}</p>
                 </div>
             `;
+        }
+    }
+
+    abrirModalRespostasPesquisa(pesquisaId) {
+        const modal = document.getElementById('modalDetalhesResposta');
+        const body = document.getElementById('modalDetalhesRespostaBody');
+        const header = modal?.querySelector('.modal-header h3');
+        if (!modal || !body) return;
+
+        const respostasDaPesquisa = this.respostasPesquisaAtual.filter(r => r.res_pes_id === pesquisaId);
+        if (respostasDaPesquisa.length === 0) {
+            body.innerHTML = '<p>Nenhuma resposta encontrada.</p>';
+            modal.classList.add('active');
+            return;
+        }
+
+        const pesquisaTitulo = respostasDaPesquisa[0]?.pes_titulo || 'Pesquisa';
+        if (header) header.textContent = `${pesquisaTitulo} - ${respostasDaPesquisa.length} resposta(s)`;
+
+        body.innerHTML = `
+            <div class="respostas-lista-modal">
+                ${respostasDaPesquisa.map((r, idx) => {
+                    const data = r.res_data_resposta ? new Date(r.res_data_resposta).toLocaleString('pt-BR') : '-';
+                    const respostasCampos = r.res_respostas || [];
+
+                    return `
+                        <div class="resposta-item-card ${idx === 0 ? 'expanded' : ''}" data-res-id="${r.res_id}">
+                            <div class="resposta-item-header" onclick="window.app.toggleRespostaItem(this)">
+                                <div class="resposta-item-info">
+                                    <span class="resposta-data">${data}</span>
+                                    <span class="resposta-repositor">${r.res_repo_cod} - ${r.repo_nome || ''}</span>
+                                    <span class="resposta-cliente">${r.res_cliente_codigo}${r.cliente_nome ? ' - ' + r.cliente_nome : ''}</span>
+                                </div>
+                                <div class="resposta-item-icons">
+                                    ${r.res_foto_url ? '<span class="has-foto">📷</span>' : ''}
+                                    <span class="expand-icon">▼</span>
+                                </div>
+                            </div>
+                            <div class="resposta-item-body">
+                                ${respostasCampos.length > 0 ? `
+                                    <div class="respostas-campos-lista">
+                                        ${respostasCampos.map(rc => `
+                                            <div class="campo-resposta-row">
+                                                <span class="campo-pergunta">${rc.pergunta || rc.campo || '-'}</span>
+                                                <span class="campo-valor">${rc.resposta || '-'}</span>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                ` : '<p class="text-muted">Sem respostas de campos</p>'}
+
+                                ${r.res_foto_url ? `
+                                    <div class="resposta-foto-container">
+                                        <img src="${r.res_foto_url}" alt="Foto da pesquisa" onclick="window.open('${r.res_foto_url}', '_blank')" onerror="this.parentElement.innerHTML='<span class=\\'foto-erro\\'>Foto não disponível</span>'">
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+
+        modal.classList.add('active');
+    }
+
+    toggleRespostaItem(headerEl) {
+        const card = headerEl.closest('.resposta-item-card');
+        if (card) {
+            card.classList.toggle('expanded');
         }
     }
 
@@ -15439,19 +15708,55 @@ class App {
         }
 
         try {
-            // Preparar dados para CSV
-            const headers = ['Data', 'Pesquisa', 'Repositor', 'Nome Repositor', 'Cliente', 'Nome Cliente', 'Tem Foto'];
-            const rows = this.respostasPesquisaAtual.map(r => [
-                r.res_data_resposta ? new Date(r.res_data_resposta).toLocaleDateString('pt-BR') : '',
-                r.pes_titulo || '',
-                r.res_repo_cod || '',
-                r.repo_nome || '',
-                r.res_cliente_codigo || '',
-                r.cliente_nome || '',
-                r.res_foto_url ? 'Sim' : 'Não'
-            ]);
+            // Coletar todas as perguntas únicas de todas as respostas
+            const perguntasSet = new Set();
+            this.respostasPesquisaAtual.forEach(r => {
+                const respostasCampos = r.res_respostas || [];
+                respostasCampos.forEach(rc => {
+                    const pergunta = rc.pergunta || rc.campo || '';
+                    if (pergunta) perguntasSet.add(pergunta);
+                });
+            });
+            const perguntasArray = Array.from(perguntasSet);
 
-            // Criar CSV
+            // Headers: dados fixos + perguntas dinâmicas + URL da foto
+            const headersFixos = ['Data', 'Hora', 'Pesquisa', 'Repositor', 'Nome Repositor', 'Cliente', 'Nome Cliente'];
+            const headers = [...headersFixos, ...perguntasArray, 'URL Foto'];
+
+            // Criar linhas de dados
+            const rows = this.respostasPesquisaAtual.map(r => {
+                const dataHora = r.res_data_resposta ? new Date(r.res_data_resposta) : null;
+                const data = dataHora ? dataHora.toLocaleDateString('pt-BR') : '';
+                const hora = dataHora ? dataHora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+
+                // Dados fixos
+                const rowFixa = [
+                    data,
+                    hora,
+                    r.pes_titulo || '',
+                    r.res_repo_cod || '',
+                    r.repo_nome || '',
+                    r.res_cliente_codigo || '',
+                    r.cliente_nome || ''
+                ];
+
+                // Respostas das perguntas (mapeando para a ordem das colunas)
+                const respostasCampos = r.res_respostas || [];
+                const respostasMap = new Map();
+                respostasCampos.forEach(rc => {
+                    const pergunta = rc.pergunta || rc.campo || '';
+                    if (pergunta) respostasMap.set(pergunta, rc.resposta || '');
+                });
+
+                const rowPerguntas = perguntasArray.map(p => respostasMap.get(p) || '');
+
+                // URL da foto
+                const urlFoto = r.res_foto_url || '';
+
+                return [...rowFixa, ...rowPerguntas, urlFoto];
+            });
+
+            // Criar CSV com separador ; para melhor compatibilidade com Excel
             const csvContent = [
                 headers.join(';'),
                 ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(';'))
@@ -15464,7 +15769,7 @@ class App {
             link.download = `respostas_pesquisas_${new Date().toISOString().split('T')[0]}.csv`;
             link.click();
 
-            this.showNotification('Exportação realizada com sucesso', 'success');
+            this.showNotification(`Exportadas ${this.respostasPesquisaAtual.length} respostas com ${perguntasArray.length} perguntas`, 'success');
         } catch (error) {
             console.error('Erro ao exportar:', error);
             this.showNotification('Erro ao exportar dados', 'error');
@@ -15478,7 +15783,10 @@ class App {
         pesquisaAtualIndex: 0,
         respostasColetadas: [],
         contextoVisita: null,
-        fotoPesquisa: null
+        fotoPesquisa: null,
+        // Staging: guarda respostas e fotos localmente até finalizar
+        // Map<pesquisa_id, { respostas: [], foto: File|null, fotoPreviewUrl: string|null }>
+        respostasStaging: new Map()
     };
 
     /**
@@ -15651,7 +15959,9 @@ class App {
             respostasColetadas: [],
             contextoVisita: { repId, clienteId, clienteNome, dataVisita },
             fotoPesquisa: null,
-            veioDocheckout: veioDocheckout
+            veioDocheckout: veioDocheckout,
+            // Staging: guarda respostas e fotos localmente até finalizar
+            respostasStaging: new Map()
         };
 
         // Criar modal se não existir
@@ -15794,14 +16104,83 @@ class App {
             <form id="formPesquisaVisita" onsubmit="window.app.enviarRespostaPesquisaVisita(event)">
                 ${camposHtml}
                 ${fotoSection}
-                <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
-                    <button type="button" class="btn btn-secondary" onclick="window.app.cancelarPesquisaVisita()">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">
-                        ${pesquisaAtualIndex < pesquisasPendentes.length - 1 ? 'Próxima' : 'Finalizar'}
-                    </button>
+                <div style="display: flex; gap: 10px; justify-content: space-between; margin-top: 20px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+                    <div>
+                        ${pesquisaAtualIndex > 0 ? `
+                            <button type="button" class="btn btn-secondary" onclick="window.app.voltarPesquisaAnterior()">
+                                ← Voltar
+                            </button>
+                        ` : ''}
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button type="button" class="btn btn-secondary" onclick="window.app.cancelarPesquisaVisita()">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">
+                            ${pesquisaAtualIndex < pesquisasPendentes.length - 1 ? 'Próxima →' : '✓ Finalizar'}
+                        </button>
+                    </div>
                 </div>
             </form>
         `;
+
+        // Restaurar valores do staging se existir (para quando usuário volta)
+        this.restaurarValoresDoStaging();
+    }
+
+    /**
+     * Restaura valores dos campos e foto do staging para a pesquisa atual
+     */
+    restaurarValoresDoStaging() {
+        const { pesquisasPendentes, pesquisaAtualIndex, respostasStaging } = this.pesquisaVisitaState;
+        const pesquisa = pesquisasPendentes[pesquisaAtualIndex];
+        if (!pesquisa) return;
+
+        const stagingEntry = respostasStaging.get(pesquisa.pes_id);
+        if (!stagingEntry) return;
+
+        // Restaurar valores dos campos
+        if (stagingEntry.respostas && stagingEntry.respostas.length > 0) {
+            for (const resp of stagingEntry.respostas) {
+                const campo = pesquisa.campos?.find(c => c.pca_id === resp.campo);
+                if (!campo) continue;
+
+                if (campo.pca_tipo === 'sim_nao') {
+                    const radio = document.querySelector(`input[name="campo_${campo.pca_id}"][value="${resp.resposta}"]`);
+                    if (radio) radio.checked = true;
+                } else if (campo.pca_tipo === 'selecao') {
+                    const isMultipla = campo.pca_multipla === 1 || campo.pca_multipla === true;
+                    if (isMultipla) {
+                        // Múltipla seleção - marcar cada checkbox
+                        const valores = resp.resposta.split(', ');
+                        valores.forEach(val => {
+                            const checkbox = document.querySelector(`input[name="campo_${campo.pca_id}"][value="${val}"]`);
+                            if (checkbox) checkbox.checked = true;
+                        });
+                    } else {
+                        const radio = document.querySelector(`input[name="campo_${campo.pca_id}"][value="${resp.resposta}"]`);
+                        if (radio) radio.checked = true;
+                    }
+                } else {
+                    const input = document.getElementById(`campo_${campo.pca_id}`);
+                    if (input) input.value = resp.resposta;
+                }
+            }
+        }
+
+        // Restaurar foto
+        if (stagingEntry.foto) {
+            this.pesquisaVisitaState.fotoPesquisa = stagingEntry.foto;
+            this.pesquisaVisitaState.fotoPesquisaUrl = stagingEntry.fotoPreviewUrl;
+
+            const preview = document.getElementById('pesquisaFotoPreview');
+            if (preview && stagingEntry.fotoPreviewUrl) {
+                preview.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <img src="${stagingEntry.fotoPreviewUrl}" style="max-width: 150px; border-radius: 8px; border: 2px solid #10b981;">
+                        <span style="color: #10b981; font-weight: 500;">✓ Foto capturada</span>
+                    </div>
+                `;
+            }
+        }
     }
 
     // ===============================================
@@ -16121,7 +16500,7 @@ class App {
     async enviarRespostaPesquisaVisita(event) {
         event.preventDefault();
 
-        const { pesquisasPendentes, pesquisaAtualIndex, contextoVisita } = this.pesquisaVisitaState;
+        const { pesquisasPendentes, pesquisaAtualIndex, contextoVisita, respostasStaging } = this.pesquisaVisitaState;
         const pesquisa = pesquisasPendentes[pesquisaAtualIndex];
 
         if (!pesquisa) return;
@@ -16198,142 +16577,232 @@ class App {
             return;
         }
 
-        // Salvar resposta
+        // STAGING: Guardar respostas e foto localmente (não faz upload ainda)
+        const stagingEntry = {
+            pesquisa: pesquisa,
+            respostas: respostas,
+            foto: this.pesquisaVisitaState.fotoPesquisa || null,
+            fotoPreviewUrl: this.pesquisaVisitaState.fotoPesquisaUrl || null
+        };
+        respostasStaging.set(pesquisa.pes_id, stagingEntry);
+        console.log(`📝 Pesquisa ${pesquisa.pes_id} salva em staging (${respostasStaging.size} no total)`);
+
+        // Limpar foto para próxima pesquisa
+        this.pesquisaVisitaState.fotoPesquisa = null;
+        this.pesquisaVisitaState.fotoPesquisaUrl = null;
+
+        // Avançar para próxima pesquisa ou finalizar
+        if (pesquisaAtualIndex < pesquisasPendentes.length - 1) {
+            this.pesquisaVisitaState.pesquisaAtualIndex++;
+            this.renderPesquisaAtual();
+        } else {
+            // ÚLTIMA PESQUISA: Fazer upload de todas as fotos e salvar no banco
+            await this.finalizarTodasPesquisas();
+        }
+    }
+
+    /**
+     * Finaliza todas as pesquisas em staging: faz upload das fotos e salva no banco
+     */
+    async finalizarTodasPesquisas() {
+        const { respostasStaging, contextoVisita } = this.pesquisaVisitaState;
+
+        if (respostasStaging.size === 0) {
+            this.showNotification('Nenhuma pesquisa para finalizar', 'warning');
+            return;
+        }
+
+        this.showNotification(`Enviando ${respostasStaging.size} pesquisa(s)...`, 'info');
+
         try {
-            // Upload da foto para o backend se houver
-            let fotoUrl = null;
-            if (this.pesquisaVisitaState.fotoPesquisa) {
-                const foto = this.pesquisaVisitaState.fotoPesquisa;
-                if (foto instanceof File || foto instanceof Blob) {
-                    // Upload para o backend com estrutura de pasta correta
-                    // Estrutura: repositor/pesquisa/[id_pesquisa]/CODREP_CLICOD_PESQUISA_DATA_HORA_SEQ
-                    try {
-                        const agora = new Date();
-                        const dataStr = agora.toISOString().split('T')[0].replace(/-/g, '');
-                        const horaStr = agora.toTimeString().split(' ')[0].replace(/:/g, '');
-                        const seq = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-                        const clienteNorm = String(contextoVisita.clienteId).trim().replace(/\.0$/, '');
-                        const nomeArquivo = `${contextoVisita.repId}_${clienteNorm}_${pesquisa.pes_id}_${dataStr}_${horaStr}_${seq}.jpg`;
+            // Processar cada pesquisa em staging
+            for (const [pesId, entry] of respostasStaging) {
+                let fotoUrl = null;
 
-                        const formData = new FormData();
-                        formData.append('arquivo', foto, nomeArquivo);
-                        formData.append('repositor_id', contextoVisita.repId);
-                        formData.append('pesquisa_id', pesquisa.pes_id);
-                        formData.append('cliente_codigo', clienteNorm);
-                        formData.append('pasta', `repositor/pesquisa/${pesquisa.pes_id}`);
+                // Upload da foto se houver
+                if (entry.foto) {
+                    const foto = entry.foto;
+                    if (foto instanceof File || foto instanceof Blob) {
+                        try {
+                            const agora = new Date();
+                            const dataStr = agora.toISOString().split('T')[0].replace(/-/g, '');
+                            const horaStr = agora.toTimeString().split(' ')[0].replace(/:/g, '');
+                            const clienteNorm = String(contextoVisita.clienteId).trim().replace(/\.0$/, '');
+                            // Nome único mas consistente para evitar duplicação
+                            const nomeArquivo = `${contextoVisita.repId}_${clienteNorm}_${pesId}_${dataStr}.jpg`;
 
-                        const uploadResp = await fetchJson(`${API_BASE_URL}/api/pesquisa/upload-foto`, {
-                            method: 'POST',
-                            body: formData
-                        });
+                            const formData = new FormData();
+                            formData.append('arquivo', foto, nomeArquivo);
+                            formData.append('repositor_id', contextoVisita.repId);
+                            formData.append('pesquisa_id', pesId);
+                            formData.append('cliente_codigo', clienteNorm);
 
-                        if (uploadResp.success && uploadResp.url) {
-                            fotoUrl = uploadResp.url;
-                        } else {
-                            console.warn('Upload retornou sem URL, salvando sem foto:', uploadResp);
+                            const uploadResp = await fetchJson(`${API_BASE_URL}/api/pesquisa/upload-foto`, {
+                                method: 'POST',
+                                body: formData
+                            });
+
+                            if (uploadResp.success && uploadResp.url) {
+                                fotoUrl = uploadResp.url;
+                            }
+                        } catch (uploadError) {
+                            console.error(`Erro ao fazer upload da foto da pesquisa ${pesId}:`, uploadError);
                         }
-                    } catch (uploadError) {
-                        console.error('Erro ao fazer upload da foto da pesquisa:', uploadError);
-                        // Se o upload falhar, salvar resposta mesmo assim, apenas sem a foto
-                        this.showNotification('Aviso: foto não pôde ser enviada, mas a resposta será salva', 'warning');
+                    } else if (typeof foto === 'string') {
+                        fotoUrl = foto;
                     }
-                } else if (typeof foto === 'string') {
-                    fotoUrl = foto;
                 }
+
+                // Salvar resposta no banco
+                const dados = {
+                    pesId: pesId,
+                    repId: contextoVisita.repId,
+                    clienteCodigo: String(contextoVisita.clienteId),
+                    visitaId: null,
+                    respostas: entry.respostas,
+                    fotoUrl: fotoUrl
+                };
+
+                await db.salvarRespostaPesquisa(dados);
+                console.log(`✅ Pesquisa ${pesId} salva com sucesso`);
             }
 
-            const dados = {
-                pesId: pesquisa.pes_id,
-                repId: contextoVisita.repId,
-                clienteCodigo: String(contextoVisita.clienteId),
-                visitaId: null, // Opcional
-                respostas: respostas, // Array de objetos, db.js faz o JSON.stringify
-                fotoUrl: fotoUrl
-            };
+            // Limpar staging
+            respostasStaging.clear();
 
-            await db.salvarRespostaPesquisa(dados);
+            // Fechar modal
+            this.fecharModalPesquisaVisita();
 
-            // Limpar foto para próxima pesquisa
-            this.pesquisaVisitaState.fotoPesquisa = null;
+            // Se veio do checkout, continuar salvando a visita
+            if (this.pesquisaVisitaState.veioDocheckout) {
+                // Atualizar mapa de pesquisas pendentes (remover do cliente)
+                const pesquisasPendentesMap = this.registroRotaState.pesquisasPendentesMap || new Map();
+                pesquisasPendentesMap.delete(contextoVisita.clienteId);
+                this.registroRotaState.pesquisasPendentesMap = pesquisasPendentesMap;
 
-            // Avançar para próxima pesquisa ou finalizar
-            if (pesquisaAtualIndex < pesquisasPendentes.length - 1) {
-                this.pesquisaVisitaState.pesquisaAtualIndex++;
-                this.renderPesquisaAtual();
+                // Atualizar card do cliente
+                this.atualizarCardCliente(contextoVisita.clienteId);
+
+                this.showNotification('Pesquisas respondidas. Continuando com o checkout...', 'success');
+                setTimeout(() => {
+                    this.salvarVisita();
+                }, 500);
             } else {
-                // Todas as pesquisas do lote atual respondidas
-                this.fecharModalPesquisaVisita();
+                // Veio do botão Pesquisa - verificar se há mais pesquisas pendentes
+                const maisPesquisas = await this.buscarPesquisasPendentes(
+                    contextoVisita.repId,
+                    contextoVisita.clienteId,
+                    contextoVisita.dataVisita,
+                    false
+                );
 
-                // Se veio do checkout, continuar salvando a visita
-                if (this.pesquisaVisitaState.veioDocheckout) {
-                    // Atualizar mapa de pesquisas pendentes (remover do cliente)
-                    const pesquisasPendentesMap = this.registroRotaState.pesquisasPendentesMap || new Map();
-                    pesquisasPendentesMap.delete(contextoVisita.clienteId);
+                // Atualizar mapa de pesquisas pendentes com as restantes
+                const pesquisasPendentesMap = this.registroRotaState.pesquisasPendentesMap || new Map();
+
+                if (maisPesquisas.length > 0) {
+                    // Atualizar com as pesquisas restantes
+                    pesquisasPendentesMap.set(contextoVisita.clienteId, maisPesquisas);
                     this.registroRotaState.pesquisasPendentesMap = pesquisasPendentesMap;
 
-                    // Atualizar card do cliente
-                    this.atualizarCardCliente(contextoVisita.clienteId);
+                    // Há mais pesquisas - perguntar se quer responder
+                    this.showNotification('Pesquisa registrada! Ainda existem outras pesquisas disponíveis.', 'success');
 
-                    this.showNotification('Pesquisas respondidas. Continuando com o checkout...', 'success');
+                    // Reabrir modal de seleção após breve delay
                     setTimeout(() => {
-                        this.salvarVisita();
-                    }, 500);
+                        this.abrirModalSelecaoPesquisa(
+                            maisPesquisas,
+                            contextoVisita.repId,
+                            contextoVisita.clienteId,
+                            contextoVisita.clienteNome,
+                            contextoVisita.dataVisita
+                        );
+                    }, 800);
                 } else {
-                    // Veio do botão Pesquisa - verificar se há mais pesquisas pendentes
-                    const maisPesquisas = await this.buscarPesquisasPendentes(
-                        contextoVisita.repId,
-                        contextoVisita.clienteId,
-                        contextoVisita.dataVisita,
-                        false
-                    );
-
-                    // Atualizar mapa de pesquisas pendentes com as restantes
-                    const pesquisasPendentesMap = this.registroRotaState.pesquisasPendentesMap || new Map();
-
-                    if (maisPesquisas.length > 0) {
-                        // Atualizar com as pesquisas restantes
-                        pesquisasPendentesMap.set(contextoVisita.clienteId, maisPesquisas);
-                        this.registroRotaState.pesquisasPendentesMap = pesquisasPendentesMap;
-
-                        // Há mais pesquisas - perguntar se quer responder
-                        this.showNotification('Pesquisa registrada! Ainda existem outras pesquisas disponíveis.', 'success');
-
-                        // Reabrir modal de seleção após breve delay
-                        setTimeout(() => {
-                            this.abrirModalSelecaoPesquisa(
-                                maisPesquisas,
-                                contextoVisita.repId,
-                                contextoVisita.clienteId,
-                                contextoVisita.clienteNome,
-                                contextoVisita.dataVisita
-                            );
-                        }, 800);
-                    } else {
-                        // Não há mais pesquisas - remover do mapa
-                        pesquisasPendentesMap.delete(contextoVisita.clienteId);
-                        this.registroRotaState.pesquisasPendentesMap = pesquisasPendentesMap;
-                        this.showNotification('Todas as pesquisas foram respondidas!', 'success');
-                    }
-
-                    // Atualizar card do cliente
-                    this.atualizarCardCliente(contextoVisita.clienteId);
+                    // Não há mais pesquisas - remover do mapa
+                    pesquisasPendentesMap.delete(contextoVisita.clienteId);
+                    this.registroRotaState.pesquisasPendentesMap = pesquisasPendentesMap;
+                    this.showNotification('Todas as pesquisas foram respondidas!', 'success');
                 }
+
+                // Atualizar card do cliente
+                this.atualizarCardCliente(contextoVisita.clienteId);
             }
         } catch (error) {
-            console.error('Erro ao salvar resposta:', error);
-            this.showNotification('Erro ao salvar resposta: ' + error.message, 'error');
+            console.error('Erro ao finalizar pesquisas:', error);
+            this.showNotification('Erro ao salvar pesquisas: ' + error.message, 'error');
         }
+    }
+
+    voltarPesquisaAnterior() {
+        // Verificar se há pesquisa anterior
+        if (this.pesquisaVisitaState.pesquisaAtualIndex > 0) {
+            // Antes de voltar, salvar estado atual da pesquisa corrente em staging
+            this.salvarRespostasAtuaisNoStaging();
+
+            this.pesquisaVisitaState.pesquisaAtualIndex--;
+            this.renderPesquisaAtual();
+            // renderPesquisaAtual já chama restaurarValoresDoStaging
+        }
+    }
+
+    /**
+     * Salva as respostas atuais no staging (para quando o usuário volta/avança)
+     */
+    salvarRespostasAtuaisNoStaging() {
+        const { pesquisasPendentes, pesquisaAtualIndex, respostasStaging } = this.pesquisaVisitaState;
+        const pesquisa = pesquisasPendentes[pesquisaAtualIndex];
+        if (!pesquisa) return;
+
+        const respostas = [];
+        for (const campo of (pesquisa.campos || [])) {
+            const pergunta = campo.pca_titulo || campo.pca_pergunta;
+            let valor = '';
+
+            if (campo.pca_tipo === 'sim_nao') {
+                const radio = document.querySelector(`input[name="campo_${campo.pca_id}"]:checked`);
+                valor = radio ? radio.value : '';
+            } else if (campo.pca_tipo === 'selecao') {
+                const isMultipla = campo.pca_multipla === 1 || campo.pca_multipla === true;
+                if (isMultipla) {
+                    const checkboxes = document.querySelectorAll(`input[name="campo_${campo.pca_id}"]:checked`);
+                    const valores = Array.from(checkboxes).map(cb => cb.value);
+                    valor = valores.join(', ');
+                } else {
+                    const radio = document.querySelector(`input[name="campo_${campo.pca_id}"]:checked`);
+                    valor = radio ? radio.value : '';
+                }
+            } else {
+                const input = document.getElementById(`campo_${campo.pca_id}`);
+                valor = input ? input.value : '';
+            }
+
+            respostas.push({
+                campo: campo.pca_id,
+                pergunta: pergunta,
+                resposta: valor
+            });
+        }
+
+        // Atualizar staging com respostas parciais
+        const stagingEntry = respostasStaging.get(pesquisa.pes_id) || {};
+        stagingEntry.respostas = respostas;
+        stagingEntry.foto = this.pesquisaVisitaState.fotoPesquisa || stagingEntry.foto;
+        stagingEntry.fotoPreviewUrl = this.pesquisaVisitaState.fotoPesquisaUrl || stagingEntry.fotoPreviewUrl;
+        respostasStaging.set(pesquisa.pes_id, stagingEntry);
     }
 
     cancelarPesquisaVisita() {
         // Fechar câmera se estiver aberta
         this.fecharCameraPesquisa();
 
+        // Limpar staging e liberar memória de previews
+        this.limparStagingPesquisas();
+
         const modal = document.getElementById('modalPesquisaVisita');
         if (modal) {
             modal.classList.remove('active');
         }
-        this.showNotification('Checkout cancelado. Complete as pesquisas obrigatórias para finalizar.', 'warning');
+        this.showNotification('Pesquisa cancelada. Complete as pesquisas obrigatórias para finalizar.', 'warning');
     }
 
     fecharModalPesquisaVisita() {
@@ -16344,6 +16813,30 @@ class App {
         if (modal) {
             modal.classList.remove('active');
         }
+    }
+
+    /**
+     * Limpa o staging e libera URLs de preview da memória
+     */
+    limparStagingPesquisas() {
+        const { respostasStaging } = this.pesquisaVisitaState;
+        if (respostasStaging) {
+            // Liberar URLs de objeto criadas para previews
+            for (const [_, entry] of respostasStaging) {
+                if (entry.fotoPreviewUrl && entry.fotoPreviewUrl.startsWith('blob:')) {
+                    URL.revokeObjectURL(entry.fotoPreviewUrl);
+                }
+            }
+            respostasStaging.clear();
+        }
+
+        // Limpar foto atual também
+        if (this.pesquisaVisitaState.fotoPesquisaUrl &&
+            this.pesquisaVisitaState.fotoPesquisaUrl.startsWith('blob:')) {
+            URL.revokeObjectURL(this.pesquisaVisitaState.fotoPesquisaUrl);
+        }
+        this.pesquisaVisitaState.fotoPesquisa = null;
+        this.pesquisaVisitaState.fotoPesquisaUrl = null;
     }
 
     // ==================== NOTIFICAÇÕES ====================

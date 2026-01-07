@@ -4523,12 +4523,30 @@ class TursoDatabase {
                 }
             }
 
-            // Buscar pesquisas ativas para este repositor (ou para todos se não tiver vínculo específico)
+            // OTIMIZAÇÃO: Query única com contagem de restrições usando LEFT JOINs
             const result = await this.mainClient.execute({
                 sql: `
-                    SELECT DISTINCT p.*
+                    SELECT DISTINCT p.*,
+                        COALESCE(g.qtd_grupos, 0) as qtd_grupos,
+                        COALESCE(c.qtd_clientes, 0) as qtd_clientes,
+                        COALESCE(ci.qtd_cidades, 0) as qtd_cidades
                     FROM cc_pesquisas p
                     LEFT JOIN cc_pesquisa_repositores pr ON pr.per_pes_id = p.pes_id
+                    LEFT JOIN (
+                        SELECT peg_pes_id, COUNT(*) as qtd_grupos
+                        FROM cc_pesquisa_grupos
+                        GROUP BY peg_pes_id
+                    ) g ON g.peg_pes_id = p.pes_id
+                    LEFT JOIN (
+                        SELECT pecl_pes_id, COUNT(*) as qtd_clientes
+                        FROM cc_pesquisa_clientes
+                        GROUP BY pecl_pes_id
+                    ) c ON c.pecl_pes_id = p.pes_id
+                    LEFT JOIN (
+                        SELECT peci_pes_id, COUNT(*) as qtd_cidades
+                        FROM cc_pesquisa_cidades
+                        GROUP BY peci_pes_id
+                    ) ci ON ci.peci_pes_id = p.pes_id
                     WHERE p.pes_ativa = 1
                       AND (p.pes_data_inicio IS NULL OR p.pes_data_inicio <= ?)
                       AND (p.pes_data_fim IS NULL OR p.pes_data_fim >= ?)
@@ -4541,83 +4559,89 @@ class TursoDatabase {
                 args: [hoje, hoje, repId]
             });
 
-            // Para cada pesquisa, verificar restrições de cliente/grupo/cidade e buscar campos
+            if (!result.rows || result.rows.length === 0) {
+                return [];
+            }
+
+            // Coletar IDs de pesquisas candidatas para filtrar
+            const pesquisaIds = result.rows.map(p => p.pes_id);
+
+            // OTIMIZAÇÃO: Buscar todos os campos de todas as pesquisas em uma única query
+            const placeholders = pesquisaIds.map(() => '?').join(',');
+            const camposResult = await this.mainClient.execute({
+                sql: `SELECT * FROM cc_pesquisa_campos WHERE pca_pes_id IN (${placeholders}) ORDER BY pca_pes_id, pca_ordem`,
+                args: pesquisaIds
+            });
+
+            // Mapear campos por pesquisa_id
+            const camposPorPesquisa = new Map();
+            for (const campo of camposResult.rows) {
+                const pesId = campo.pca_pes_id;
+                if (!camposPorPesquisa.has(pesId)) {
+                    camposPorPesquisa.set(pesId, []);
+                }
+                camposPorPesquisa.get(pesId).push(campo);
+            }
+
+            // Se temos cliente, buscar vínculos em batch
+            let clientesVinculados = new Set();
+            let gruposVinculados = new Set();
+            let cidadesVinculadas = new Set();
+
+            if (clienteCodigo && pesquisaIds.length > 0) {
+                // Buscar todas as restrições em paralelo
+                const [clientesRes, gruposRes, cidadesRes] = await Promise.all([
+                    this.mainClient.execute({
+                        sql: `SELECT pecl_pes_id FROM cc_pesquisa_clientes WHERE pecl_pes_id IN (${placeholders}) AND pecl_cliente_codigo = ?`,
+                        args: [...pesquisaIds, clienteCodigo]
+                    }),
+                    clienteGrupo ? this.mainClient.execute({
+                        sql: `SELECT peg_pes_id FROM cc_pesquisa_grupos WHERE peg_pes_id IN (${placeholders}) AND peg_grupo_desc = ?`,
+                        args: [...pesquisaIds, clienteGrupo]
+                    }) : Promise.resolve({ rows: [] }),
+                    clienteCidade ? this.mainClient.execute({
+                        sql: `SELECT peci_pes_id FROM cc_pesquisa_cidades WHERE peci_pes_id IN (${placeholders}) AND peci_cidade = ?`,
+                        args: [...pesquisaIds, clienteCidade]
+                    }) : Promise.resolve({ rows: [] })
+                ]);
+
+                clientesRes.rows.forEach(r => clientesVinculados.add(r.pecl_pes_id));
+                gruposRes.rows.forEach(r => gruposVinculados.add(r.peg_pes_id));
+                cidadesRes.rows.forEach(r => cidadesVinculadas.add(r.peci_pes_id));
+            }
+
+            // Processar pesquisas em memória (sem queries adicionais)
             const pesquisas = [];
             for (const pes of result.rows) {
-                // Verificar se a pesquisa tem restrições
-                const temRestricaoGrupo = await this.mainClient.execute({
-                    sql: `SELECT COUNT(*) as count FROM cc_pesquisa_grupos WHERE peg_pes_id = ?`,
-                    args: [pes.pes_id]
-                });
-                const temRestricaoCliente = await this.mainClient.execute({
-                    sql: `SELECT COUNT(*) as count FROM cc_pesquisa_clientes WHERE pecl_pes_id = ?`,
-                    args: [pes.pes_id]
-                });
-                const temRestricaoCidade = await this.mainClient.execute({
-                    sql: `SELECT COUNT(*) as count FROM cc_pesquisa_cidades WHERE peci_pes_id = ?`,
-                    args: [pes.pes_id]
-                });
+                const qtdGrupos = Number(pes.qtd_grupos || 0);
+                const qtdClientes = Number(pes.qtd_clientes || 0);
+                const qtdCidades = Number(pes.qtd_cidades || 0);
 
-                const qtdGrupos = Number(temRestricaoGrupo.rows[0].count);
-                const qtdClientes = Number(temRestricaoCliente.rows[0].count);
-                const qtdCidades = Number(temRestricaoCidade.rows[0].count);
-
-                // Se não tem restrições de cliente/grupo/cidade, incluir a pesquisa
+                // Se não tem restrições, incluir
                 if (qtdGrupos === 0 && qtdClientes === 0 && qtdCidades === 0) {
-                    const campos = await this.mainClient.execute({
-                        sql: `SELECT * FROM cc_pesquisa_campos WHERE pca_pes_id = ? ORDER BY pca_ordem`,
-                        args: [pes.pes_id]
+                    pesquisas.push({
+                        ...pes,
+                        campos: camposPorPesquisa.get(pes.pes_id) || []
                     });
-                    pesquisas.push({ ...pes, campos: campos.rows });
                     continue;
                 }
 
-                // Se tem restrições e não foi passado cliente, pular a pesquisa
+                // Se tem restrições e não foi passado cliente, pular
                 if (!clienteCodigo) {
                     continue;
                 }
 
-                // Verificar se o cliente está diretamente vinculado
-                let clientePermitido = false;
-                if (qtdClientes > 0) {
-                    const clienteVinculado = await this.mainClient.execute({
-                        sql: `SELECT 1 FROM cc_pesquisa_clientes WHERE pecl_pes_id = ? AND pecl_cliente_codigo = ?`,
-                        args: [pes.pes_id, clienteCodigo]
-                    });
-                    if (clienteVinculado.rows.length > 0) {
-                        clientePermitido = true;
-                    }
-                }
+                // Verificar se cliente está permitido
+                const clientePermitido =
+                    clientesVinculados.has(pes.pes_id) ||
+                    gruposVinculados.has(pes.pes_id) ||
+                    cidadesVinculadas.has(pes.pes_id);
 
-                // Verificar se o grupo do cliente está vinculado
-                if (!clientePermitido && qtdGrupos > 0 && clienteGrupo) {
-                    const grupoVinculado = await this.mainClient.execute({
-                        sql: `SELECT 1 FROM cc_pesquisa_grupos WHERE peg_pes_id = ? AND peg_grupo_desc = ?`,
-                        args: [pes.pes_id, clienteGrupo]
-                    });
-                    if (grupoVinculado.rows.length > 0) {
-                        clientePermitido = true;
-                    }
-                }
-
-                // Verificar se a cidade do cliente está vinculada
-                if (!clientePermitido && qtdCidades > 0 && clienteCidade) {
-                    const cidadeVinculada = await this.mainClient.execute({
-                        sql: `SELECT 1 FROM cc_pesquisa_cidades WHERE peci_pes_id = ? AND peci_cidade = ?`,
-                        args: [pes.pes_id, clienteCidade]
-                    });
-                    if (cidadeVinculada.rows.length > 0) {
-                        clientePermitido = true;
-                    }
-                }
-
-                // Se o cliente/grupo/cidade está permitido, incluir a pesquisa
                 if (clientePermitido) {
-                    const campos = await this.mainClient.execute({
-                        sql: `SELECT * FROM cc_pesquisa_campos WHERE pca_pes_id = ? ORDER BY pca_ordem`,
-                        args: [pes.pes_id]
+                    pesquisas.push({
+                        ...pes,
+                        campos: camposPorPesquisa.get(pes.pes_id) || []
                     });
-                    pesquisas.push({ ...pes, campos: campos.rows });
                 }
             }
 
