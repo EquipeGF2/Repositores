@@ -1575,17 +1575,43 @@ router.get('/sessoes-abertas', async (req, res) => {
 
     const sessoes = await tursoService.listarTodasSessoesAbertas(repIdNumber);
 
+    // Buscar nomes dos clientes da tabela comercial
+    const clienteNomesMap = new Map();
+    if (sessoes.length > 0) {
+      try {
+        const comercialClient = tursoService.getComercialClient();
+        if (comercialClient) {
+          const clienteIds = [...new Set(sessoes.map(s => normalizeClienteId(s.cliente_id)))];
+          const placeholders = clienteIds.map(() => '?').join(',');
+          const nomeResult = await comercialClient.execute({
+            sql: `SELECT cliente, nome, fantasia FROM tab_cliente WHERE cliente IN (${placeholders})`,
+            args: clienteIds
+          });
+
+          for (const row of nomeResult.rows) {
+            const id = String(row.cliente).trim();
+            clienteNomesMap.set(id, row.nome || row.fantasia || '');
+          }
+        }
+      } catch (error) {
+        console.warn('Erro ao buscar nomes de clientes:', error.message);
+      }
+    }
+
     return res.json(sanitizeForJson({
       ok: true,
-      sessoes: sessoes.map(s => ({
-        sessao_id: s.sessao_id,
-        rep_id: s.rep_id,
-        cliente_id: normalizeClienteId(s.cliente_id),
-        cliente_nome: s.cliente_nome || '',
-        data_planejada: s.data_planejada,
-        checkin_at: s.checkin_at,
-        status: s.status
-      })),
+      sessoes: sessoes.map(s => {
+        const clienteId = normalizeClienteId(s.cliente_id);
+        return {
+          sessao_id: s.sessao_id,
+          rep_id: s.rep_id,
+          cliente_id: clienteId,
+          cliente_nome: clienteNomesMap.get(clienteId) || s.cliente_nome || '',
+          data_planejada: s.data_planejada,
+          checkin_at: s.checkin_at,
+          status: s.status
+        };
+      }),
       total: sessoes.length,
       requestId
     }));

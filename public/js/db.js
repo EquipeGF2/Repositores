@@ -3734,19 +3734,18 @@ class TursoDatabase {
     // ==================== TIPOS DE DOCUMENTOS ====================
 
     async listarTiposDocumentos(apenasAtivos = false) {
-        try {
-            await this.connect();
-            let sql = 'SELECT * FROM cc_documento_tipos';
-            if (apenasAtivos) {
-                sql += ' WHERE dct_ativo = 1';
-            }
-            sql += ' ORDER BY dct_ordem, dct_nome';
-            const result = await this.mainClient.execute(sql);
-            return result.rows;
-        } catch (error) {
-            console.error('Erro ao listar tipos de documentos:', error);
+        await this.connect();
+        if (!this.mainClient) {
+            console.warn('Banco principal não configurado, retornando lista vazia de tipos de documentos');
             return [];
         }
+        let sql = 'SELECT * FROM cc_documento_tipos';
+        if (apenasAtivos) {
+            sql += ' WHERE dct_ativo = 1';
+        }
+        sql += ' ORDER BY dct_ordem, dct_nome';
+        const result = await this.mainClient.execute(sql);
+        return result.rows || [];
     }
 
     async salvarTipoDocumento(dados) {
@@ -3795,19 +3794,18 @@ class TursoDatabase {
     // ==================== TIPOS DE GASTO (RUBRICAS) ====================
 
     async listarTiposGasto(apenasAtivos = false) {
-        try {
-            await this.connect();
-            let sql = 'SELECT * FROM cc_gasto_tipos';
-            if (apenasAtivos) {
-                sql += ' WHERE gst_ativo = 1';
-            }
-            sql += ' ORDER BY gst_ordem, gst_nome';
-            const result = await this.mainClient.execute(sql);
-            return result.rows;
-        } catch (error) {
-            console.error('Erro ao listar tipos de gasto:', error);
+        await this.connect();
+        if (!this.mainClient) {
+            console.warn('Banco principal não configurado, retornando lista vazia de tipos de gasto');
             return [];
         }
+        let sql = 'SELECT * FROM cc_gasto_tipos';
+        if (apenasAtivos) {
+            sql += ' WHERE gst_ativo = 1';
+        }
+        sql += ' ORDER BY gst_ordem, gst_nome';
+        const result = await this.mainClient.execute(sql);
+        return result.rows || [];
     }
 
     async salvarTipoGasto(dados) {

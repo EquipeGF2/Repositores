@@ -2706,19 +2706,16 @@ export const pages = {
 
         return `
             <div class="card">
-                <div class="card-header">
-                    <div>
-                        <h3 class="card-title">Configurações do Sistema</h3>
-                        <p class="text-muted" style="margin: 4px 0 0;">Gerencie as configurações e cadastros do sistema.</p>
-                    </div>
-                </div>
-                <div class="card-body">
+                <div class="card-body" style="padding-top: 0;">
                     <!-- Tabs de Configuração -->
-                    <div class="config-tabs">
+                    <div class="config-tabs" style="margin-top: 0;">
                         <button class="config-tab active" data-config-tab="geral">⚙️ Geral</button>
                         <button class="config-tab" data-config-tab="sessoes">📋 Sessões</button>
-                        <button class="config-tab" data-config-tab="documentos">📄 Tipos de Documentos</button>
-                        <button class="config-tab" data-config-tab="rubricas">💰 Rubricas de Gasto</button>
+                        <button class="config-tab" data-config-tab="documentos">📄 Documentos</button>
+                        <button class="config-tab" data-config-tab="rubricas">💰 Rubricas</button>
+                        <button class="config-tab" data-config-tab="coordenadas">📍 Coordenadas</button>
+                        <button class="config-tab" data-config-tab="usuarios">👤 Usuários</button>
+                        <button class="config-tab" data-config-tab="acessos">🔐 Acessos</button>
                     </div>
 
                     <!-- Aba Geral -->
@@ -2817,17 +2814,142 @@ export const pages = {
                             <table class="data-table" id="tabelaTiposGasto">
                                 <thead>
                                     <tr>
-                                        <th style="width: 60px;">Ordem</th>
-                                        <th style="width: 120px;">Código</th>
+                                        <th style="width: 50px;">Ordem</th>
+                                        <th style="width: 100px;">Código</th>
                                         <th>Nome</th>
-                                        <th style="width: 80px;">Status</th>
-                                        <th style="width: 100px;">Ações</th>
+                                        <th style="width: 70px;">Status</th>
+                                        <th style="width: 120px;">Ações</th>
                                     </tr>
                                 </thead>
                                 <tbody id="tiposGastoBody">
                                     <tr><td colspan="5" style="text-align: center; padding: 20px;">Carregando...</td></tr>
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+
+                    <!-- Aba Coordenadas -->
+                    <div class="config-tab-content" id="config-tab-coordenadas">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <div>
+                                <h4 style="color: var(--text-primary); margin: 0;">Coordenadas de Clientes</h4>
+                                <p class="text-muted" style="margin: 4px 0 0; font-size: 13px;">
+                                    Gerencie as coordenadas dos clientes. Defina manualmente a localização de clientes que não foram encontrados automaticamente.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="filter-bar" style="display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px;">
+                            <div class="form-group" style="flex: 1; min-width: 200px; max-width: 300px;">
+                                <label for="configCoordBuscaCliente">Buscar Cliente</label>
+                                <input type="text" id="configCoordBuscaCliente" placeholder="Código ou nome do cliente" style="width: 100%;">
+                            </div>
+                            <div class="form-group" style="flex: 1; min-width: 150px; max-width: 200px;">
+                                <label for="configCoordFiltroPrecisao">Filtrar por Precisão</label>
+                                <select id="configCoordFiltroPrecisao" style="width: 100%;">
+                                    <option value="">Todos</option>
+                                    <option value="aproximado">Apenas Aproximados</option>
+                                    <option value="manual">Apenas Manuais</option>
+                                    <option value="endereco">Endereço Exato</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="min-width: 150px;">
+                                <label>&nbsp;</label>
+                                <div style="display: flex; gap: 8px;">
+                                    <button type="button" class="btn btn-primary" id="btnConfigBuscarCoordenadas">🔍 Buscar</button>
+                                    <button type="button" class="btn btn-secondary" id="btnConfigLimparFiltrosCoordenadas">🧹 Limpar</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="configCoordenadasResultados" style="margin-top: 20px;">
+                            <p class="text-muted" style="text-align: center; padding: 40px;">
+                                Use os filtros acima para buscar clientes e gerenciar suas coordenadas.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Aba Usuários -->
+                    <div class="config-tab-content" id="config-tab-usuarios">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <div>
+                                <h4 style="color: var(--text-primary); margin: 0;">Gestão de Usuários</h4>
+                                <p class="text-muted" style="margin: 4px 0 0; font-size: 13px;">
+                                    Gerencie os usuários que têm acesso ao sistema PWA.
+                                </p>
+                            </div>
+                            <button class="btn btn-primary btn-sm" id="btnNovoUsuarioConfig">
+                                + Novo Usuário
+                            </button>
+                        </div>
+
+                        <div class="filtros-usuarios" style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; background: #f9fafb; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb;">
+                            <div class="filter-group" style="flex: 1; min-width: 200px;">
+                                <label for="configFiltroUsuarioNome">Buscar por nome ou username</label>
+                                <input type="text" id="configFiltroUsuarioNome" placeholder="Digite para filtrar...">
+                            </div>
+                            <div class="filter-group" style="min-width: 150px;">
+                                <label for="configFiltroUsuarioPerfil">Perfil</label>
+                                <select id="configFiltroUsuarioPerfil">
+                                    <option value="">Todos</option>
+                                    <option value="admin">Admin</option>
+                                    <option value="repositor">Repositor</option>
+                                </select>
+                            </div>
+                            <div class="filter-group" style="min-width: 150px;">
+                                <label for="configFiltroUsuarioStatus">Status</label>
+                                <select id="configFiltroUsuarioStatus">
+                                    <option value="">Todos</option>
+                                    <option value="1">Ativos</option>
+                                    <option value="0">Inativos</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="data-table" id="tabelaUsuariosConfig">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Username</th>
+                                        <th>Nome Completo</th>
+                                        <th>Email</th>
+                                        <th>Repositor</th>
+                                        <th>Perfil</th>
+                                        <th>Status</th>
+                                        <th>Último Login</th>
+                                        <th>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="usuariosTableBodyConfig">
+                                    <tr>
+                                        <td colspan="9" style="text-align: center; padding: 20px;">
+                                            Carregando usuários...
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Aba Controle de Acessos -->
+                    <div class="config-tab-content" id="config-tab-acessos">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <div>
+                                <h4 style="color: var(--text-primary); margin: 0;">Controle de Acessos</h4>
+                                <p class="text-muted" style="margin: 4px 0 0; font-size: 13px;">
+                                    Defina quais módulos cada usuário pode visualizar.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="form-group full-width" style="max-width: 400px;">
+                            <label for="configControleAcessoUsuario">Usuário</label>
+                            <select id="configControleAcessoUsuario" class="full-width"></select>
+                        </div>
+                        <div id="configControleAcessoMatriz" class="acl-matriz"></div>
+                        <div style="margin-top: 16px;">
+                            <button type="button" class="btn btn-primary" id="btnSalvarPermissoesConfig">Salvar Permissões</button>
                         </div>
                     </div>
                 </div>
@@ -2909,6 +3031,83 @@ export const pages = {
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalTipoGasto').classList.remove('active')">Cancelar</button>
                         <button type="button" class="btn btn-primary" id="btnSalvarTipoGasto">Salvar</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal de Edição de Coordenadas (Config) -->
+            <div class="modal" id="modalEditarCoordenadasConfig">
+                <div class="modal-content" style="max-width: 600px;">
+                    <div class="modal-header">
+                        <h3>Editar Coordenadas</h3>
+                        <button class="modal-close" onclick="document.getElementById('modalEditarCoordenadasConfig').classList.remove('active')">&times;</button>
+                    </div>
+                    <div class="modal-body" id="modalEditarCoordenadasConfigBody">
+                        <!-- Conteúdo preenchido dinamicamente -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Novo/Editar Usuário (Config) -->
+            <div id="modalUsuarioConfig" class="modal" style="display: none;">
+                <div class="modal-content" style="max-width: 600px;">
+                    <div class="modal-header">
+                        <h3 id="modalUsuarioTituloConfig">Novo Usuário</h3>
+                        <button class="modal-close" id="btnFecharModalUsuarioConfig">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="formUsuarioConfig">
+                            <input type="hidden" id="usuarioIdConfig">
+
+                            <div class="form-group">
+                                <label for="usuarioUsernameConfig">Username *</label>
+                                <input type="text" id="usuarioUsernameConfig" required>
+                                <small class="text-muted">Usado para login no sistema</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="usuarioNomeCompletoConfig">Nome Completo *</label>
+                                <input type="text" id="usuarioNomeCompletoConfig" required>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="usuarioEmailConfig">Email</label>
+                                <input type="email" id="usuarioEmailConfig">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="usuarioRepositorConfig">Repositor Vinculado</label>
+                                <select id="usuarioRepositorConfig">
+                                    <option value="">Nenhum (usuário administrativo)</option>
+                                </select>
+                                <small class="text-muted">Vincule a um repositor para acesso no PWA</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="usuarioPerfilConfig">Perfil *</label>
+                                <select id="usuarioPerfilConfig" required>
+                                    <option value="repositor">Repositor</option>
+                                    <option value="admin">Admin</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="usuarioSenhaConfig">Senha <span id="labelSenhaOpcionalConfig">(opcional para edição)</span></label>
+                                <input type="password" id="usuarioSenhaConfig" minlength="6">
+                                <small class="text-muted">Mínimo 6 caracteres</small>
+                            </div>
+
+                            <div class="form-group" style="display: none;" id="grupoUsuarioAtivoConfig">
+                                <label>
+                                    <input type="checkbox" id="usuarioAtivoConfig" checked>
+                                    Usuário Ativo
+                                </label>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" id="btnCancelarUsuarioConfig">Cancelar</button>
+                        <button type="button" class="btn btn-primary" id="btnSalvarUsuarioConfig">Salvar</button>
                     </div>
                 </div>
             </div>
