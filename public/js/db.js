@@ -834,6 +834,34 @@ class TursoDatabase {
                 )
             `);
 
+            // Verificar se existem tipos de documentos, se não, inserir dados iniciais
+            const tiposExistentes = await this.mainClient.execute('SELECT COUNT(*) as total FROM cc_documento_tipos');
+            if (tiposExistentes.rows[0]?.total === 0) {
+                console.log('[DB] Inserindo tipos de documentos padrão...');
+                await this.mainClient.execute(`
+                    INSERT INTO cc_documento_tipos (dct_codigo, dct_nome, dct_ativo, dct_ordem) VALUES
+                    ('despesa_viagem', 'Despesa de Viagem', 1, 1),
+                    ('nota_fiscal', 'Nota Fiscal', 1, 2),
+                    ('comprovante', 'Comprovante', 1, 3),
+                    ('outro', 'Outro', 1, 99)
+                `);
+            }
+
+            // Verificar se existem tipos de gasto (rubricas), se não, inserir dados iniciais
+            const gastosExistentes = await this.mainClient.execute('SELECT COUNT(*) as total FROM cc_gasto_tipos');
+            if (gastosExistentes.rows[0]?.total === 0) {
+                console.log('[DB] Inserindo rubricas de gasto padrão...');
+                await this.mainClient.execute(`
+                    INSERT INTO cc_gasto_tipos (gst_codigo, gst_nome, gst_ativo, gst_ordem) VALUES
+                    ('combustivel', 'Combustível', 1, 1),
+                    ('pedagio', 'Pedágio', 1, 2),
+                    ('alimentacao', 'Alimentação', 1, 3),
+                    ('hospedagem', 'Hospedagem', 1, 4),
+                    ('estacionamento', 'Estacionamento', 1, 5),
+                    ('outros', 'Outros', 1, 99)
+                `);
+            }
+
             console.log('✅ Tabelas de configuração criadas/verificadas');
         } catch (error) {
             console.error('Erro ao criar tabelas de configuração:', error);
