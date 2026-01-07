@@ -43,10 +43,10 @@ export const pages = {
                                 <p>Relatórios e análises de reposição</p>
                             </div>
 
-                            <div class="home-section-card" onclick="window.app.navigateTo('controle-acessos')">
+                            <div class="home-section-card" onclick="window.app.navigateTo('configuracoes-sistema')">
                                 <div class="home-section-icon">⚙️</div>
                                 <h3>Configurações</h3>
-                                <p>Controle de acessos e permissões</p>
+                                <p>Configurações do sistema</p>
                             </div>
                         </div>
                     </div>
@@ -3448,7 +3448,7 @@ export const pages = {
                                     💰 Despesa de Viagem
                                 </h5>
                                 <p style="margin: 0; font-size: 13px; color: #78350f;">
-                                    Preencha os valores gastos em cada rubrica. Para cada rubrica com valor, é <strong>obrigatório</strong> tirar foto do comprovante (até 10 fotos por rubrica).
+                                    Preencha <strong>apenas as rubricas em que houve gasto</strong>. Não é necessário preencher todas - informe somente as que tiveram despesa. Para cada rubrica com valor, é obrigatório tirar foto do comprovante (até 10 fotos por rubrica).
                                 </p>
                             </div>
                             <div id="listaRubricas" class="rubricas-grid">
@@ -4205,6 +4205,178 @@ export const pages = {
             </style>
         `;
     },
+
+    'consulta-despesas': async () => {
+        const repositores = await db.getAllRepositors();
+        const repositorOptions = repositores
+            .map(repo => `<option value="${repo.repo_cod}">${repo.repo_cod} - ${repo.repo_nome}</option>`)
+            .join('');
+
+        const hoje = new Date().toISOString().split('T')[0];
+        const umMesAtras = new Date();
+        umMesAtras.setMonth(umMesAtras.getMonth() - 1);
+        const dataInicio = umMesAtras.toISOString().split('T')[0];
+
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h4 class="card-title" style="margin-bottom: 2px;">Consulta de Despesas de Viagem</h4>
+                        <p class="text-muted" style="margin: 4px 0 0;">Visualize os gastos dos repositores por rubrica.</p>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="despesa-filter-section">
+                        <div class="filter-row" style="display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px;">
+                            <div class="filter-group" style="flex: 1; min-width: 200px;">
+                                <label for="despesaRepositor">Repositor</label>
+                                <select id="despesaRepositor">
+                                    <option value="">Todos</option>
+                                    ${repositorOptions}
+                                </select>
+                            </div>
+                            <div class="filter-group" style="min-width: 150px;">
+                                <label for="despesaDataInicio">Data Inicial</label>
+                                <input type="date" id="despesaDataInicio" value="${dataInicio}">
+                            </div>
+                            <div class="filter-group" style="min-width: 150px;">
+                                <label for="despesaDataFim">Data Final</label>
+                                <input type="date" id="despesaDataFim" value="${hoje}">
+                            </div>
+                            <div class="filter-group" style="min-width: 150px;">
+                                <label>&nbsp;</label>
+                                <div style="display: flex; gap: 8px;">
+                                    <button type="button" class="btn btn-primary" id="btnFiltrarDespesas">
+                                        🔍 Filtrar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="despesasContainer">
+                        <div class="empty-state" style="padding: 40px;">
+                            <div class="empty-state-icon">💰</div>
+                            <p>Selecione o período e clique em Filtrar para ver as despesas</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal de Detalhes das Despesas -->
+            <div class="modal" id="modalDetalhesDespesas">
+                <div class="modal-content" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
+                    <div class="modal-header">
+                        <h3 id="modalDetalhesDespesasTitulo">Despesas do Repositor</h3>
+                        <button class="modal-close" onclick="document.getElementById('modalDetalhesDespesas').classList.remove('active')">&times;</button>
+                    </div>
+                    <div class="modal-body" id="modalDetalhesDespesasBody">
+                        <!-- Conteúdo preenchido dinamicamente -->
+                    </div>
+                </div>
+            </div>
+
+            <style>
+                .despesa-filter-section .filter-group label {
+                    display: block;
+                    margin-bottom: 6px;
+                    font-weight: 600;
+                    color: #374151;
+                }
+
+                .despesa-filter-section .filter-group select,
+                .despesa-filter-section .filter-group input {
+                    width: 100%;
+                    padding: 10px;
+                    border: 1px solid #d1d5db;
+                    border-radius: 8px;
+                    font-size: 14px;
+                }
+
+                .despesas-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-top: 16px;
+                }
+
+                .despesas-table th,
+                .despesas-table td {
+                    padding: 12px;
+                    text-align: left;
+                    border-bottom: 1px solid #e5e7eb;
+                }
+
+                .despesas-table th {
+                    background: #f9fafb;
+                    font-weight: 600;
+                    color: #374151;
+                    white-space: nowrap;
+                }
+
+                .despesas-table td.valor {
+                    text-align: right;
+                    font-family: monospace;
+                    white-space: nowrap;
+                }
+
+                .despesas-table td.total {
+                    font-weight: 700;
+                    color: #ef4444;
+                }
+
+                .despesas-table tr:hover {
+                    background: #f9fafb;
+                }
+
+                .despesa-rubrica-section {
+                    margin-bottom: 24px;
+                    border: 1px solid #e5e7eb;
+                    border-radius: 8px;
+                    overflow: hidden;
+                }
+
+                .despesa-rubrica-header {
+                    background: #f9fafb;
+                    padding: 12px 16px;
+                    font-weight: 600;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                }
+
+                .despesa-rubrica-body {
+                    padding: 16px;
+                }
+
+                .despesa-fotos-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+                    gap: 12px;
+                    margin-top: 12px;
+                }
+
+                .despesa-foto-item {
+                    border: 1px solid #e5e7eb;
+                    border-radius: 8px;
+                    overflow: hidden;
+                }
+
+                .despesa-foto-item img {
+                    width: 100%;
+                    height: 120px;
+                    object-fit: cover;
+                    cursor: pointer;
+                }
+
+                .despesa-foto-info {
+                    padding: 8px;
+                    font-size: 12px;
+                    color: #6b7280;
+                    background: #f9fafb;
+                }
+            </style>
+        `;
+    },
     'analise-performance': async () => {
         const repositores = await db.getAllRepositors();
         const repositorOptions = repositores
@@ -4252,7 +4424,6 @@ export const pages = {
                         <button class="performance-tab active" data-tab="tempo">⏱️ Tempo de Atendimento</button>
                         <button class="performance-tab" data-tab="servicos">🔧 Análise de Serviços</button>
                         <button class="performance-tab" data-tab="roteiro">🗺️ Roteiro</button>
-                        <button class="performance-tab" data-tab="sequencia">📍 Sequência</button>
                     </div>
 
                     <!-- Tab Content: Tempo de Atendimento -->
@@ -4296,21 +4467,6 @@ export const pages = {
                         </div>
                     </div>
 
-                    <!-- Tab Content: Sequência de Roteiro -->
-                    <div class="performance-tab-content" id="tab-sequencia">
-                        <h4 style="margin-bottom: 16px; color: #374151; font-weight: 600;">Análise de Sequência de Roteiro</h4>
-                        <p style="color: #6b7280; font-size: 0.9em; margin-bottom: 16px;">
-                            Esta análise verifica se os clientes foram visitados na <strong>ordem correta do roteiro</strong>.
-                            Compara a sequência de check-ins/check-outs do repositor com a ordem planejada no roteiro.
-                        </p>
-
-                        <div id="sequenciaResultados">
-                            <div class="empty-state">
-                                <div class="empty-state-icon">📍</div>
-                                <p>Selecione o período e clique em Aplicar filtros</p>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
 
@@ -5820,6 +5976,7 @@ export const pageTitles = {
     'consulta-campanha': 'Consulta Campanha',
     'documentos': 'Registro de Documentos',
     'consulta-documentos': 'Consulta de Documentos',
+    'consulta-despesas': 'Consulta de Despesas',
     'analise-performance': 'Visitas'
 };
 
