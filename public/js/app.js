@@ -13490,13 +13490,75 @@ class App {
 
             const repositorId = document.getElementById('uploadRepositor').value;
             const tipoId = document.getElementById('uploadTipo').value;
-            const observacao = document.getElementById('uploadObservacao').value;
+            let observacao = document.getElementById('uploadObservacao').value;
             btnUpload = document.getElementById('btnUploadDocumento');
 
-            const arquivosParaEnvio = this.documentosState.filaUploads.filter(i => i.status !== 'sucesso');
+            // Verificar se é despesa de viagem
+            const areaDespesa = document.getElementById('areaDespesaViagem');
+            const isDespesaViagem = areaDespesa && areaDespesa.style.display !== 'none';
 
-            if (!repositorId || !tipoId || arquivosParaEnvio.length === 0) {
-                this.showNotification('Preencha todos os campos obrigatórios e adicione ao menos um anexo', 'warning');
+            let arquivosParaEnvio = [];
+
+            if (isDespesaViagem) {
+                // Para despesas, validar rubricas e usar fotos das rubricas
+                const validacao = this.validarRubricasDespesa();
+                if (!validacao.ok) {
+                    this.showNotification(validacao.erro, 'warning');
+                    return;
+                }
+
+                // Coletar todas as fotos das rubricas
+                const rubricasComValor = validacao.rubricas;
+                for (const rubrica of rubricasComValor) {
+                    for (const foto of (rubrica.fotos || [])) {
+                        if (foto.file) {
+                            arquivosParaEnvio.push({
+                                file: foto.file,
+                                status: 'pendente',
+                                id: foto.id
+                            });
+                        }
+                    }
+                }
+
+                if (arquivosParaEnvio.length === 0) {
+                    this.showNotification('Adicione pelo menos uma foto de comprovante', 'warning');
+                    return;
+                }
+
+                // Criar JSON com valores das rubricas para armazenar na observação
+                const rubricasData = rubricasComValor.map(r => ({
+                    codigo: r.codigo,
+                    nome: r.nome,
+                    valor: r.valor,
+                    qtdFotos: r.fotos?.length || 0
+                }));
+
+                // Calcular total
+                const totalDespesas = rubricasComValor.reduce((sum, r) => sum + r.valor, 0);
+
+                // Formatar observação com JSON das rubricas
+                const rubricasJson = JSON.stringify({
+                    tipo: 'despesa_viagem',
+                    total: totalDespesas,
+                    rubricas: rubricasData,
+                    dataRegistro: new Date().toISOString()
+                });
+
+                // Adicionar dados estruturados à observação
+                observacao = rubricasJson + (observacao ? `\n\nObs: ${observacao}` : '');
+            } else {
+                // Upload normal - usar fila de uploads
+                arquivosParaEnvio = this.documentosState.filaUploads.filter(i => i.status !== 'sucesso');
+
+                if (!repositorId || !tipoId || arquivosParaEnvio.length === 0) {
+                    this.showNotification('Preencha todos os campos obrigatórios e adicione ao menos um anexo', 'warning');
+                    return;
+                }
+            }
+
+            if (!repositorId || !tipoId) {
+                this.showNotification('Selecione o repositor e o tipo de documento', 'warning');
                 return;
             }
 
@@ -13515,7 +13577,9 @@ class App {
                 btnUpload.innerHTML = `<span class="spinner" style="width:16px;height:16px;border-width:2px;margin-right:8px;"></span> Enviando anexos...`;
             }
 
-            this.atualizarStatusFila('enviando');
+            if (!isDespesaViagem) {
+                this.atualizarStatusFila('enviando');
+            }
 
             const formData = new FormData();
             formData.append('repositor_id', repositorId);
@@ -13562,8 +13626,19 @@ class App {
             );
 
             // Limpar campos e manter fila apenas com itens pendentes/erro
-            document.getElementById('uploadArquivo').value = '';
-            document.getElementById('uploadObservacao').value = '';
+            const inputArquivo = document.getElementById('uploadArquivo');
+            const inputObservacao = document.getElementById('uploadObservacao');
+            if (inputArquivo) inputArquivo.value = '';
+            if (inputObservacao) inputObservacao.value = '';
+
+            // Se foi despesa de viagem, limpar rubricas
+            const areaDespesa = document.getElementById('areaDespesaViagem');
+            if (areaDespesa && areaDespesa.style.display !== 'none' && enviadosComSucesso > 0) {
+                this.documentosState.rubricas = [];
+                await this.carregarRubricasGasto(); // Recarregar para limpar os campos
+                this.atualizarTotalDespesas();
+            }
+
             this.renderizarFilaUploads();
         } catch (error) {
             console.error('Erro ao fazer upload:', error);

@@ -4184,6 +4184,46 @@ class TursoDatabase {
                 args: [`${ano}-%`]
             });
 
+            // Buscar despesas de viagem do ano (tipo despesa_viagem)
+            const despesas = await this.mainClient.execute({
+                sql: `
+                    SELECT
+                        d.doc_repositor_id,
+                        d.doc_data_ref,
+                        d.doc_observacao
+                    FROM cc_documentos d
+                    INNER JOIN cc_documento_tipos t ON t.dct_id = d.doc_dct_id
+                    WHERE (t.dct_codigo = 'despesa_viagem' OR t.dct_nome LIKE '%despesa%')
+                      AND d.doc_data_ref LIKE ?
+                      AND d.doc_observacao IS NOT NULL
+                      AND d.doc_observacao LIKE '%"tipo":"despesa_viagem"%'
+                `,
+                args: [`${ano}-%`]
+            });
+
+            // Criar mapa de despesas por repositor e mês
+            const despesasMap = {};
+            despesas.rows.forEach(row => {
+                try {
+                    // Extrair JSON do campo observação
+                    const obs = row.doc_observacao || '';
+                    const jsonMatch = obs.match(/^\{[\s\S]*?\}/);
+                    if (jsonMatch) {
+                        const data = JSON.parse(jsonMatch[0]);
+                        if (data.total && data.tipo === 'despesa_viagem') {
+                            const mes = parseInt(row.doc_data_ref.split('-')[1]);
+                            const key = `${row.doc_repositor_id}_${mes}`;
+                            if (!despesasMap[key]) {
+                                despesasMap[key] = 0;
+                            }
+                            despesasMap[key] += parseFloat(data.total) || 0;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Erro ao processar despesa:', e);
+                }
+            });
+
             // Criar mapa de custos por repositor e mês
             const custosMap = {};
             custos.rows.forEach(row => {
@@ -4196,15 +4236,22 @@ class TursoDatabase {
                 };
             });
 
-            // Montar estrutura de grid
+            // Montar estrutura de grid combinando custos manuais + despesas de viagem
             const grid = repositores.rows.map(repo => {
                 const meses = {};
                 for (let mes = 1; mes <= 12; mes++) {
                     const key = `${repo.repo_cod}_${mes}`;
-                    meses[mes] = custosMap[key] || {
-                        custo_fixo: 0,
-                        custo_variavel: 0,
-                        custo_total: 0
+                    const custoManual = custosMap[key] || { custo_fixo: 0, custo_variavel: 0 };
+                    const despesaViagem = despesasMap[key] || 0;
+
+                    // Adicionar despesas de viagem ao custo variável
+                    const custoVariavelTotal = (custoManual.custo_variavel || 0) + despesaViagem;
+
+                    meses[mes] = {
+                        custo_fixo: custoManual.custo_fixo || 0,
+                        custo_variavel: custoVariavelTotal,
+                        custo_total: (custoManual.custo_fixo || 0) + custoVariavelTotal,
+                        despesa_viagem: despesaViagem // Para exibição separada se necessário
                     };
                 }
 

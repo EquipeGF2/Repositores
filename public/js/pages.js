@@ -1504,142 +1504,91 @@ export const pages = {
             <style>
                 /* Container do Grid */
                 #gridCustosContainer {
-                    border-radius: 12px;
+                    border-radius: 8px;
                     overflow: hidden;
-                    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+                    border: 1px solid #e5e7eb;
                 }
 
                 .custos-grid-table {
                     width: 100%;
-                    border-collapse: separate;
-                    border-spacing: 0;
+                    border-collapse: collapse;
                     font-size: 13px;
                     background: white;
                 }
 
-                /* Cabeçalhos - Vermelho Forte e Vibrante */
+                /* Cabeçalhos - Estilo padrão data-table */
                 .custos-grid-table thead th {
-                    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-                    color: white;
-                    padding: 14px 10px;
+                    background: #f9fafb;
+                    color: #374151;
+                    padding: 12px 10px;
                     text-align: center;
-                    font-weight: 700;
+                    font-weight: 600;
                     font-size: 13px;
-                    text-transform: uppercase;
-                    letter-spacing: 0.5px;
-                    border: none;
+                    border-bottom: 2px solid #e5e7eb;
+                    white-space: nowrap;
                     position: sticky;
                     top: 0;
                     z-index: 10;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                 }
 
                 .custos-grid-table thead th:first-child {
                     text-align: left;
-                    min-width: 220px;
+                    min-width: 200px;
                     position: sticky;
                     left: 0;
                     z-index: 11;
-                    border-top-left-radius: 12px;
-                }
-
-                .custos-grid-table thead th:last-child {
-                    border-top-right-radius: 12px;
+                    background: #f9fafb;
                 }
 
                 /* Células do Corpo */
                 .custos-grid-table tbody td {
-                    border: 1px solid #fee2e2;
+                    border-bottom: 1px solid #e5e7eb;
                     padding: 0;
                     background: white;
-                    transition: background 0.2s ease;
                 }
 
                 .custos-grid-table tbody tr:hover td {
-                    background: #fef2f2;
+                    background: #f9fafb;
                 }
 
                 .custos-grid-table tbody td:first-child {
-                    padding: 12px;
-                    font-weight: 600;
+                    padding: 10px 12px;
+                    font-weight: 500;
                     font-size: 13px;
-                    background: #fef2f2;
+                    background: #f9fafb;
                     position: sticky;
                     left: 0;
                     z-index: 5;
-                    border-right: 3px solid #fecaca;
-                    color: #7f1d1d;
-                }
-
-                /* Inputs das Células */
-                .custos-grid-table .cell-input {
-                    width: 100%;
-                    border: none;
-                    padding: 10px;
-                    text-align: right;
-                    font-family: 'Segoe UI', Tahoma, sans-serif;
-                    font-size: 13px;
-                    font-weight: 500;
-                    background: transparent;
+                    border-right: 1px solid #e5e7eb;
                     color: #374151;
-                    transition: all 0.2s ease;
-                    border-radius: 0;
-                }
-
-                .custos-grid-table .cell-input:focus {
-                    outline: none;
-                    background: #fef2f2;
-                    box-shadow: inset 0 0 0 2px #ef4444;
-                    border-radius: 6px;
-                }
-
-                .custos-grid-table .cell-input:disabled {
-                    background: #f9fafb;
-                    color: #9ca3af;
-                    cursor: not-allowed;
-                }
-
-                .custos-grid-table .cell-input.modified {
-                    background: #fef3c7;
-                    border-left: 4px solid #f59e0b;
-                    font-weight: 700;
-                    color: #92400e;
                 }
 
                 /* Linha de Totais */
                 .custos-grid-table .total-row {
-                    background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
-                    font-weight: 700;
-                    font-size: 14px;
+                    background: #f3f4f6;
+                    font-weight: 600;
                 }
 
                 .custos-grid-table .total-row td {
-                    padding: 14px 10px;
+                    padding: 12px 10px;
                     text-align: right;
-                    border-top: 3px solid #dc2626;
-                    color: #7f1d1d;
+                    border-top: 2px solid #d1d5db;
+                    color: #111827;
                 }
 
                 .custos-grid-table .total-row td:first-child {
                     text-align: left;
-                    font-size: 15px;
-                    letter-spacing: 0.5px;
-                    border-bottom-left-radius: 12px;
-                }
-
-                .custos-grid-table .total-row td:last-child {
-                    border-bottom-right-radius: 12px;
+                    font-weight: 700;
                 }
 
                 /* Coluna de Total por Repositor */
                 .custos-grid-table .total-col {
-                    font-weight: 700;
+                    font-weight: 600;
                     text-align: right;
                     padding: 10px;
-                    background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
-                    color: #991b1b;
-                    font-size: 14px;
-                    border-left: 2px solid #fca5a5;
+                    background: #f9fafb;
+                    color: #111827;
+                    border-left: 1px solid #e5e7eb;
                 }
 
                 /* Coluna de Ações */
@@ -1647,51 +1596,50 @@ export const pages = {
                     text-align: center;
                     padding: 8px;
                     white-space: nowrap;
-                    background: #f9fafb;
-                    width: 100px;
+                    background: white;
+                    width: 90px;
                 }
 
                 /* Botões de Ação */
                 .custos-grid-table .btn-acoes {
-                    padding: 6px 12px;
+                    padding: 4px 8px;
                     font-size: 11px;
-                    font-weight: 600;
-                    color: white;
-                    border: none;
-                    border-radius: 8px;
+                    font-weight: 500;
+                    border: 1px solid #d1d5db;
+                    border-radius: 6px;
                     cursor: pointer;
-                    margin: 3px 0;
+                    margin: 2px 0;
                     display: block;
                     width: 100%;
-                    transition: all 0.2s ease;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                    text-transform: uppercase;
-                    letter-spacing: 0.3px;
+                    transition: all 0.15s ease;
+                    background: white;
+                    color: #374151;
                 }
 
                 .custos-grid-table .btn-replicar {
-                    background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
+                    background: #f0fdf4;
+                    border-color: #86efac;
+                    color: #166534;
                 }
 
                 .custos-grid-table .btn-replicar:hover {
-                    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-                    transform: translateY(-2px);
-                    box-shadow: 0 4px 6px rgba(239, 68, 68, 0.3);
+                    background: #dcfce7;
+                    border-color: #4ade80;
                 }
 
                 .custos-grid-table .btn-limpar {
-                    background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%);
+                    background: #fef2f2;
+                    border-color: #fca5a5;
+                    color: #991b1b;
                 }
 
                 .custos-grid-table .btn-limpar:hover {
-                    background: linear-gradient(135deg, #64748b 0%, #475569 100%);
-                    transform: translateY(-2px);
-                    box-shadow: 0 4px 6px rgba(100, 116, 139, 0.3);
+                    background: #fee2e2;
+                    border-color: #f87171;
                 }
 
                 .custos-grid-table .btn-acoes:active {
-                    transform: translateY(0);
-                    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+                    transform: scale(0.98);
                 }
 
                 /* Células com Fixo e Variável */
