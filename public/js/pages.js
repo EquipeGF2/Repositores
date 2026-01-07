@@ -1387,100 +1387,24 @@ export const pages = {
     },
 
     'custos-repositor': async () => {
-        const repositores = await db.getAllRepositors();
-        const repositorOptions = repositores
-            .map(repo => `<option value="${repo.repo_cod}">${repo.repo_cod} - ${repo.repo_nome}</option>`)
-            .join('');
-
-        const anoAtual = new Date().getFullYear();
-        const anos = [];
-        for (let i = anoAtual - 2; i <= anoAtual + 1; i++) {
-            anos.push(i);
-        }
+        // Página descontinuada - redirecionar para Grid de Custos
+        setTimeout(() => {
+            if (window.app && window.app.navegarPara) {
+                window.app.navegarPara('custos-grid');
+            }
+        }, 100);
 
         return `
             <div class="card">
-                <div class="card-header">
-                    <div>
-                        <h3 class="card-title">Custos por Repositor</h3>
-                        <p class="text-muted" style="margin: 4px 0 0;">
-                            Controle de custos mensais (fixos e variáveis) por repositor
-                        </p>
-                    </div>
-                    <div class="card-actions">
-                        <button class="btn btn-primary btn-sm" id="btnNovoCusto">➕ Novo Custo</button>
-                    </div>
-                </div>
-
-                <div class="card-body">
-                    <div class="filter-bar">
-                        <div class="filter-group">
-                            <label for="filtroCustosAno">Ano</label>
-                            <select id="filtroCustosAno">
-                                ${anos.map(ano => `<option value="${ano}" ${ano === anoAtual ? 'selected' : ''}>${ano}</option>`).join('')}
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label for="filtroCustosRepositor">Repositor</label>
-                            <select id="filtroCustosRepositor">
-                                <option value="">Todos</option>
-                                ${repositorOptions}
-                            </select>
-                        </div>
-                        <div class="filter-group" style="display: flex; align-items: flex-end;">
-                            <button class="btn btn-secondary" id="btnBuscarCustos">🔍 Buscar</button>
-                        </div>
-                    </div>
-
-                    <div id="custosContainer" style="margin-top: 1rem;">
-                        <div class="empty-state">
-                            <div class="empty-state-icon">💰</div>
-                            <p>Selecione o ano e clique em "Buscar" para visualizar os custos</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="modal" id="modalCusto">
-                <div class="modal-content" style="max-width: 600px;">
-                    <div class="modal-header">
-                        <h3 id="modalCustoTitulo">Novo Custo</h3>
-                        <button class="modal-close" onclick="window.app.fecharModalCusto()">&times;</button>
-                    </div>
-                    <div class="modal-body">
-                        <input type="hidden" id="custoId">
-
-                        <div class="form-group">
-                            <label for="custoRepositor">Repositor *</label>
-                            <select id="custoRepositor" class="form-control" required>
-                                <option value="">Selecione...</option>
-                                ${repositorOptions}
-                            </select>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="custoCompetencia">Competência (Mês/Ano) *</label>
-                            <input type="month" id="custoCompetencia" class="form-control" required>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="custoCustoFixo">Custo Fixo (R$)</label>
-                            <input type="number" id="custoCustoFixo" class="form-control" min="0" step="0.01" value="0">
-                        </div>
-
-                        <div class="form-group">
-                            <label for="custoCustoVariavel">Custo Variável (R$)</label>
-                            <input type="number" id="custoCustoVariavel" class="form-control" min="0" step="0.01" value="0">
-                        </div>
-
-                        <div class="form-group">
-                            <label for="custoObservacoes">Observações</label>
-                            <textarea id="custoObservacoes" class="form-control" rows="3"></textarea>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button class="btn btn-secondary" onclick="window.app.fecharModalCusto()">Cancelar</button>
-                        <button class="btn btn-primary" id="btnSalvarCusto">Salvar</button>
+                <div class="card-body" style="text-align: center; padding: 60px 20px;">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔄</div>
+                        <h3>Redirecionando...</h3>
+                        <p>Esta página foi integrada ao <strong>Grid de Custos</strong>.</p>
+                        <p>Você será redirecionado automaticamente.</p>
+                        <button class="btn btn-primary" onclick="window.app.navegarPara('custos-grid')">
+                            Ir para Grid de Custos
+                        </button>
                     </div>
                 </div>
             </div>
@@ -1768,6 +1692,115 @@ export const pages = {
                 .custos-grid-table .btn-acoes:active {
                     transform: translateY(0);
                     box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+                }
+
+                /* Células com Fixo e Variável */
+                .custos-grid-table .custo-cell {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 2px;
+                    padding: 4px;
+                }
+
+                .custos-grid-table .custo-cell .custo-row {
+                    display: flex;
+                    align-items: center;
+                    gap: 4px;
+                }
+
+                .custos-grid-table .custo-cell .custo-label {
+                    font-size: 9px;
+                    font-weight: 700;
+                    text-transform: uppercase;
+                    letter-spacing: 0.3px;
+                    min-width: 28px;
+                    text-align: center;
+                    padding: 2px 4px;
+                    border-radius: 4px;
+                }
+
+                .custos-grid-table .custo-cell .custo-label.fixo {
+                    background: #dcfce7;
+                    color: #166534;
+                }
+
+                .custos-grid-table .custo-cell .custo-label.var {
+                    background: #fed7aa;
+                    color: #9a3412;
+                }
+
+                .custos-grid-table .custo-cell .cell-input-mini {
+                    flex: 1;
+                    border: 1px solid #e5e7eb;
+                    padding: 4px 6px;
+                    text-align: right;
+                    font-family: 'Segoe UI', Tahoma, sans-serif;
+                    font-size: 11px;
+                    font-weight: 500;
+                    background: white;
+                    color: #374151;
+                    border-radius: 4px;
+                    width: 60px;
+                }
+
+                .custos-grid-table .custo-cell .cell-input-mini:focus {
+                    outline: none;
+                    border-color: #3b82f6;
+                    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+                }
+
+                .custos-grid-table .custo-cell .cell-input-mini:disabled {
+                    background: #f3f4f6;
+                    color: #9ca3af;
+                    cursor: not-allowed;
+                    border-color: #e5e7eb;
+                }
+
+                .custos-grid-table .custo-cell .cell-input-mini.modified {
+                    background: #fef3c7;
+                    border-color: #f59e0b;
+                    font-weight: 700;
+                    color: #92400e;
+                }
+
+                .custos-grid-table .custo-cell .cell-input-mini.input-fixo {
+                    border-left: 3px solid #22c55e;
+                }
+
+                .custos-grid-table .custo-cell .cell-input-mini.input-var {
+                    border-left: 3px solid #f97316;
+                }
+
+                /* Legenda da Grid */
+                .custos-grid-legenda {
+                    display: flex;
+                    gap: 20px;
+                    margin-bottom: 12px;
+                    font-size: 12px;
+                    align-items: center;
+                }
+
+                .custos-grid-legenda .legenda-item {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                }
+
+                .custos-grid-legenda .legenda-cor {
+                    width: 16px;
+                    height: 16px;
+                    border-radius: 4px;
+                    border: 1px solid rgba(0,0,0,0.1);
+                }
+
+                .custos-grid-legenda .legenda-cor.fixo {
+                    background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+                    border-left: 3px solid #22c55e;
+                }
+
+                .custos-grid-legenda .legenda-cor.var {
+                    background: linear-gradient(135deg, #fed7aa 0%, #fdba74 100%);
+                    border-left: 3px solid #f97316;
                 }
             </style>
         `;
@@ -2726,6 +2759,152 @@ export const pages = {
                             <p class="text-muted">Clique em "Carregar Sessões Abertas" para visualizar.</p>
                         </div>
                     </div>
+
+                    <hr style="margin: 24px 0; border: none; border-top: 1px solid var(--border-color);">
+
+                    <div class="config-section">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <div>
+                                <h4 style="color: var(--text-primary); margin: 0;">Tipos de Documentos</h4>
+                                <p class="text-muted" style="margin: 4px 0 0; font-size: 13px;">
+                                    Cadastre os tipos de documentos disponíveis para registro.
+                                </p>
+                            </div>
+                            <button type="button" class="btn btn-primary btn-sm" id="btnNovoTipoDocumento">
+                                + Novo Tipo
+                            </button>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="data-table" id="tabelaTiposDocumentos">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 60px;">Ordem</th>
+                                        <th style="width: 120px;">Código</th>
+                                        <th>Nome</th>
+                                        <th style="width: 80px;">Status</th>
+                                        <th style="width: 100px;">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tiposDocumentosBody">
+                                    <tr><td colspan="5" style="text-align: center;">Carregando...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <hr style="margin: 24px 0; border: none; border-top: 1px solid var(--border-color);">
+
+                    <div class="config-section">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <div>
+                                <h4 style="color: var(--text-primary); margin: 0;">Tipos de Gasto (Rubricas)</h4>
+                                <p class="text-muted" style="margin: 4px 0 0; font-size: 13px;">
+                                    Cadastre as rubricas de gasto para despesas de viagem.
+                                </p>
+                            </div>
+                            <button type="button" class="btn btn-primary btn-sm" id="btnNovoTipoGasto">
+                                + Nova Rubrica
+                            </button>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="data-table" id="tabelaTiposGasto">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 60px;">Ordem</th>
+                                        <th style="width: 120px;">Código</th>
+                                        <th>Nome</th>
+                                        <th style="width: 80px;">Status</th>
+                                        <th style="width: 100px;">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tiposGastoBody">
+                                    <tr><td colspan="5" style="text-align: center;">Carregando...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal para Tipo de Documento -->
+            <div class="modal" id="modalTipoDocumento">
+                <div class="modal-content" style="max-width: 450px;">
+                    <div class="modal-header">
+                        <h3 id="modalTipoDocumentoTitulo">Novo Tipo de Documento</h3>
+                        <button class="modal-close" onclick="document.getElementById('modalTipoDocumento').classList.remove('active')">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="formTipoDocumento">
+                            <input type="hidden" id="tipoDocumentoId">
+                            <div class="form-group">
+                                <label for="tipoDocumentoCodigo">Código *</label>
+                                <input type="text" id="tipoDocumentoCodigo" required maxlength="20" placeholder="Ex: NF, RECIBO">
+                            </div>
+                            <div class="form-group">
+                                <label for="tipoDocumentoNome">Nome *</label>
+                                <input type="text" id="tipoDocumentoNome" required maxlength="100" placeholder="Ex: Nota Fiscal">
+                            </div>
+                            <div class="form-row" style="display: flex; gap: 16px;">
+                                <div class="form-group" style="flex: 1;">
+                                    <label for="tipoDocumentoOrdem">Ordem</label>
+                                    <input type="number" id="tipoDocumentoOrdem" value="0" min="0">
+                                </div>
+                                <div class="form-group" style="flex: 1;">
+                                    <label style="display: block; margin-bottom: 8px;">Status</label>
+                                    <label class="switch-label" style="display: flex; align-items: center; gap: 8px;">
+                                        <input type="checkbox" id="tipoDocumentoAtivo" checked>
+                                        <span>Ativo</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalTipoDocumento').classList.remove('active')">Cancelar</button>
+                        <button type="button" class="btn btn-primary" id="btnSalvarTipoDocumento">Salvar</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal para Tipo de Gasto -->
+            <div class="modal" id="modalTipoGasto">
+                <div class="modal-content" style="max-width: 450px;">
+                    <div class="modal-header">
+                        <h3 id="modalTipoGastoTitulo">Nova Rubrica de Gasto</h3>
+                        <button class="modal-close" onclick="document.getElementById('modalTipoGasto').classList.remove('active')">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="formTipoGasto">
+                            <input type="hidden" id="tipoGastoId">
+                            <div class="form-group">
+                                <label for="tipoGastoCodigo">Código *</label>
+                                <input type="text" id="tipoGastoCodigo" required maxlength="20" placeholder="Ex: COMB, ALIM">
+                            </div>
+                            <div class="form-group">
+                                <label for="tipoGastoNome">Nome *</label>
+                                <input type="text" id="tipoGastoNome" required maxlength="100" placeholder="Ex: Combustível">
+                            </div>
+                            <div class="form-row" style="display: flex; gap: 16px;">
+                                <div class="form-group" style="flex: 1;">
+                                    <label for="tipoGastoOrdem">Ordem</label>
+                                    <input type="number" id="tipoGastoOrdem" value="0" min="0">
+                                </div>
+                                <div class="form-group" style="flex: 1;">
+                                    <label style="display: block; margin-bottom: 8px;">Status</label>
+                                    <label class="switch-label" style="display: flex; align-items: center; gap: 8px;">
+                                        <input type="checkbox" id="tipoGastoAtivo" checked>
+                                        <span>Ativo</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalTipoGasto').classList.remove('active')">Cancelar</button>
+                        <button type="button" class="btn btn-primary" id="btnSalvarTipoGasto">Salvar</button>
+                    </div>
                 </div>
             </div>
         `;
@@ -3010,6 +3189,22 @@ export const pages = {
                                 <input type="text" id="uploadObservacao" placeholder="Opcional">
                             </div>
                         </div>
+
+                        <!-- Área de Rubricas de Gasto (aparece quando tipo = Despesa de Viagem) -->
+                        <div id="areaDespesaViagem" style="display: none;">
+                            <div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 16px; margin: 16px 0;">
+                                <h5 style="margin: 0 0 8px; color: #92400e; display: flex; align-items: center; gap: 8px;">
+                                    💰 Despesa de Viagem
+                                </h5>
+                                <p style="margin: 0; font-size: 13px; color: #78350f;">
+                                    Preencha os valores gastos em cada rubrica. Para cada rubrica preenchida, é obrigatório anexar a foto do comprovante.
+                                </p>
+                            </div>
+                            <div id="listaRubricas" class="rubricas-grid">
+                                <!-- Rubricas serão carregadas dinamicamente -->
+                            </div>
+                        </div>
+
                         <div style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 12px; align-items: center;">
                             <div style="color: #6b7280; font-size: 13px;">Envie vários anexos de uma vez ou capture fotos em sequência.</div>
                             <button class="btn btn-primary" id="btnUploadDocumento" style="min-width: 160px;">📤 Enviar Documento</button>
@@ -3275,6 +3470,117 @@ export const pages = {
                     .btn-remover-upload .btn-text {
                         display: none;
                     }
+                }
+
+                /* Rubricas de Despesa de Viagem */
+                .rubricas-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+                    gap: 16px;
+                }
+
+                .rubrica-card {
+                    background: white;
+                    border: 1px solid #e5e7eb;
+                    border-radius: 10px;
+                    padding: 16px;
+                    transition: all 0.2s;
+                }
+
+                .rubrica-card.preenchido {
+                    border-color: #10b981;
+                    background: #f0fdf4;
+                }
+
+                .rubrica-card.erro {
+                    border-color: #ef4444;
+                    background: #fef2f2;
+                }
+
+                .rubrica-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 12px;
+                }
+
+                .rubrica-nome {
+                    font-weight: 600;
+                    color: #374151;
+                    font-size: 14px;
+                }
+
+                .rubrica-codigo {
+                    font-size: 11px;
+                    background: #f3f4f6;
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                    color: #6b7280;
+                }
+
+                .rubrica-valor {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    margin-bottom: 12px;
+                }
+
+                .rubrica-valor label {
+                    font-size: 13px;
+                    color: #6b7280;
+                    min-width: 50px;
+                }
+
+                .rubrica-valor input {
+                    flex: 1;
+                    padding: 8px 10px;
+                    border: 1px solid #d1d5db;
+                    border-radius: 6px;
+                    font-size: 14px;
+                }
+
+                .rubrica-valor input:focus {
+                    outline: none;
+                    border-color: #f59e0b;
+                    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.1);
+                }
+
+                .rubrica-foto {
+                    display: flex;
+                    gap: 8px;
+                    align-items: center;
+                }
+
+                .rubrica-foto-btn {
+                    padding: 6px 12px;
+                    background: #f9fafb;
+                    border: 1px dashed #d1d5db;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    font-size: 12px;
+                    transition: all 0.2s;
+                    flex: 1;
+                    text-align: center;
+                }
+
+                .rubrica-foto-btn:hover {
+                    background: #fef3c7;
+                    border-color: #f59e0b;
+                }
+
+                .rubrica-foto-btn.tem-foto {
+                    background: #d1fae5;
+                    border-color: #10b981;
+                    border-style: solid;
+                    color: #065f46;
+                }
+
+                .rubrica-foto-preview {
+                    width: 40px;
+                    height: 40px;
+                    border-radius: 6px;
+                    object-fit: cover;
+                    border: 1px solid #d1d5db;
                 }
             </style>
         `;
@@ -3592,6 +3898,7 @@ export const pages = {
                         <button class="performance-tab active" data-tab="tempo">⏱️ Tempo de Atendimento</button>
                         <button class="performance-tab" data-tab="servicos">🔧 Análise de Serviços</button>
                         <button class="performance-tab" data-tab="roteiro">🗺️ Roteiro</button>
+                        <button class="performance-tab" data-tab="sequencia">📍 Sequência</button>
                     </div>
 
                     <!-- Tab Content: Tempo de Atendimento -->
@@ -3630,6 +3937,22 @@ export const pages = {
                         <div id="roteiroResultados">
                             <div class="empty-state">
                                 <div class="empty-state-icon">🗺️</div>
+                                <p>Selecione o período e clique em Aplicar filtros</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab Content: Sequência de Roteiro -->
+                    <div class="performance-tab-content" id="tab-sequencia">
+                        <h4 style="margin-bottom: 16px; color: #374151; font-weight: 600;">Análise de Sequência de Roteiro</h4>
+                        <p style="color: #6b7280; font-size: 0.9em; margin-bottom: 16px;">
+                            Esta análise verifica se os clientes foram visitados na <strong>ordem correta do roteiro</strong>.
+                            Compara a sequência de check-ins/check-outs do repositor com a ordem planejada no roteiro.
+                        </p>
+
+                        <div id="sequenciaResultados">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">📍</div>
                                 <p>Selecione o período e clique em Aplicar filtros</p>
                             </div>
                         </div>

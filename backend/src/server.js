@@ -14,6 +14,7 @@ import vendaCentralizadaRoutes from './routes/vendaCentralizada.js';
 import healthRoutes from './routes/health.js';
 import authRoutes from './routes/auth.js';
 import usuariosRoutes from './routes/usuarios.js';
+import pesquisaRoutes from './routes/pesquisa.js';
 import { authService } from './services/auth.js';
 
 const app = express();
@@ -123,6 +124,7 @@ app.use('/api/arquivos', arquivosRoutes);
 app.use('/api/campanhas', campanhasRoutes);
 app.use('/api/rateio', rateioRoutes);
 app.use('/api/venda-centralizada', vendaCentralizadaRoutes);
+app.use('/api/pesquisa', pesquisaRoutes);
 
 // Rota 404
 app.use((req, res) => {

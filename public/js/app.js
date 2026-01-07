@@ -1158,6 +1158,32 @@ class App {
         if (btnCarregarSessoes) {
             btnCarregarSessoes.addEventListener('click', () => this.carregarSessoesAbertasConfig());
         }
+
+        // ==================== TIPOS DE DOCUMENTOS ====================
+        await this.carregarTiposDocumentos();
+
+        const btnNovoTipoDoc = document.getElementById('btnNovoTipoDocumento');
+        if (btnNovoTipoDoc) {
+            btnNovoTipoDoc.addEventListener('click', () => this.abrirModalTipoDocumento());
+        }
+
+        const btnSalvarTipoDoc = document.getElementById('btnSalvarTipoDocumento');
+        if (btnSalvarTipoDoc) {
+            btnSalvarTipoDoc.addEventListener('click', () => this.salvarTipoDocumento());
+        }
+
+        // ==================== TIPOS DE GASTO ====================
+        await this.carregarTiposGasto();
+
+        const btnNovoTipoGasto = document.getElementById('btnNovoTipoGasto');
+        if (btnNovoTipoGasto) {
+            btnNovoTipoGasto.addEventListener('click', () => this.abrirModalTipoGasto());
+        }
+
+        const btnSalvarTipoGasto = document.getElementById('btnSalvarTipoGasto');
+        if (btnSalvarTipoGasto) {
+            btnSalvarTipoGasto.addEventListener('click', () => this.salvarTipoGasto());
+        }
     }
 
     async carregarSessoesAbertasConfig() {
@@ -1268,6 +1294,202 @@ class App {
         } catch (error) {
             console.error('Erro ao excluir sessão:', error);
             this.showNotification(`Erro ao excluir: ${error.message}`, 'error');
+        }
+    }
+
+    // ==================== TIPOS DE DOCUMENTOS ====================
+
+    async carregarTiposDocumentos() {
+        const tbody = document.getElementById('tiposDocumentosBody');
+        if (!tbody) return;
+
+        try {
+            const tipos = await db.listarTiposDocumentos();
+
+            if (tipos.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #6b7280;">Nenhum tipo cadastrado</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = tipos.map(t => `
+                <tr>
+                    <td style="text-align: center;">${t.dct_ordem || 0}</td>
+                    <td><code>${t.dct_codigo}</code></td>
+                    <td>${t.dct_nome}</td>
+                    <td style="text-align: center;">
+                        <span class="badge ${t.dct_ativo ? 'badge-success' : 'badge-secondary'}">
+                            ${t.dct_ativo ? 'Ativo' : 'Inativo'}
+                        </span>
+                    </td>
+                    <td style="text-align: center;">
+                        <button class="btn btn-sm btn-secondary" onclick="app.editarTipoDocumento(${t.dct_id})" title="Editar">✏️</button>
+                        <button class="btn btn-sm btn-danger" onclick="app.excluirTipoDocumento(${t.dct_id})" title="Excluir">🗑️</button>
+                    </td>
+                </tr>
+            `).join('');
+        } catch (error) {
+            console.error('Erro ao carregar tipos de documentos:', error);
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #dc2626;">Erro ao carregar</td></tr>';
+        }
+    }
+
+    abrirModalTipoDocumento(dados = null) {
+        document.getElementById('tipoDocumentoId').value = dados?.id || '';
+        document.getElementById('tipoDocumentoCodigo').value = dados?.codigo || '';
+        document.getElementById('tipoDocumentoNome').value = dados?.nome || '';
+        document.getElementById('tipoDocumentoOrdem').value = dados?.ordem || 0;
+        document.getElementById('tipoDocumentoAtivo').checked = dados?.ativo !== false;
+        document.getElementById('modalTipoDocumentoTitulo').textContent = dados ? 'Editar Tipo de Documento' : 'Novo Tipo de Documento';
+        document.getElementById('modalTipoDocumento').classList.add('active');
+    }
+
+    async editarTipoDocumento(id) {
+        try {
+            const tipos = await db.listarTiposDocumentos();
+            const tipo = tipos.find(t => t.dct_id === id);
+            if (tipo) {
+                this.abrirModalTipoDocumento({
+                    id: tipo.dct_id,
+                    codigo: tipo.dct_codigo,
+                    nome: tipo.dct_nome,
+                    ordem: tipo.dct_ordem,
+                    ativo: tipo.dct_ativo === 1
+                });
+            }
+        } catch (error) {
+            this.showNotification('Erro ao carregar tipo: ' + error.message, 'error');
+        }
+    }
+
+    async salvarTipoDocumento() {
+        const id = document.getElementById('tipoDocumentoId').value;
+        const codigo = document.getElementById('tipoDocumentoCodigo').value.trim().toUpperCase();
+        const nome = document.getElementById('tipoDocumentoNome').value.trim();
+        const ordem = parseInt(document.getElementById('tipoDocumentoOrdem').value) || 0;
+        const ativo = document.getElementById('tipoDocumentoAtivo').checked;
+
+        if (!codigo || !nome) {
+            this.showNotification('Preencha código e nome.', 'error');
+            return;
+        }
+
+        try {
+            await db.salvarTipoDocumento({ id: id || null, codigo, nome, ordem, ativo });
+            document.getElementById('modalTipoDocumento').classList.remove('active');
+            this.showNotification('Tipo de documento salvo!', 'success');
+            await this.carregarTiposDocumentos();
+        } catch (error) {
+            this.showNotification('Erro ao salvar: ' + error.message, 'error');
+        }
+    }
+
+    async excluirTipoDocumento(id) {
+        if (!confirm('Tem certeza que deseja excluir este tipo de documento?')) return;
+
+        try {
+            await db.excluirTipoDocumento(id);
+            this.showNotification('Tipo excluído!', 'success');
+            await this.carregarTiposDocumentos();
+        } catch (error) {
+            this.showNotification('Erro ao excluir: ' + error.message, 'error');
+        }
+    }
+
+    // ==================== TIPOS DE GASTO (RUBRICAS) ====================
+
+    async carregarTiposGasto() {
+        const tbody = document.getElementById('tiposGastoBody');
+        if (!tbody) return;
+
+        try {
+            const tipos = await db.listarTiposGasto();
+
+            if (tipos.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #6b7280;">Nenhuma rubrica cadastrada</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = tipos.map(t => `
+                <tr>
+                    <td style="text-align: center;">${t.gst_ordem || 0}</td>
+                    <td><code>${t.gst_codigo}</code></td>
+                    <td>${t.gst_nome}</td>
+                    <td style="text-align: center;">
+                        <span class="badge ${t.gst_ativo ? 'badge-success' : 'badge-secondary'}">
+                            ${t.gst_ativo ? 'Ativo' : 'Inativo'}
+                        </span>
+                    </td>
+                    <td style="text-align: center;">
+                        <button class="btn btn-sm btn-secondary" onclick="app.editarTipoGasto(${t.gst_id})" title="Editar">✏️</button>
+                        <button class="btn btn-sm btn-danger" onclick="app.excluirTipoGasto(${t.gst_id})" title="Excluir">🗑️</button>
+                    </td>
+                </tr>
+            `).join('');
+        } catch (error) {
+            console.error('Erro ao carregar tipos de gasto:', error);
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #dc2626;">Erro ao carregar</td></tr>';
+        }
+    }
+
+    abrirModalTipoGasto(dados = null) {
+        document.getElementById('tipoGastoId').value = dados?.id || '';
+        document.getElementById('tipoGastoCodigo').value = dados?.codigo || '';
+        document.getElementById('tipoGastoNome').value = dados?.nome || '';
+        document.getElementById('tipoGastoOrdem').value = dados?.ordem || 0;
+        document.getElementById('tipoGastoAtivo').checked = dados?.ativo !== false;
+        document.getElementById('modalTipoGastoTitulo').textContent = dados ? 'Editar Rubrica de Gasto' : 'Nova Rubrica de Gasto';
+        document.getElementById('modalTipoGasto').classList.add('active');
+    }
+
+    async editarTipoGasto(id) {
+        try {
+            const tipos = await db.listarTiposGasto();
+            const tipo = tipos.find(t => t.gst_id === id);
+            if (tipo) {
+                this.abrirModalTipoGasto({
+                    id: tipo.gst_id,
+                    codigo: tipo.gst_codigo,
+                    nome: tipo.gst_nome,
+                    ordem: tipo.gst_ordem,
+                    ativo: tipo.gst_ativo === 1
+                });
+            }
+        } catch (error) {
+            this.showNotification('Erro ao carregar rubrica: ' + error.message, 'error');
+        }
+    }
+
+    async salvarTipoGasto() {
+        const id = document.getElementById('tipoGastoId').value;
+        const codigo = document.getElementById('tipoGastoCodigo').value.trim().toUpperCase();
+        const nome = document.getElementById('tipoGastoNome').value.trim();
+        const ordem = parseInt(document.getElementById('tipoGastoOrdem').value) || 0;
+        const ativo = document.getElementById('tipoGastoAtivo').checked;
+
+        if (!codigo || !nome) {
+            this.showNotification('Preencha código e nome.', 'error');
+            return;
+        }
+
+        try {
+            await db.salvarTipoGasto({ id: id || null, codigo, nome, ordem, ativo });
+            document.getElementById('modalTipoGasto').classList.remove('active');
+            this.showNotification('Rubrica de gasto salva!', 'success');
+            await this.carregarTiposGasto();
+        } catch (error) {
+            this.showNotification('Erro ao salvar: ' + error.message, 'error');
+        }
+    }
+
+    async excluirTipoGasto(id) {
+        if (!confirm('Tem certeza que deseja excluir esta rubrica de gasto?')) return;
+
+        try {
+            await db.excluirTipoGasto(id);
+            this.showNotification('Rubrica excluída!', 'success');
+            await this.carregarTiposGasto();
+        } catch (error) {
+            this.showNotification('Erro ao excluir: ' + error.message, 'error');
         }
     }
 
@@ -2091,8 +2313,6 @@ class App {
                 await this.inicializarCadastroRateio();
             } else if (pageName === 'manutencao-centralizacao') {
                 await this.inicializarManutencaoCentralizacao();
-            } else if (pageName === 'custos-repositor') {
-                await this.inicializarCustosRepositor();
             } else if (pageName === 'custos-grid') {
                 await this.inicializarCustosGrid();
             } else if (pageName === 'registro-rota') {
@@ -7752,13 +7972,28 @@ class App {
             { num: 12, nome: 'Dez' }
         ];
 
-        // Calcular totais mensais
+        // Calcular totais mensais (fixo e variavel separados)
         const totaisMensais = {};
         meses.forEach(m => {
-            totaisMensais[m.num] = 0;
+            totaisMensais[m.num] = { fixo: 0, variavel: 0 };
         });
 
+        // Legenda
         let html = `
+            <div class="custos-grid-legenda">
+                <span style="font-weight: 600; color: #374151;">Legenda:</span>
+                <div class="legenda-item">
+                    <div class="legenda-cor fixo"></div>
+                    <span>Custo Fixo</span>
+                </div>
+                <div class="legenda-item">
+                    <div class="legenda-cor var"></div>
+                    <span>Custo Variável</span>
+                </div>
+            </div>
+        `;
+
+        html += `
             <table class="custos-grid-table">
                 <thead>
                     <tr>
@@ -7779,31 +8014,63 @@ class App {
                     <td>${repo.rep_id} - ${repo.repositor_nome}</td>
             `;
 
-            // Células de meses
+            // Células de meses com Fixo e Variável
             meses.forEach(m => {
-                const valorAtual = repo.meses[m.num]?.custo_total || 0;
-                const key = `${repo.rep_id}_${m.num}`;
-                const valorAlterado = this.custosGridState.alteracoes[key];
-                const valor = valorAlterado !== undefined ? valorAlterado : valorAtual;
-                const editavel = this.isMesEditavel(m.num);
-                const classModified = valorAlterado !== undefined ? 'modified' : '';
+                const custoFixoAtual = repo.meses[m.num]?.custo_fixo || 0;
+                const custoVarAtual = repo.meses[m.num]?.custo_variavel || 0;
 
-                totalRepositor += parseFloat(valor) || 0;
-                totaisMensais[m.num] += parseFloat(valor) || 0;
+                const keyFixo = `${repo.rep_id}_${m.num}_fixo`;
+                const keyVar = `${repo.rep_id}_${m.num}_var`;
+
+                const valorFixoAlterado = this.custosGridState.alteracoes[keyFixo];
+                const valorVarAlterado = this.custosGridState.alteracoes[keyVar];
+
+                const valorFixo = valorFixoAlterado !== undefined ? valorFixoAlterado : custoFixoAtual;
+                const valorVar = valorVarAlterado !== undefined ? valorVarAlterado : custoVarAtual;
+
+                const editavel = this.isMesEditavel(m.num);
+                const classModifiedFixo = valorFixoAlterado !== undefined ? 'modified' : '';
+                const classModifiedVar = valorVarAlterado !== undefined ? 'modified' : '';
+
+                const totalCelula = (parseFloat(valorFixo) || 0) + (parseFloat(valorVar) || 0);
+                totalRepositor += totalCelula;
+                totaisMensais[m.num].fixo += parseFloat(valorFixo) || 0;
+                totaisMensais[m.num].variavel += parseFloat(valorVar) || 0;
 
                 html += `
                     <td>
-                        <input
-                            type="number"
-                            class="cell-input ${classModified}"
-                            data-rep-id="${repo.rep_id}"
-                            data-mes="${m.num}"
-                            value="${valor}"
-                            ${editavel ? '' : 'disabled'}
-                            step="0.01"
-                            min="0"
-                            onchange="window.app.onCelulaCustoChanged(this, ${repo.rep_id}, ${m.num})"
-                        />
+                        <div class="custo-cell">
+                            <div class="custo-row">
+                                <span class="custo-label fixo">F</span>
+                                <input
+                                    type="number"
+                                    class="cell-input-mini input-fixo ${classModifiedFixo}"
+                                    data-rep-id="${repo.rep_id}"
+                                    data-mes="${m.num}"
+                                    data-tipo="fixo"
+                                    value="${valorFixo}"
+                                    ${editavel ? '' : 'disabled'}
+                                    step="0.01"
+                                    min="0"
+                                    onchange="window.app.onCelulaCustoChanged(this, ${repo.rep_id}, ${m.num}, 'fixo')"
+                                />
+                            </div>
+                            <div class="custo-row">
+                                <span class="custo-label var">V</span>
+                                <input
+                                    type="number"
+                                    class="cell-input-mini input-var ${classModifiedVar}"
+                                    data-rep-id="${repo.rep_id}"
+                                    data-mes="${m.num}"
+                                    data-tipo="var"
+                                    value="${valorVar}"
+                                    ${editavel ? '' : 'disabled'}
+                                    step="0.01"
+                                    min="0"
+                                    onchange="window.app.onCelulaCustoChanged(this, ${repo.rep_id}, ${m.num}, 'var')"
+                                />
+                            </div>
+                        </div>
                     </td>
                 `;
             });
@@ -7832,9 +8099,9 @@ class App {
         html += `<td><strong>TOTAL</strong></td>`;
 
         meses.forEach(m => {
-            const total = totaisMensais[m.num];
-            totalGeral += total;
-            html += `<td>${this.formatarMoeda(total)}</td>`;
+            const totalMes = totaisMensais[m.num].fixo + totaisMensais[m.num].variavel;
+            totalGeral += totalMes;
+            html += `<td>${this.formatarMoeda(totalMes)}</td>`;
         });
 
         html += `<td>${this.formatarMoeda(totalGeral)}</td>`;
@@ -7864,13 +8131,15 @@ class App {
         return mes >= mesAtual;
     }
 
-    onCelulaCustoChanged(input, repId, mes) {
+    onCelulaCustoChanged(input, repId, mes, tipo = 'fixo') {
         const novoValor = parseFloat(input.value) || 0;
-        const key = `${repId}_${mes}`;
+        const key = `${repId}_${mes}_${tipo}`;
 
         // Buscar valor original
         const repo = this.custosGridState.dadosOriginais.find(r => r.rep_id === repId);
-        const valorOriginal = repo?.meses[mes]?.custo_total || 0;
+        const valorOriginal = tipo === 'fixo'
+            ? (repo?.meses[mes]?.custo_fixo || 0)
+            : (repo?.meses[mes]?.custo_variavel || 0);
 
         if (novoValor !== valorOriginal) {
             // Marcar como alterado
@@ -7919,17 +8188,34 @@ class App {
                 return;
             }
 
-            // Montar array de custos
-            const custos = [];
+            // Agrupar alterações por repositor e mês
+            const custosAgrupados = {};
             for (const [key, valor] of Object.entries(alteracoes)) {
-                const [repId, mes] = key.split('_');
-                custos.push({
-                    rep_id: parseInt(repId),
-                    ano: this.custosGridState.ano,
-                    mes: parseInt(mes),
-                    valor: parseFloat(valor)
-                });
+                const [repId, mes, tipo] = key.split('_');
+                const chaveAgrupamento = `${repId}_${mes}`;
+
+                if (!custosAgrupados[chaveAgrupamento]) {
+                    // Buscar valores atuais do grid
+                    const repo = this.custosGridState.dadosOriginais.find(r => r.rep_id === parseInt(repId));
+                    custosAgrupados[chaveAgrupamento] = {
+                        rep_id: parseInt(repId),
+                        ano: this.custosGridState.ano,
+                        mes: parseInt(mes),
+                        custo_fixo: repo?.meses[parseInt(mes)]?.custo_fixo || 0,
+                        custo_variavel: repo?.meses[parseInt(mes)]?.custo_variavel || 0
+                    };
+                }
+
+                // Atualizar o valor específico (fixo ou variavel)
+                if (tipo === 'fixo') {
+                    custosAgrupados[chaveAgrupamento].custo_fixo = parseFloat(valor);
+                } else if (tipo === 'var') {
+                    custosAgrupados[chaveAgrupamento].custo_variavel = parseFloat(valor);
+                }
             }
+
+            // Converter para array
+            const custos = Object.values(custosAgrupados);
 
             // Salvar
             const result = await db.salvarCustosEmLote(custos);
@@ -7945,7 +8231,7 @@ class App {
     }
 
     mostrarReplicarValor(repId) {
-        const mesOrigem = prompt('Digite o número do mês origem (1-12) para replicar o valor:');
+        const mesOrigem = prompt('Digite o número do mês origem (1-12) para replicar os valores:');
 
         if (!mesOrigem || isNaN(mesOrigem)) {
             return;
@@ -7958,27 +8244,39 @@ class App {
             return;
         }
 
-        // Buscar o valor do mês origem
-        const input = document.querySelector(`input[data-rep-id="${repId}"][data-mes="${mes}"]`);
-        if (!input) {
+        // Buscar os valores do mês origem (fixo e variável)
+        const inputFixo = document.querySelector(`input[data-rep-id="${repId}"][data-mes="${mes}"][data-tipo="fixo"]`);
+        const inputVar = document.querySelector(`input[data-rep-id="${repId}"][data-mes="${mes}"][data-tipo="var"]`);
+
+        if (!inputFixo && !inputVar) {
             this.showNotification('Célula não encontrada', 'error');
             return;
         }
 
-        const valorOrigem = parseFloat(input.value) || 0;
+        const valorFixo = parseFloat(inputFixo?.value) || 0;
+        const valorVar = parseFloat(inputVar?.value) || 0;
+        const totalOrigem = valorFixo + valorVar;
 
         // Replicar para meses seguintes editáveis
+        let replicados = 0;
         for (let m = mes + 1; m <= 12; m++) {
             if (this.isMesEditavel(m)) {
-                const inputDestino = document.querySelector(`input[data-rep-id="${repId}"][data-mes="${m}"]`);
-                if (inputDestino && !inputDestino.disabled) {
-                    inputDestino.value = valorOrigem;
-                    this.onCelulaCustoChanged(inputDestino, repId, m);
+                const inputDestinoFixo = document.querySelector(`input[data-rep-id="${repId}"][data-mes="${m}"][data-tipo="fixo"]`);
+                const inputDestinoVar = document.querySelector(`input[data-rep-id="${repId}"][data-mes="${m}"][data-tipo="var"]`);
+
+                if (inputDestinoFixo && !inputDestinoFixo.disabled) {
+                    inputDestinoFixo.value = valorFixo;
+                    this.onCelulaCustoChanged(inputDestinoFixo, repId, m, 'fixo');
+                    replicados++;
+                }
+                if (inputDestinoVar && !inputDestinoVar.disabled) {
+                    inputDestinoVar.value = valorVar;
+                    this.onCelulaCustoChanged(inputDestinoVar, repId, m, 'var');
                 }
             }
         }
 
-        this.showNotification(`Valor R$ ${valorOrigem.toFixed(2)} replicado para os meses seguintes`, 'success');
+        this.showNotification(`Valores (Fixo: R$ ${valorFixo.toFixed(2)} + Var: R$ ${valorVar.toFixed(2)} = R$ ${totalOrigem.toFixed(2)}) replicados para ${replicados} mês(es)`, 'success');
     }
 
     limparRepositor(repId) {
@@ -7988,33 +8286,40 @@ class App {
 
         let limpas = 0;
 
-        // Limpar todos os meses editáveis
+        // Limpar todos os meses editáveis (fixo e variável)
         for (let mes = 1; mes <= 12; mes++) {
             if (this.isMesEditavel(mes)) {
-                const input = document.querySelector(`input[data-rep-id="${repId}"][data-mes="${mes}"]`);
-                if (input && !input.disabled) {
-                    input.value = 0;
-                    this.onCelulaCustoChanged(input, repId, mes);
+                const inputFixo = document.querySelector(`input[data-rep-id="${repId}"][data-mes="${mes}"][data-tipo="fixo"]`);
+                const inputVar = document.querySelector(`input[data-rep-id="${repId}"][data-mes="${mes}"][data-tipo="var"]`);
+
+                if (inputFixo && !inputFixo.disabled) {
+                    inputFixo.value = 0;
+                    this.onCelulaCustoChanged(inputFixo, repId, mes, 'fixo');
                     limpas++;
+                }
+                if (inputVar && !inputVar.disabled) {
+                    inputVar.value = 0;
+                    this.onCelulaCustoChanged(inputVar, repId, mes, 'var');
                 }
             }
         }
 
-        this.showNotification(`${limpas} célula(s) zerada(s). Clique em Salvar para confirmar.`, 'success');
+        this.showNotification(`${limpas} mês(es) zerado(s). Clique em Salvar para confirmar.`, 'success');
     }
 
     baixarModeloExcel() {
         try {
-            // Criar planilha modelo
+            // Criar planilha modelo com custo_fixo e custo_variavel
             const dados = this.custosGridState.dadosOriginais;
             const ano = this.custosGridState.ano;
 
-            const rows = [['rep_id', 'ano', 'mes', 'valor']];
+            const rows = [['rep_id', 'ano', 'mes', 'custo_fixo', 'custo_variavel']];
 
             dados.forEach(repo => {
                 for (let mes = 1; mes <= 12; mes++) {
-                    const valor = repo.meses[mes]?.custo_total || 0;
-                    rows.push([repo.rep_id, ano, mes, valor]);
+                    const fixo = repo.meses[mes]?.custo_fixo || 0;
+                    const variavel = repo.meses[mes]?.custo_variavel || 0;
+                    rows.push([repo.rep_id, ano, mes, fixo, variavel]);
                 }
             });
 
@@ -8071,29 +8376,39 @@ class App {
                     const worksheet = workbook.Sheets[workbook.SheetNames[0]];
                     const json = XLSX.utils.sheet_to_json(worksheet);
 
-                    // Processar dados
+                    // Processar dados (suporta formato antigo com "valor" e novo com "custo_fixo" e "custo_variavel")
                     let importados = 0;
 
                     json.forEach(row => {
                         const repId = parseInt(row.rep_id);
                         const mes = parseInt(row.mes);
-                        const valor = parseFloat(row.valor);
 
-                        if (!repId || !mes || isNaN(valor)) {
+                        // Suporte para formato antigo (valor) e novo (custo_fixo, custo_variavel)
+                        const custoFixo = row.custo_fixo !== undefined ? parseFloat(row.custo_fixo) : parseFloat(row.valor);
+                        const custoVar = row.custo_variavel !== undefined ? parseFloat(row.custo_variavel) : 0;
+
+                        if (!repId || !mes) {
                             return;
                         }
 
-                        // Atualizar célula
-                        const input = document.querySelector(`input[data-rep-id="${repId}"][data-mes="${mes}"]`);
-                        if (input && !input.disabled) {
-                            input.value = valor;
-                            this.onCelulaCustoChanged(input, repId, mes);
+                        // Atualizar célula de custo fixo
+                        const inputFixo = document.querySelector(`input[data-rep-id="${repId}"][data-mes="${mes}"][data-tipo="fixo"]`);
+                        if (inputFixo && !inputFixo.disabled && !isNaN(custoFixo)) {
+                            inputFixo.value = custoFixo;
+                            this.onCelulaCustoChanged(inputFixo, repId, mes, 'fixo');
                             importados++;
+                        }
+
+                        // Atualizar célula de custo variável
+                        const inputVar = document.querySelector(`input[data-rep-id="${repId}"][data-mes="${mes}"][data-tipo="var"]`);
+                        if (inputVar && !inputVar.disabled && !isNaN(custoVar)) {
+                            inputVar.value = custoVar;
+                            this.onCelulaCustoChanged(inputVar, repId, mes, 'var');
                         }
                     });
 
                     this.fecharModalImportarExcel();
-                    this.showNotification(`${importados} célula(s) importada(s). Clique em Salvar para gravar.`, 'success');
+                    this.showNotification(`${importados} mês(es) importado(s). Clique em Salvar para gravar.`, 'success');
                 } catch (error) {
                     console.error('Erro ao processar Excel:', error);
                     this.showNotification('Erro ao processar arquivo: ' + error.message, 'error');
@@ -11491,6 +11806,151 @@ class App {
             selectConsulta.innerHTML = '<option value="">Todos os tipos</option>' +
                 tipos.map(t => `<option value="${t.dct_id}">${t.dct_nome}</option>`).join('');
         }
+
+        // Adicionar listener para mostrar/esconder área de despesa de viagem
+        if (selectUpload) {
+            selectUpload.addEventListener('change', (e) => this.verificarTipoDespesaViagem(e.target));
+        }
+    }
+
+    async verificarTipoDespesaViagem(select) {
+        const areaDespesa = document.getElementById('areaDespesaViagem');
+        const areaArquivos = document.querySelector('.doc-file-input');
+        if (!areaDespesa) return;
+
+        // Verificar se o tipo selecionado contém "despesa" ou "viagem" no nome
+        const opcaoSelecionada = select.options[select.selectedIndex];
+        const nomeTipo = (opcaoSelecionada?.text || '').toLowerCase();
+        const isDespesaViagem = nomeTipo.includes('despesa') || nomeTipo.includes('viagem');
+
+        if (isDespesaViagem) {
+            areaDespesa.style.display = 'block';
+            if (areaArquivos) areaArquivos.style.display = 'none'; // Esconder área normal de arquivos
+            await this.carregarRubricasGasto();
+        } else {
+            areaDespesa.style.display = 'none';
+            if (areaArquivos) areaArquivos.style.display = 'block';
+            // Limpar rubricas
+            this.documentosState.rubricas = [];
+        }
+    }
+
+    async carregarRubricasGasto() {
+        const container = document.getElementById('listaRubricas');
+        if (!container) return;
+
+        try {
+            const rubricas = await db.listarTiposGasto(true); // Apenas ativos
+
+            if (rubricas.length === 0) {
+                container.innerHTML = '<p style="color: #6b7280; text-align: center; padding: 20px;">Nenhuma rubrica cadastrada. Cadastre em Configurações do Sistema.</p>';
+                return;
+            }
+
+            // Inicializar estado das rubricas
+            this.documentosState.rubricas = rubricas.map(r => ({
+                id: r.gst_id,
+                codigo: r.gst_codigo,
+                nome: r.gst_nome,
+                valor: 0,
+                foto: null,
+                fotoPreview: null
+            }));
+
+            container.innerHTML = rubricas.map(r => `
+                <div class="rubrica-card" data-rubrica-id="${r.gst_id}">
+                    <div class="rubrica-header">
+                        <span class="rubrica-nome">${r.gst_nome}</span>
+                        <span class="rubrica-codigo">${r.gst_codigo}</span>
+                    </div>
+                    <div class="rubrica-valor">
+                        <label>R$</label>
+                        <input type="text" inputmode="decimal" id="rubrica_valor_${r.gst_id}"
+                               placeholder="0,00" onchange="app.atualizarValorRubrica(${r.gst_id}, this.value)">
+                    </div>
+                    <div class="rubrica-foto">
+                        <button type="button" class="rubrica-foto-btn" id="rubrica_foto_btn_${r.gst_id}"
+                                onclick="app.capturarFotoRubrica(${r.gst_id})">
+                            📷 Anexar comprovante
+                        </button>
+                        <input type="file" id="rubrica_foto_input_${r.gst_id}" accept="image/*" capture="environment"
+                               style="display: none;" onchange="app.processarFotoRubrica(${r.gst_id}, this.files)">
+                    </div>
+                </div>
+            `).join('');
+        } catch (error) {
+            console.error('Erro ao carregar rubricas:', error);
+            container.innerHTML = '<p style="color: #dc2626;">Erro ao carregar rubricas</p>';
+        }
+    }
+
+    atualizarValorRubrica(rubricaId, valorStr) {
+        const rubrica = this.documentosState.rubricas?.find(r => r.id === rubricaId);
+        if (!rubrica) return;
+
+        // Converter valor (aceitar vírgula como decimal)
+        const valor = parseFloat(valorStr.replace(',', '.')) || 0;
+        rubrica.valor = valor;
+
+        // Atualizar visual do card
+        const card = document.querySelector(`.rubrica-card[data-rubrica-id="${rubricaId}"]`);
+        if (card) {
+            card.classList.toggle('preenchido', valor > 0 && rubrica.foto);
+            card.classList.toggle('erro', valor > 0 && !rubrica.foto);
+        }
+    }
+
+    capturarFotoRubrica(rubricaId) {
+        const input = document.getElementById(`rubrica_foto_input_${rubricaId}`);
+        if (input) input.click();
+    }
+
+    processarFotoRubrica(rubricaId, files) {
+        if (!files || files.length === 0) return;
+
+        const rubrica = this.documentosState.rubricas?.find(r => r.id === rubricaId);
+        if (!rubrica) return;
+
+        const arquivo = files[0];
+        rubrica.foto = arquivo;
+
+        // Criar preview
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            rubrica.fotoPreview = e.target.result;
+
+            // Atualizar botão
+            const btn = document.getElementById(`rubrica_foto_btn_${rubricaId}`);
+            if (btn) {
+                btn.classList.add('tem-foto');
+                btn.innerHTML = `✅ ${arquivo.name.substring(0, 15)}...`;
+            }
+
+            // Atualizar visual do card
+            const card = document.querySelector(`.rubrica-card[data-rubrica-id="${rubricaId}"]`);
+            if (card && rubrica.valor > 0) {
+                card.classList.add('preenchido');
+                card.classList.remove('erro');
+            }
+        };
+        reader.readAsDataURL(arquivo);
+    }
+
+    validarRubricasDespesa() {
+        const rubricas = this.documentosState.rubricas || [];
+        const rubricasComValor = rubricas.filter(r => r.valor > 0);
+
+        if (rubricasComValor.length === 0) {
+            return { ok: false, erro: 'Preencha pelo menos uma rubrica com valor.' };
+        }
+
+        const semFoto = rubricasComValor.filter(r => !r.foto);
+        if (semFoto.length > 0) {
+            const nomes = semFoto.map(r => r.nome).join(', ');
+            return { ok: false, erro: `Anexe foto do comprovante para: ${nomes}` };
+        }
+
+        return { ok: true, rubricas: rubricasComValor };
     }
 
     formatarBytes(tamanho) {
@@ -12346,6 +12806,8 @@ class App {
             this.filtrarServicos(mostrarAviso);
         } else if (tabName === 'roteiro') {
             this.filtrarRoteiro(mostrarAviso);
+        } else if (tabName === 'sequencia') {
+            this.filtrarSequenciaRoteiro(mostrarAviso);
         } else {
             this.filtrarTempoAtendimento(mostrarAviso);
         }
@@ -13112,18 +13574,33 @@ class App {
             return new Date(data.getFullYear(), data.getMonth(), data.getDate());
         };
 
+        // Tentar obter data real do checkout
         const dataReal = parseData(
-            visita.checkout_em
+            visita.checkout_at  // Campo principal do backend
+            || visita.checkout_em
             || visita.data_checkout
             || visita.dia_real_data
         );
+
+        // Tentar obter data prevista da visita
         const dataPrevista = parseData(
-            visita.data_prevista
+            visita.rv_data_roteiro  // Campo principal do roteiro
+            || visita.data_prevista
             || visita.data_prevista_base
-            || visita.rv_data_roteiro
             || visita.rv_data_planejada
             || visita.data_planejada
         );
+
+        // Log para debug se uma das datas for nula
+        if (!dataReal || !dataPrevista) {
+            console.warn('[PONTUALIDADE] Dados incompletos:', {
+                cliente: visita.cliente_id,
+                dataReal: dataReal,
+                dataPrevista: dataPrevista,
+                campos_checkout: [visita.checkout_at, visita.checkout_em, visita.data_checkout],
+                campos_prevista: [visita.rv_data_roteiro, visita.data_prevista, visita.data_planejada]
+            });
+        }
 
         if (!dataReal || !dataPrevista) return 'ND';
 
@@ -13263,6 +13740,204 @@ class App {
         }
 
         container.innerHTML = statsHtml + clientesHtml;
+    }
+
+    async filtrarSequenciaRoteiro(notificar = true) {
+        try {
+            const { repositor, dataInicio, dataFim } = this.performanceState.filtros;
+
+            if (!dataInicio || !dataFim) {
+                this.showNotification('Selecione o período', 'warning');
+                return;
+            }
+
+            if (!repositor) {
+                this.showNotification('Selecione o repositor para aplicar o filtro.', 'warning');
+                return;
+            }
+
+            if (notificar) this.showNotification('Analisando sequência de visitas...', 'info');
+
+            // Buscar todas as visitas (checkin e checkout) do período
+            const urlVisitas = `${this.registroRotaState.backendUrl}/api/registro-rota/visitas?data_inicio=${dataInicio}&data_fim=${dataFim}&rep_id=${repositor}`;
+            const dataVisitas = await fetchJson(urlVisitas);
+            const visitas = dataVisitas.visitas || [];
+
+            // Agrupar visitas por dia
+            const visitasPorDia = {};
+            visitas.forEach(v => {
+                const dataVisita = v.rv_data_roteiro || v.checkout_at || v.checkin_at || v.data_hora;
+                if (!dataVisita) return;
+                const dia = new Date(dataVisita).toISOString().split('T')[0];
+                if (!visitasPorDia[dia]) visitasPorDia[dia] = [];
+                visitasPorDia[dia].push(v);
+            });
+
+            // Analisar sequência para cada dia
+            const analises = [];
+            for (const [dia, visitasDia] of Object.entries(visitasPorDia)) {
+                // Ordenar visitas por hora de checkin
+                const visitasOrdenadas = visitasDia
+                    .filter(v => v.checkin_at)
+                    .sort((a, b) => new Date(a.checkin_at) - new Date(b.checkin_at));
+
+                if (visitasOrdenadas.length < 2) continue;
+
+                // Extrair ordem planejada (rot_ordem_visita ou rot_ordem_cidade)
+                const ordemPlanejada = visitasOrdenadas
+                    .filter(v => v.rot_ordem_visita || v.rot_ordem_cidade)
+                    .sort((a, b) => {
+                        const ordemA = a.rot_ordem_visita || a.rot_ordem_cidade || 999;
+                        const ordemB = b.rot_ordem_visita || b.rot_ordem_cidade || 999;
+                        return ordemA - ordemB;
+                    });
+
+                // Comparar sequência real com planejada
+                let totalForaDeOrdem = 0;
+                const detalhes = [];
+
+                visitasOrdenadas.forEach((visita, idx) => {
+                    const clienteId = String(visita.cliente_id || visita.rv_cliente_codigo || '').trim();
+                    const ordemPlanejadaCliente = visita.rot_ordem_visita || visita.rot_ordem_cidade || null;
+                    const horaCheckin = visita.checkin_at ? new Date(visita.checkin_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '-';
+
+                    // Verificar se a ordem está correta
+                    let foraDeOrdem = false;
+                    if (idx > 0 && ordemPlanejadaCliente) {
+                        const visitaAnterior = visitasOrdenadas[idx - 1];
+                        const ordemAnterior = visitaAnterior.rot_ordem_visita || visitaAnterior.rot_ordem_cidade || null;
+                        if (ordemAnterior && ordemPlanejadaCliente < ordemAnterior) {
+                            foraDeOrdem = true;
+                            totalForaDeOrdem++;
+                        }
+                    }
+
+                    detalhes.push({
+                        clienteId,
+                        clienteNome: visita.rv_cliente_nome || visita.cliente_nome || clienteId,
+                        ordemPlanejada: ordemPlanejadaCliente,
+                        ordemReal: idx + 1,
+                        horaCheckin,
+                        foraDeOrdem
+                    });
+                });
+
+                const aderencia = visitasOrdenadas.length > 0
+                    ? (((visitasOrdenadas.length - totalForaDeOrdem) / visitasOrdenadas.length) * 100).toFixed(0)
+                    : 100;
+
+                analises.push({
+                    dia,
+                    diaFormatado: new Date(dia + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' }),
+                    totalVisitas: visitasOrdenadas.length,
+                    foraDeOrdem: totalForaDeOrdem,
+                    aderencia: parseInt(aderencia),
+                    detalhes
+                });
+            }
+
+            // Ordenar por dia
+            analises.sort((a, b) => new Date(a.dia) - new Date(b.dia));
+
+            this.renderizarSequenciaRoteiro(analises);
+
+            const totalDias = analises.length;
+            const totalVisitas = analises.reduce((sum, a) => sum + a.totalVisitas, 0);
+            const aderenciaMedia = totalDias > 0
+                ? (analises.reduce((sum, a) => sum + a.aderencia, 0) / totalDias).toFixed(0)
+                : 0;
+
+            this.showNotification(`${totalDias} dia(s) analisado(s). Aderência média: ${aderenciaMedia}%`, 'success');
+        } catch (error) {
+            console.error('Erro ao filtrar sequência de roteiro:', error);
+            this.showNotification('Erro ao carregar dados: ' + error.message, 'error');
+        }
+    }
+
+    renderizarSequenciaRoteiro(analises) {
+        const container = document.getElementById('sequenciaResultados');
+        if (!container) return;
+
+        if (analises.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">📍</div>
+                    <p>Nenhuma visita encontrada com dados de sequência no período selecionado.</p>
+                </div>
+            `;
+            return;
+        }
+
+        // Estatísticas gerais
+        const totalDias = analises.length;
+        const totalVisitas = analises.reduce((sum, a) => sum + a.totalVisitas, 0);
+        const totalForaDeOrdem = analises.reduce((sum, a) => sum + a.foraDeOrdem, 0);
+        const aderenciaMedia = totalDias > 0
+            ? (analises.reduce((sum, a) => sum + a.aderencia, 0) / totalDias).toFixed(0)
+            : 100;
+
+        const statsHtml = `
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px;">
+                    <div style="font-size: 28px; font-weight: 700; color: #16a34a;">${totalDias}</div>
+                    <div style="font-size: 13px; color: #15803d; margin-top: 4px;">Dias analisados</div>
+                </div>
+                <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; padding: 16px;">
+                    <div style="font-size: 28px; font-weight: 700; color: #2563eb;">${totalVisitas}</div>
+                    <div style="font-size: 13px; color: #1d4ed8; margin-top: 4px;">Total de visitas</div>
+                </div>
+                <div style="background: ${parseInt(aderenciaMedia) >= 80 ? '#f0fdf4' : '#fef2f2'}; border: 1px solid ${parseInt(aderenciaMedia) >= 80 ? '#bbf7d0' : '#fecaca'}; border-radius: 12px; padding: 16px;">
+                    <div style="font-size: 28px; font-weight: 700; color: ${parseInt(aderenciaMedia) >= 80 ? '#16a34a' : '#dc2626'};">${aderenciaMedia}%</div>
+                    <div style="font-size: 13px; color: ${parseInt(aderenciaMedia) >= 80 ? '#15803d' : '#991b1b'}; margin-top: 4px;">Aderência média</div>
+                </div>
+                <div style="background: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px; padding: 16px;">
+                    <div style="font-size: 28px; font-weight: 700; color: #ea580c;">${totalForaDeOrdem}</div>
+                    <div style="font-size: 13px; color: #9a3412; margin-top: 4px;">Visitas fora de ordem</div>
+                </div>
+            </div>
+        `;
+
+        // Detalhes por dia
+        let detalhesHtml = '<h4 style="margin: 24px 0 16px; color: #374151; font-weight: 600;">Detalhamento por Dia</h4>';
+        detalhesHtml += '<div style="display: flex; flex-direction: column; gap: 16px;">';
+
+        analises.forEach(analise => {
+            const corBorda = analise.aderencia >= 80 ? '#22c55e' : analise.aderencia >= 50 ? '#f59e0b' : '#ef4444';
+            const corFundo = analise.aderencia >= 80 ? '#f0fdf4' : analise.aderencia >= 50 ? '#fffbeb' : '#fef2f2';
+
+            detalhesHtml += `
+                <div style="background: white; border-left: 4px solid ${corBorda}; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <div>
+                            <div style="font-weight: 700; font-size: 15px; color: #111827;">${analise.diaFormatado}</div>
+                            <div style="color: #6b7280; font-size: 12px;">${analise.totalVisitas} visita(s)</div>
+                        </div>
+                        <div style="background: ${corFundo}; color: ${corBorda}; padding: 6px 14px; border-radius: 20px; font-size: 14px; font-weight: 700;">
+                            ${analise.aderencia}% Aderência
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px;">
+                        ${analise.detalhes.map(d => `
+                            <div style="background: ${d.foraDeOrdem ? '#fef2f2' : '#f9fafb'}; border: 1px solid ${d.foraDeOrdem ? '#fecaca' : '#e5e7eb'}; border-radius: 6px; padding: 8px 10px; font-size: 12px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span style="font-weight: 600; color: #374151;">#${d.ordemReal}</span>
+                                    ${d.foraDeOrdem ? '<span style="color: #dc2626; font-weight: 700;">FORA</span>' : '<span style="color: #16a34a;">OK</span>'}
+                                </div>
+                                <div style="color: #6b7280; margin-top: 4px; font-size: 11px; word-break: break-all;">${d.clienteId}</div>
+                                <div style="color: #374151; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${d.clienteNome}">${d.clienteNome}</div>
+                                <div style="color: #9ca3af; font-size: 10px; margin-top: 2px;">
+                                    ${d.horaCheckin} ${d.ordemPlanejada ? `| Ordem: ${d.ordemPlanejada}` : ''}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        });
+
+        detalhesHtml += '</div>';
+
+        container.innerHTML = statsHtml + detalhesHtml;
     }
 
     async filtrarServicos(notificar = true) {
@@ -15525,13 +16200,43 @@ class App {
 
         // Salvar resposta
         try {
-            // Converter foto para URL se for um File/Blob
+            // Upload da foto para o backend se houver
             let fotoUrl = null;
             if (this.pesquisaVisitaState.fotoPesquisa) {
                 const foto = this.pesquisaVisitaState.fotoPesquisa;
                 if (foto instanceof File || foto instanceof Blob) {
-                    // Criar URL temporária para preview (a foto real será enviada se necessário)
-                    fotoUrl = URL.createObjectURL(foto);
+                    // Upload para o backend com estrutura de pasta correta
+                    // Estrutura: repositor/pesquisa/[id_pesquisa]/CODREP_CLICOD_PESQUISA_DATA_HORA_SEQ
+                    try {
+                        const agora = new Date();
+                        const dataStr = agora.toISOString().split('T')[0].replace(/-/g, '');
+                        const horaStr = agora.toTimeString().split(' ')[0].replace(/:/g, '');
+                        const seq = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+                        const clienteNorm = String(contextoVisita.clienteId).trim().replace(/\.0$/, '');
+                        const nomeArquivo = `${contextoVisita.repId}_${clienteNorm}_${pesquisa.pes_id}_${dataStr}_${horaStr}_${seq}.jpg`;
+
+                        const formData = new FormData();
+                        formData.append('arquivo', foto, nomeArquivo);
+                        formData.append('repositor_id', contextoVisita.repId);
+                        formData.append('pesquisa_id', pesquisa.pes_id);
+                        formData.append('cliente_codigo', clienteNorm);
+                        formData.append('pasta', `repositor/pesquisa/${pesquisa.pes_id}`);
+
+                        const uploadResp = await fetchJson(`${API_BASE_URL}/api/pesquisa/upload-foto`, {
+                            method: 'POST',
+                            body: formData
+                        });
+
+                        if (uploadResp.success && uploadResp.url) {
+                            fotoUrl = uploadResp.url;
+                        } else {
+                            console.warn('Upload retornou sem URL, salvando sem foto:', uploadResp);
+                        }
+                    } catch (uploadError) {
+                        console.error('Erro ao fazer upload da foto da pesquisa:', uploadError);
+                        // Se o upload falhar, salvar resposta mesmo assim, apenas sem a foto
+                        this.showNotification('Aviso: foto não pôde ser enviada, mas a resposta será salva', 'warning');
+                    }
                 } else if (typeof foto === 'string') {
                     fotoUrl = foto;
                 }

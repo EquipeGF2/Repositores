@@ -789,6 +789,40 @@ class TursoDatabase {
             console.error('Erro ao criar tabelas de pesquisa:', error);
             throw error;
         }
+
+        // ==================== TABELAS DE CONFIGURAÇÃO ====================
+        try {
+            // Tabela de tipos de documentos (para registro de documentos)
+            await this.mainClient.execute(`
+                CREATE TABLE IF NOT EXISTS cc_documento_tipos (
+                    dct_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    dct_codigo TEXT UNIQUE NOT NULL,
+                    dct_nome TEXT NOT NULL,
+                    dct_ativo INTEGER NOT NULL DEFAULT 1,
+                    dct_ordem INTEGER NOT NULL DEFAULT 0,
+                    dct_criado_em TEXT NOT NULL DEFAULT (datetime('now')),
+                    dct_atualizado_em TEXT
+                )
+            `);
+
+            // Tabela de tipos de gasto (rubricas para despesa de viagem)
+            await this.mainClient.execute(`
+                CREATE TABLE IF NOT EXISTS cc_gasto_tipos (
+                    gst_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    gst_codigo TEXT UNIQUE NOT NULL,
+                    gst_nome TEXT NOT NULL,
+                    gst_ativo INTEGER NOT NULL DEFAULT 1,
+                    gst_ordem INTEGER NOT NULL DEFAULT 0,
+                    gst_criado_em TEXT NOT NULL DEFAULT (datetime('now')),
+                    gst_atualizado_em TEXT
+                )
+            `);
+
+            console.log('✅ Tabelas de configuração criadas/verificadas');
+        } catch (error) {
+            console.error('Erro ao criar tabelas de configuração:', error);
+            // Não propagar erro para não bloquear o resto do sistema
+        }
     }
 
     // ==================== UTILITÁRIOS DE DATA ====================
@@ -3697,6 +3731,128 @@ class TursoDatabase {
         return true;
     }
 
+    // ==================== TIPOS DE DOCUMENTOS ====================
+
+    async listarTiposDocumentos(apenasAtivos = false) {
+        try {
+            await this.connect();
+            let sql = 'SELECT * FROM cc_documento_tipos';
+            if (apenasAtivos) {
+                sql += ' WHERE dct_ativo = 1';
+            }
+            sql += ' ORDER BY dct_ordem, dct_nome';
+            const result = await this.mainClient.execute(sql);
+            return result.rows;
+        } catch (error) {
+            console.error('Erro ao listar tipos de documentos:', error);
+            return [];
+        }
+    }
+
+    async salvarTipoDocumento(dados) {
+        try {
+            await this.connect();
+            const { id, codigo, nome, ativo, ordem } = dados;
+
+            if (id) {
+                // Atualizar
+                await this.mainClient.execute({
+                    sql: `UPDATE cc_documento_tipos
+                          SET dct_codigo = ?, dct_nome = ?, dct_ativo = ?, dct_ordem = ?, dct_atualizado_em = datetime('now')
+                          WHERE dct_id = ?`,
+                    args: [codigo, nome, ativo ? 1 : 0, ordem || 0, id]
+                });
+                return { success: true, id };
+            } else {
+                // Inserir
+                const result = await this.mainClient.execute({
+                    sql: `INSERT INTO cc_documento_tipos (dct_codigo, dct_nome, dct_ativo, dct_ordem)
+                          VALUES (?, ?, ?, ?)`,
+                    args: [codigo, nome, ativo ? 1 : 0, ordem || 0]
+                });
+                return { success: true, id: Number(result.lastInsertRowid) };
+            }
+        } catch (error) {
+            console.error('Erro ao salvar tipo de documento:', error);
+            throw error;
+        }
+    }
+
+    async excluirTipoDocumento(id) {
+        try {
+            await this.connect();
+            await this.mainClient.execute({
+                sql: 'DELETE FROM cc_documento_tipos WHERE dct_id = ?',
+                args: [id]
+            });
+            return { success: true };
+        } catch (error) {
+            console.error('Erro ao excluir tipo de documento:', error);
+            throw error;
+        }
+    }
+
+    // ==================== TIPOS DE GASTO (RUBRICAS) ====================
+
+    async listarTiposGasto(apenasAtivos = false) {
+        try {
+            await this.connect();
+            let sql = 'SELECT * FROM cc_gasto_tipos';
+            if (apenasAtivos) {
+                sql += ' WHERE gst_ativo = 1';
+            }
+            sql += ' ORDER BY gst_ordem, gst_nome';
+            const result = await this.mainClient.execute(sql);
+            return result.rows;
+        } catch (error) {
+            console.error('Erro ao listar tipos de gasto:', error);
+            return [];
+        }
+    }
+
+    async salvarTipoGasto(dados) {
+        try {
+            await this.connect();
+            const { id, codigo, nome, ativo, ordem } = dados;
+
+            if (id) {
+                // Atualizar
+                await this.mainClient.execute({
+                    sql: `UPDATE cc_gasto_tipos
+                          SET gst_codigo = ?, gst_nome = ?, gst_ativo = ?, gst_ordem = ?, gst_atualizado_em = datetime('now')
+                          WHERE gst_id = ?`,
+                    args: [codigo, nome, ativo ? 1 : 0, ordem || 0, id]
+                });
+                return { success: true, id };
+            } else {
+                // Inserir
+                const result = await this.mainClient.execute({
+                    sql: `INSERT INTO cc_gasto_tipos (gst_codigo, gst_nome, gst_ativo, gst_ordem)
+                          VALUES (?, ?, ?, ?)`,
+                    args: [codigo, nome, ativo ? 1 : 0, ordem || 0]
+                });
+                return { success: true, id: Number(result.lastInsertRowid) };
+            }
+        } catch (error) {
+            console.error('Erro ao salvar tipo de gasto:', error);
+            throw error;
+        }
+    }
+
+    async excluirTipoGasto(id) {
+        try {
+            await this.connect();
+            await this.mainClient.execute({
+                sql: 'DELETE FROM cc_gasto_tipos WHERE gst_id = ?',
+                args: [id]
+            });
+            return { success: true };
+        } catch (error) {
+            console.error('Erro ao excluir tipo de gasto:', error);
+            throw error;
+        }
+    }
+
     // ==================== CONTROLES E CUSTOS ====================
 
     async listarCustos({ repId = null, competencia = null, ano = null } = {}) {
@@ -3946,7 +4102,7 @@ class TursoDatabase {
             let salvos = 0;
 
             for (const custo of custos) {
-                const { rep_id, ano, mes, valor } = custo;
+                const { rep_id, ano, mes, custo_fixo, custo_variavel, valor } = custo;
 
                 if (!rep_id || !ano || !mes) {
                     console.warn('Custo inválido ignorado:', custo);
@@ -3961,6 +4117,11 @@ class TursoDatabase {
                 // Montar competência YYYY-MM
                 const competencia = `${ano}-${String(mes).padStart(2, '0')}`;
 
+                // Determinar valores de fixo e variável
+                // Suporta tanto o formato antigo (valor) quanto o novo (custo_fixo, custo_variavel)
+                const valorFixo = custo_fixo !== undefined ? custo_fixo : (valor || 0);
+                const valorVariavel = custo_variavel !== undefined ? custo_variavel : 0;
+
                 // Verificar se já existe
                 const existente = await this.mainClient.execute({
                     sql: 'SELECT cc_id FROM cc_custos_repositor_mensal WHERE cc_rep_id = ? AND cc_competencia = ?',
@@ -3973,11 +4134,11 @@ class TursoDatabase {
                         sql: `
                             UPDATE cc_custos_repositor_mensal
                             SET cc_custo_fixo = ?,
-                                cc_custo_variavel = 0,
+                                cc_custo_variavel = ?,
                                 cc_atualizado_em = CURRENT_TIMESTAMP
                             WHERE cc_rep_id = ? AND cc_competencia = ?
                         `,
-                        args: [valor, rep_id, competencia]
+                        args: [valorFixo, valorVariavel, rep_id, competencia]
                     });
                 } else {
                     // Inserir
@@ -3985,9 +4146,9 @@ class TursoDatabase {
                         sql: `
                             INSERT INTO cc_custos_repositor_mensal (
                                 cc_rep_id, cc_competencia, cc_custo_fixo, cc_custo_variavel
-                            ) VALUES (?, ?, ?, 0)
+                            ) VALUES (?, ?, ?, ?)
                         `,
-                        args: [rep_id, competencia, valor]
+                        args: [rep_id, competencia, valorFixo, valorVariavel]
                     });
                 }
 
