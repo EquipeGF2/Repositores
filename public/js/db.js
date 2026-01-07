@@ -12,11 +12,23 @@ import { TURSO_CONFIG } from './turso-config.js';
 import { createClient } from 'https://esm.sh/@libsql/client@0.6.0/web';
 import { normalizarDataISO, normalizarSupervisor, normalizarTextoCadastro, documentoParaExibicao } from './utils.js';
 
+// Utility para timeout em promises
+function withTimeout(promise, ms, errorMessage = 'Operação excedeu tempo limite') {
+    return Promise.race([
+        promise,
+        new Promise((_, reject) =>
+            setTimeout(() => reject(new Error(errorMessage)), ms)
+        )
+    ]);
+}
+
 class TursoDatabase {
     constructor() {
         this.mainClient = null;        // Banco principal (leitura/escrita)
         this.comercialClient = null;   // Banco comercial (APENAS LEITURA)
         this.schemaInitialized = false;
+        this.connectionTimeout = 15000; // 15 segundos para conexão
+        this.queryTimeout = 10000;      // 10 segundos para queries
     }
 
     async connect() {
@@ -27,7 +39,11 @@ class TursoDatabase {
             });
         }
 
-        await this.initializeSchema();
+        await withTimeout(
+            this.initializeSchema(),
+            this.connectionTimeout,
+            'Timeout ao conectar ao banco de dados. Verifique sua conexão.'
+        );
         return true;
     }
 
@@ -1097,11 +1113,16 @@ class TursoDatabase {
 
     async getAllRepositors() {
         try {
-            const result = await this.mainClient.execute('SELECT * FROM cad_repositor ORDER BY repo_nome');
+            const result = await withTimeout(
+                this.mainClient.execute('SELECT * FROM cad_repositor ORDER BY repo_nome'),
+                this.queryTimeout,
+                'Timeout ao buscar repositores'
+            );
             return result.rows;
         } catch (error) {
             console.error('Erro ao buscar repositores:', error);
-            throw new Error(error.message || 'Erro ao buscar repositores');
+            // Retorna array vazio em caso de erro para não travar a UI
+            return [];
         }
     }
 
@@ -3374,12 +3395,16 @@ class TursoDatabase {
                 return [];
             }
 
-            const result = await this.comercialClient.execute(`
-                SELECT DISTINCT rep_supervisor
-                FROM tab_representante
-                WHERE rep_supervisor IS NOT NULL AND rep_supervisor <> ''
-                ORDER BY rep_supervisor
-            `);
+            const result = await withTimeout(
+                this.comercialClient.execute(`
+                    SELECT DISTINCT rep_supervisor
+                    FROM tab_representante
+                    WHERE rep_supervisor IS NOT NULL AND rep_supervisor <> ''
+                    ORDER BY rep_supervisor
+                `),
+                this.queryTimeout,
+                'Timeout ao buscar supervisores'
+            );
 
             const listaNormalizada = result.rows
                 .map(row => normalizarSupervisor(row.rep_supervisor))
@@ -3400,14 +3425,18 @@ class TursoDatabase {
                 return [];
             }
 
-            const result = await this.comercialClient.execute(`
-                SELECT representante, desc_representante, rep_supervisor,
-                       rep_endereco, rep_bairro, rep_cidade, rep_estado,
-                       rep_fone, rep_email, rep_data_inicio, rep_data_fim
-                FROM tab_representante
-                WHERE representante IS NOT NULL
-                ORDER BY representante
-            `);
+            const result = await withTimeout(
+                this.comercialClient.execute(`
+                    SELECT representante, desc_representante, rep_supervisor,
+                           rep_endereco, rep_bairro, rep_cidade, rep_estado,
+                           rep_fone, rep_email, rep_data_inicio, rep_data_fim
+                    FROM tab_representante
+                    WHERE representante IS NOT NULL
+                    ORDER BY representante
+                `),
+                this.queryTimeout,
+                'Timeout ao buscar representantes'
+            );
 
             return result.rows.map(rep => this.prepararRegistroRepresentante(rep));
         } catch (error) {
