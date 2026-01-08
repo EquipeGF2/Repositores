@@ -3404,7 +3404,7 @@ tbody td {
     height: 36px;
     padding: 0;
     border-radius: 50%;
-    background: var(--primary);
+    background: var(--primary-red);
     color: white;
     border: none;
     cursor: pointer;
@@ -3412,7 +3412,7 @@ tbody td {
 }
 
 .btn-roteiro-map:hover {
-    background: var(--primary-dark);
+    background: var(--primary-red-hover);
     transform: scale(1.1);
 }
 
