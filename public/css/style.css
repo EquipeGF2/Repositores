@@ -3396,7 +3396,8 @@ tbody td {
     text-align: center;
 }
 
-.btn-roteiro-map {
+button.btn-roteiro-map,
+.btn-icon.btn-roteiro-map {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -3404,15 +3405,16 @@ tbody td {
     height: 36px;
     padding: 0;
     border-radius: 50%;
-    background: var(--primary-red);
-    color: white;
-    border: none;
+    background: var(--primary-red) !important;
+    color: white !important;
+    border: none !important;
     cursor: pointer;
     transition: all 0.2s ease;
 }
 
-.btn-roteiro-map:hover {
-    background: var(--primary-red-hover);
+button.btn-roteiro-map:hover,
+.btn-icon.btn-roteiro-map:hover {
+    background: var(--primary-red-hover) !important;
     transform: scale(1.1);
 }
 
