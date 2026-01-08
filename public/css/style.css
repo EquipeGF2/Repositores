@@ -7928,3 +7928,104 @@ span.mobile-only {
         overflow-y: auto !important;
     }
 }
+
+/* ==================== WEB: ROTEIRO - AJUSTES DE LAYOUT ==================== */
+/* Aumentar largura coluna nome/razão social */
+.roteiro-clientes-table .col-nome {
+    min-width: 200px !important;
+}
+
+.roteiro-clientes-table .col-fantasia {
+    min-width: 150px !important;
+}
+
+/* Botão remover centralizado */
+.roteiro-clientes-table .table-actions {
+    text-align: center !important;
+}
+
+.roteiro-clientes-table .btn-remover-cliente {
+    margin: 0 auto !important;
+}
+
+/* Toggle centralizado na coluna */
+.roteiro-clientes-table .col-rateio,
+.roteiro-clientes-table .col-venda {
+    text-align: center !important;
+}
+
+.roteiro-clientes-table .rateio-indicador {
+    justify-content: center !important;
+}
+
+.roteiro-clientes-table .rateio-toggle-wrapper {
+    margin: 0 auto !important;
+}
+
+/* Campos busca cidade e SEQ alinhados (web) */
+@media (min-width: 769px) {
+    .cidades-busca-seq-row {
+        display: flex !important;
+        gap: 12px !important;
+        align-items: flex-end !important;
+    }
+
+    .cidades-busca-seq-row .cidade-input-larga {
+        flex: 1 !important;
+    }
+
+    .cidades-busca-seq-row .cidade-input-larga input {
+        height: 42px !important;
+    }
+
+    .cidades-busca-seq-row .cidade-ordem-wrapper {
+        flex: 0 0 70px !important;
+    }
+
+    .cidades-busca-seq-row .cidade-ordem-wrapper input {
+        width: 70px !important;
+        height: 42px !important;
+        text-align: center !important;
+        font-weight: 600 !important;
+    }
+
+    .cidades-botoes-row {
+        display: flex !important;
+        gap: 10px !important;
+        margin-top: 12px !important;
+    }
+}
+
+/* ==================== MODAL VINCULAR COMPRADOR - DROPDOWN PARA CIMA ==================== */
+#modalVincularComprador .autocomplete-list {
+    bottom: 100% !important;
+    top: auto !important;
+    max-height: 200px !important;
+    margin-bottom: 4px !important;
+    box-shadow: 0 -4px 12px rgba(0,0,0,0.15) !important;
+}
+
+/* ==================== MODAL PESQUISA - LAYOUT COMPACTO ==================== */
+.pesquisa-perguntas-container {
+    max-height: none !important;
+}
+
+.pesquisa-pergunta-item {
+    margin-bottom: 12px !important;
+    padding: 12px !important;
+}
+
+.pesquisa-btn-adicionar-pergunta {
+    margin-top: 8px !important;
+}
+
+/* Campos cidade e cliente em coluna */
+.pesquisa-filtros-row {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+}
+
+.pesquisa-filtros-row .filter-group {
+    width: 100% !important;
+}

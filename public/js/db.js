@@ -4240,45 +4240,78 @@ class TursoDatabase {
                 args: [`${ano}-%`]
             });
 
-            // Buscar despesas de viagem do ano (tipo despesa_viagem)
-            const despesas = await this.mainClient.execute({
-                sql: `
-                    SELECT
-                        d.doc_repositor_id,
-                        d.doc_data_ref,
-                        d.doc_observacao
-                    FROM cc_documentos d
-                    INNER JOIN cc_documento_tipos t ON t.dct_id = d.doc_dct_id
-                    WHERE (t.dct_codigo = 'despesa_viagem' OR t.dct_nome LIKE '%despesa%')
-                      AND d.doc_data_ref LIKE ?
-                      AND d.doc_observacao IS NOT NULL
-                      AND d.doc_observacao LIKE '%"tipo":"despesa_viagem"%'
-                `,
-                args: [`${ano}-%`]
-            });
+            // Buscar despesas de viagem do ano - primeiro da tabela cc_despesa_valores (mais confiável)
+            let despesasMap = {};
 
-            // Criar mapa de despesas por repositor e mês
-            const despesasMap = {};
-            despesas.rows.forEach(row => {
-                try {
-                    // Extrair JSON do campo observação
-                    const obs = row.doc_observacao || '';
-                    const jsonMatch = obs.match(/^\{[\s\S]*?\}/);
-                    if (jsonMatch) {
-                        const data = JSON.parse(jsonMatch[0]);
-                        if (data.total && data.tipo === 'despesa_viagem') {
-                            const mes = parseInt(row.doc_data_ref.split('-')[1]);
-                            const key = `${row.doc_repositor_id}_${mes}`;
-                            if (!despesasMap[key]) {
-                                despesasMap[key] = 0;
-                            }
-                            despesasMap[key] += parseFloat(data.total) || 0;
-                        }
+            try {
+                // Método 1: Buscar da tabela cc_despesa_valores (dados estruturados)
+                const despesasValores = await this.mainClient.execute({
+                    sql: `
+                        SELECT
+                            dv_repositor_id,
+                            dv_data_ref,
+                            SUM(dv_valor) as total
+                        FROM cc_despesa_valores
+                        WHERE dv_data_ref LIKE ?
+                        GROUP BY dv_repositor_id, substr(dv_data_ref, 1, 7)
+                    `,
+                    args: [`${ano}-%`]
+                });
+
+                despesasValores.rows.forEach(row => {
+                    const mes = parseInt(row.dv_data_ref.split('-')[1]);
+                    const key = `${row.dv_repositor_id}_${mes}`;
+                    if (!despesasMap[key]) {
+                        despesasMap[key] = 0;
                     }
-                } catch (e) {
-                    console.warn('Erro ao processar despesa:', e);
-                }
-            });
+                    despesasMap[key] += parseFloat(row.total) || 0;
+                });
+
+                console.log(`[DB] Despesas carregadas de cc_despesa_valores: ${Object.keys(despesasMap).length} registros`);
+            } catch (e) {
+                console.warn('[DB] Tabela cc_despesa_valores não disponível, usando fallback JSON:', e.message);
+            }
+
+            // Método 2 (fallback): Buscar do JSON em doc_observacao
+            if (Object.keys(despesasMap).length === 0) {
+                const despesas = await this.mainClient.execute({
+                    sql: `
+                        SELECT
+                            d.doc_repositor_id,
+                            d.doc_data_ref,
+                            d.doc_observacao
+                        FROM cc_documentos d
+                        INNER JOIN cc_documento_tipos t ON t.dct_id = d.doc_dct_id
+                        WHERE (t.dct_codigo = 'despesa_viagem' OR t.dct_nome LIKE '%despesa%')
+                          AND d.doc_data_ref LIKE ?
+                          AND d.doc_observacao IS NOT NULL
+                          AND d.doc_observacao LIKE '%"tipo":"despesa_viagem"%'
+                    `,
+                    args: [`${ano}-%`]
+                });
+
+                despesas.rows.forEach(row => {
+                    try {
+                        const obs = row.doc_observacao || '';
+                        const jsonMatch = obs.match(/^\{[\s\S]*?\}/);
+                        if (jsonMatch) {
+                            const data = JSON.parse(jsonMatch[0]);
+                            if (data.total && data.tipo === 'despesa_viagem') {
+                                const mes = parseInt(row.doc_data_ref.split('-')[1]);
+                                const key = `${row.doc_repositor_id}_${mes}`;
+                                if (!despesasMap[key]) {
+                                    despesasMap[key] = 0;
+                                }
+                                despesasMap[key] += parseFloat(data.total) || 0;
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('Erro ao processar despesa JSON:', e);
+                    }
+                });
+
+                console.log(`[DB] Despesas carregadas de JSON: ${Object.keys(despesasMap).length} registros`);
+            }
 
             // Criar mapa de custos por repositor e mês
             const custosMap = {};
@@ -4452,17 +4485,28 @@ class TursoDatabase {
 
     async listarPesquisas(filtros = {}) {
         try {
+            // Calcular status ativo baseado em: flag pes_ativa E dentro do período de vigência
+            // Uma pesquisa está vigente se: data_inicio <= hoje E (data_fim IS NULL OR data_fim >= hoje)
+            const hoje = new Date().toISOString().split('T')[0];
+
             let sql = `
                 SELECT p.*,
                     (SELECT COUNT(*) FROM cc_pesquisa_repositores WHERE per_pes_id = p.pes_id) as total_repositores,
                     (SELECT COUNT(*) FROM cc_pesquisa_campos WHERE pca_pes_id = p.pes_id) as total_campos,
                     (SELECT COUNT(*) FROM cc_pesquisa_respostas WHERE res_pes_id = p.pes_id) as total_respostas,
                     (SELECT COUNT(*) FROM cc_pesquisa_cidades WHERE peci_pes_id = p.pes_id) as total_cidades,
-                    (SELECT COUNT(*) FROM cc_pesquisa_clientes WHERE pecl_pes_id = p.pes_id) as total_clientes
+                    (SELECT COUNT(*) FROM cc_pesquisa_clientes WHERE pecl_pes_id = p.pes_id) as total_clientes,
+                    CASE
+                        WHEN p.pes_ativa = 1
+                             AND (p.pes_data_inicio IS NULL OR p.pes_data_inicio <= ?)
+                             AND (p.pes_data_fim IS NULL OR p.pes_data_fim >= ?)
+                        THEN 1
+                        ELSE 0
+                    END as vigente
                 FROM cc_pesquisas p
                 WHERE 1=1
             `;
-            const args = [];
+            const args = [hoje, hoje];
 
             if (filtros.ativa !== undefined) {
                 sql += ` AND p.pes_ativa = ?`;
