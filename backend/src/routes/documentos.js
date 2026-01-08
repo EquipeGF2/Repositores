@@ -769,6 +769,8 @@ router.post('/upload-multiplo', upload.array('arquivos', 10), async (req, res) =
 
           // Se for despesa de viagem, salvar valores na tabela cc_despesa_valores
           const isDespesaViagem = tipo.dct_codigo && tipo.dct_codigo.toLowerCase().includes('despesa');
+          console.log(`🔍 Verificando se é despesa: dct_codigo="${tipo.dct_codigo}", isDespesaViagem=${isDespesaViagem}, temObservacao=${!!observacao}`);
+
           if (isDespesaViagem && observacao) {
             try {
               // Extrair apenas a parte JSON da observação (antes de "\n\nObs:")
@@ -777,8 +779,11 @@ router.post('/upload-multiplo', upload.array('arquivos', 10), async (req, res) =
               if (obsIndex > 0) {
                 jsonStr = observacao.substring(0, obsIndex);
               }
+              console.log(`📝 JSON extraído (100 chars): ${jsonStr.substring(0, 100)}`);
 
               const obsData = JSON.parse(jsonStr);
+              console.log(`📊 Dados parseados: tipo=${obsData.tipo}, rubricas=${Array.isArray(obsData.rubricas) ? obsData.rubricas.length : 'não é array'}`);
+
               if (obsData.tipo === 'despesa_viagem' && Array.isArray(obsData.rubricas)) {
                 // Garantir que a tabela existe
                 await tursoService.execute(`
@@ -795,8 +800,10 @@ router.post('/upload-multiplo', upload.array('arquivos', 10), async (req, res) =
                   )
                 `, []);
 
+                let rubricasSalvas = 0;
                 for (const rubrica of obsData.rubricas) {
                   if (rubrica.valor > 0) {
+                    console.log(`   💵 Salvando rubrica: codigo=${rubrica.codigo}, valor=${rubrica.valor}, doc_id=${docId}`);
                     await tursoService.execute(
                       `INSERT INTO cc_despesa_valores (dv_doc_id, dv_repositor_id, dv_gst_id, dv_gst_codigo, dv_valor, dv_data_ref)
                        VALUES (?, ?, ?, ?, ?, ?)`,
@@ -809,9 +816,10 @@ router.post('/upload-multiplo', upload.array('arquivos', 10), async (req, res) =
                         data_ref
                       ]
                     );
+                    rubricasSalvas++;
                   }
                 }
-                console.log(`💰 ${obsData.rubricas.filter(r => r.valor > 0).length} rubricas salvas para doc ${docId}`);
+                console.log(`💰 ${rubricasSalvas} rubricas salvas para doc ${docId}`);
               }
             } catch (parseError) {
               console.warn('⚠️  Não foi possível parsear observação como despesa:', parseError.message);
