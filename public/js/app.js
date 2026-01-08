@@ -4440,8 +4440,8 @@ class App {
             <table class="roteiro-clientes-table">
                 <thead>
                     <tr>
-                        <th class="col-ordem-visita">Ordem</th>
-                        <th class="col-codigo">Código</th>
+                        <th class="col-ordem-visita">SEQ</th>
+                        <th class="col-codigo">Cód</th>
                         <th class="col-nome">Nome</th>
                         <th class="col-fantasia">Fantasia</th>
                         <th class="col-rateio">Rateio</th>
@@ -13786,6 +13786,14 @@ class App {
 
             if (observacao) formData.append('observacao', observacao);
 
+            // DEBUG: Log dos dados sendo enviados
+            console.log('📤 ENVIANDO DESPESA:');
+            console.log('   repositor_id:', repositorId);
+            console.log('   dct_id:', tipoId);
+            console.log('   arquivos:', arquivosParaEnvio.length);
+            console.log('   observacao:', observacao ? observacao.substring(0, 150) + '...' : 'vazio');
+            console.log('   URL:', `${API_BASE_URL}/api/documentos/upload-multiplo`);
+
             const qtdArquivos = arquivosParaEnvio.length;
             this.showNotification(`Carregando / enviando ${qtdArquivos} anexo(s)...`, 'info');
 
@@ -13793,6 +13801,8 @@ class App {
                 method: 'POST',
                 body: formData
             });
+
+            console.log('📥 RESPOSTA:', data);
 
             const errosDetalhados = Array.isArray(data.erros) ? data.erros : [];
             const errosMap = new Map();

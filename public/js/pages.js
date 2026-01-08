@@ -677,8 +677,7 @@ export const pages = {
                 <section class="card">
                         <div class="card-header">
                             <div>
-                                <p class="form-card-eyebrow">Cidades atendidas</p>
-                                <h4>Cidades no dia selecionado</h4>
+                                <p class="form-card-eyebrow">Cidades atendidas no dia</p>
                             </div>
                         <button class="btn btn-secondary btn-sm" id="btnSelecionarTodasCidades" style="display:none;">
                             <span id="textoSelecionarTodas">✓ Selecionar Todas</span>
@@ -692,8 +691,8 @@ export const pages = {
                             </div>
                             <div class="cidades-ordem-adicionar-row">
                                 <div class="cidade-ordem-wrapper ordem-compacta">
-                                    <label for="roteiroCidadeOrdem">Ordem</label>
-                                    <input type="number" id="roteiroCidadeOrdem" min="1" step="1" value="1" aria-label="Ordem da cidade">
+                                    <label for="roteiroCidadeOrdem">SEQ</label>
+                                    <input type="number" id="roteiroCidadeOrdem" min="1" step="1" value="1" aria-label="Sequência da cidade">
                                 </div>
                                 <button class="btn btn-primary btn-sm btn-compact btn-add-cidade" id="btnAdicionarCidade">+ Adicionar</button>
                             </div>
@@ -744,7 +743,7 @@ export const pages = {
                                 <input type="text" id="modalBuscaClientesCidade" placeholder="Nome, fantasia, bairro ou código">
                             </div>
                             <div class="form-group" style="flex: 0 0 80px; min-width: 80px;">
-                                <label for="modalOrdemCliente">Ordem</label>
+                                <label for="modalOrdemCliente">SEQ</label>
                                 <input type="number" id="modalOrdemCliente" min="1" step="1" placeholder="1" required>
                                 <small id="modalOrdemHelper" class="text-muted"></small>
                             </div>

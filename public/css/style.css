@@ -7338,3 +7338,124 @@ body.modal-open {
         min-width: 100% !important;
     }
 }
+
+/* ==================== MOBILE: CADASTRO REPOSITOR - CARD HEADER ==================== */
+@media (max-width: 768px) {
+    /* Card Cadastro de Repositores - título e botão centralizados em coluna */
+    .card:has(#cadastroRepositoresResultado) .card-header {
+        flex-direction: column !important;
+        align-items: center !important;
+        gap: 10px !important;
+        text-align: center !important;
+    }
+
+    .card:has(#cadastroRepositoresResultado) .card-header .card-title {
+        width: 100% !important;
+        text-align: center !important;
+        margin: 0 !important;
+    }
+
+    .card:has(#cadastroRepositoresResultado) .card-header .btn {
+        width: 100% !important;
+        max-width: 200px !important;
+    }
+}
+
+/* ==================== MOBILE: ROTEIRO - TABELA CLIENTES ==================== */
+@media (max-width: 768px) {
+    /* Tabela de clientes no roteiro - colunas mais largas para evitar sobreposição */
+    .roteiro-clientes-table .col-nome {
+        min-width: 120px !important;
+    }
+
+    .roteiro-clientes-table .col-fantasia {
+        min-width: 100px !important;
+    }
+
+    .roteiro-clientes-table .col-codigo {
+        width: 50px !important;
+        min-width: 50px !important;
+    }
+
+    .roteiro-clientes-table .col-ordem-visita {
+        width: 50px !important;
+        min-width: 50px !important;
+    }
+
+    .roteiro-clientes-table th,
+    .roteiro-clientes-table td {
+        padding: 0.35rem 0.3rem !important;
+        font-size: 0.75rem !important;
+    }
+
+    .roteiro-clientes-table .input-ordem-visita {
+        width: 45px !important;
+        padding: 3px 4px !important;
+        font-size: 0.75rem !important;
+    }
+}
+
+/* ==================== MOBILE: MODAL ADICIONAR CLIENTE - COLUNAS ==================== */
+@media (max-width: 768px) {
+    /* Modal Adicionar Cliente - evitar sobreposição */
+    #modalAdicionarCliente .tabela-modal-clientes .col-nome {
+        min-width: 100px !important;
+    }
+
+    #modalAdicionarCliente .tabela-modal-clientes .col-fantasia {
+        min-width: 90px !important;
+    }
+
+    #modalAdicionarCliente .tabela-modal-clientes .col-cnpj {
+        min-width: 120px !important;
+    }
+
+    #modalAdicionarCliente .tabela-modal-clientes .col-endereco {
+        min-width: 100px !important;
+    }
+
+    #modalAdicionarCliente .tabela-modal-clientes .col-bairro {
+        min-width: 80px !important;
+    }
+
+    #modalAdicionarCliente .tabela-modal-clientes th,
+    #modalAdicionarCliente .tabela-modal-clientes td {
+        padding: 0.3rem 0.25rem !important;
+        font-size: 0.7rem !important;
+    }
+
+    #modalAdicionarCliente .tabela-modal-clientes .col-codigo {
+        width: 45px !important;
+        min-width: 45px !important;
+    }
+}
+
+/* ==================== MOBILE: ROTEIRO - SEQ E BOTÃO ALINHADOS ==================== */
+@media (max-width: 768px) {
+    .cidades-ordem-adicionar-row {
+        display: flex !important;
+        align-items: flex-end !important;
+        gap: 8px !important;
+    }
+
+    .cidade-ordem-wrapper.ordem-compacta {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 2px !important;
+    }
+
+    .cidade-ordem-wrapper.ordem-compacta label {
+        font-size: 0.75rem !important;
+        margin: 0 !important;
+    }
+
+    .cidade-ordem-wrapper.ordem-compacta input {
+        width: 50px !important;
+        height: 36px !important;
+        padding: 4px 6px !important;
+    }
+
+    .btn-add-cidade {
+        height: 36px !important;
+    }
+}
