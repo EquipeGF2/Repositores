@@ -4167,30 +4167,30 @@ export const pages = {
 
         return `
             <div class="card">
-                <div class="card-header">
-                    <div>
-                        <h4 class="card-title" style="margin-bottom: 2px;">Consulta de Despesas de Viagem</h4>
-                        <p class="text-muted" style="margin: 4px 0 0;">Visualize os gastos dos repositores por rubrica.</p>
-                    </div>
-                </div>
                 <div class="card-body">
+                    <p class="text-muted" style="margin: 0 0 16px 0;">Visualize os gastos dos repositores por rubrica.</p>
                     <div class="despesa-filter-section">
-                        <div class="filter-row" style="display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px;">
-                            <div class="filter-group" style="min-width: 150px;">
+                        <div class="filter-row" style="display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end;">
+                            <div class="filter-group">
                                 <label for="despesaDataInicio">Data Inicial</label>
                                 <input type="date" id="despesaDataInicio" value="${dataInicio}">
                             </div>
-                            <div class="filter-group" style="min-width: 150px;">
+                            <div class="filter-group">
                                 <label for="despesaDataFim">Data Final</label>
                                 <input type="date" id="despesaDataFim" value="${hoje}">
                             </div>
-                            <div class="filter-group" style="min-width: 150px;">
-                                <label>&nbsp;</label>
-                                <div style="display: flex; gap: 8px;">
-                                    <button type="button" class="btn btn-primary" id="btnFiltrarDespesas">
-                                        🔍 Filtrar
-                                    </button>
-                                </div>
+                            <div class="filter-group">
+                                <button type="button" class="btn btn-primary" id="btnFiltrarDespesas">
+                                    🔍 Filtrar
+                                </button>
+                            </div>
+                            <div class="filter-group despesa-export-buttons" style="display: none;">
+                                <button type="button" class="btn btn-secondary btn-sm" id="btnExportarDespesasExcel">
+                                    📊 Excel
+                                </button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="btnExportarDespesasPDF">
+                                    📄 PDF
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -4218,102 +4218,130 @@ export const pages = {
             </div>
 
             <style>
+                .despesa-filter-section .filter-group {
+                    min-width: 140px;
+                }
+
                 .despesa-filter-section .filter-group label {
                     display: block;
                     margin-bottom: 6px;
                     font-weight: 600;
-                    color: #374151;
+                    color: var(--gray-700);
+                    font-size: 0.875rem;
                 }
 
-                .despesa-filter-section .filter-group select,
                 .despesa-filter-section .filter-group input {
                     width: 100%;
-                    padding: 10px;
-                    border: 1px solid #d1d5db;
-                    border-radius: 8px;
-                    font-size: 14px;
+                    padding: 8px 12px;
+                    border: 1px solid var(--gray-300);
+                    border-radius: 6px;
+                    font-size: 0.875rem;
+                }
+
+                .despesa-export-buttons {
+                    display: flex !important;
+                    gap: 8px;
+                    margin-left: auto;
                 }
 
                 .despesas-table {
                     width: 100%;
                     border-collapse: collapse;
                     margin-top: 16px;
+                    font-size: 0.875rem;
                 }
 
                 .despesas-table th,
                 .despesas-table td {
-                    padding: 12px;
-                    text-align: left;
-                    border-bottom: 1px solid #e5e7eb;
+                    padding: 10px 12px;
+                    border-bottom: 1px solid var(--gray-200);
+                    text-align: center;
                 }
 
                 .despesas-table th {
-                    background: #f9fafb;
+                    background: var(--gray-100);
                     font-weight: 600;
-                    color: #374151;
+                    color: var(--gray-700);
                     white-space: nowrap;
                 }
 
+                .despesas-table th:first-child,
+                .despesas-table td:first-child {
+                    text-align: left;
+                }
+
                 .despesas-table td.valor {
-                    text-align: right;
-                    font-family: monospace;
+                    font-family: var(--font-mono, monospace);
                     white-space: nowrap;
                 }
 
                 .despesas-table td.total {
                     font-weight: 700;
-                    color: #ef4444;
+                    color: var(--primary-red);
                 }
 
-                .despesas-table tr:hover {
-                    background: #f9fafb;
+                .despesas-table tbody tr:hover {
+                    background: var(--gray-50);
+                }
+
+                .despesas-table tfoot tr {
+                    background: var(--gray-100);
                 }
 
                 .despesa-rubrica-section {
-                    margin-bottom: 24px;
-                    border: 1px solid #e5e7eb;
+                    margin-bottom: 20px;
+                    border: 1px solid var(--gray-200);
                     border-radius: 8px;
                     overflow: hidden;
                 }
 
                 .despesa-rubrica-header {
-                    background: #f9fafb;
+                    background: var(--gray-100);
                     padding: 12px 16px;
                     font-weight: 600;
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
+                    font-size: 0.9rem;
                 }
 
                 .despesa-rubrica-body {
-                    padding: 16px;
+                    padding: 12px;
                 }
 
                 .despesa-fotos-grid {
                     display: grid;
-                    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-                    gap: 12px;
-                    margin-top: 12px;
+                    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+                    gap: 10px;
                 }
 
                 .despesa-foto-item {
-                    border: 1px solid #e5e7eb;
-                    border-radius: 8px;
+                    border: 1px solid var(--gray-200);
+                    border-radius: 6px;
                     overflow: hidden;
+                    background: white;
                 }
 
                 .despesa-foto-item img {
                     width: 100%;
-                    height: 120px;
+                    height: 100px;
                     object-fit: cover;
                     cursor: pointer;
+                    transition: opacity 0.2s;
+                }
+
+                .despesa-foto-item img:hover {
+                    opacity: 0.8;
                 }
 
                 .despesa-foto-info {
-                    padding: 8px;
-                    font-size: 12px;
-                    color: #6b7280;
-                    background: #f9fafb;
+                    padding: 6px 8px;
+                    font-size: 0.7rem;
+                    color: var(--gray-600);
+                    background: var(--gray-50);
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
                 }
             </style>
         `;
