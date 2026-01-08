@@ -3229,6 +3229,23 @@ class App {
         }
     }
 
+    async voltarListaRepositores() {
+        // Limpar contexto do roteiro
+        this.contextoRoteiro = null;
+        this.estadoRoteiro = {
+            diaSelecionado: null,
+            cidadeSelecionada: null,
+            buscaClientes: ''
+        };
+        this.clientesCachePorCidade = {};
+        this.clientesSelecionadosCidadeAtual = [];
+        this.rateioPendentes = {};
+        this.vendasCentralizadasPendentes = {};
+
+        // Navegar de volta para a lista de repositores
+        await this.navigateTo('roteiro-repositor');
+    }
+
     // ==================== CONSULTA GERAL DE REPOSITORES ====================
 
     async aplicarFiltrosCadastroRepositores() {

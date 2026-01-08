@@ -624,6 +624,10 @@ export const pages = {
             : (repositor.rep_representante_nome || '-');
 
         return `
+            <button class="btn-voltar-roteiro" onclick="window.app.voltarListaRepositores()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                Voltar
+            </button>
             <div class="roteiro-header">
                 <div>
                     <p class="form-card-eyebrow">Roteiro do Repositor</p>
