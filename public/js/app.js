@@ -4438,7 +4438,7 @@ class App {
 
         tabela.innerHTML = `
             <table class="roteiro-clientes-table">
-                <thead>
+                <thead class="desktop-only">
                     <tr>
                         <th class="col-ordem-visita">SEQ</th>
                         <th class="col-codigo">Cód</th>
@@ -4453,10 +4453,19 @@ class App {
                         <th class="col-acao">Ação</th>
                     </tr>
                 </thead>
+                <thead class="mobile-only">
+                    <tr>
+                        <th class="col-ordem-visita">SEQ</th>
+                        <th class="col-dados-mobile">Cliente</th>
+                        <th class="col-rateio">Rat</th>
+                        <th class="col-venda">Cent</th>
+                        <th class="col-acao">X</th>
+                    </tr>
+                </thead>
                 <tbody>
                     ${clientesOrdenados.map(cliente => {
                         const dados = cliente.cliente_dados || {};
-                        const enderecoCompleto = [dados.endereco, dados.num_endereco].filter(Boolean).join(', ');
+                        const enderecoCompleto = [dados.endereco, dados.num_endereco, dados.bairro].filter(Boolean).join(', ');
                         return `
                         <tr>
                             <td class="col-ordem-visita">
@@ -4470,12 +4479,19 @@ class App {
                                     aria-label="Ordem de visita"
                                 >
                             </td>
-                            <td class="col-codigo">${cliente.rot_cliente_codigo}</td>
-                            <td>${dados.nome || '-'}</td>
-                            <td>${dados.fantasia || '-'}</td>
+                            <td class="col-codigo desktop-only">${cliente.rot_cliente_codigo}</td>
+                            <td class="col-nome desktop-only">${dados.nome || '-'}</td>
+                            <td class="col-fantasia desktop-only">${dados.fantasia || '-'}</td>
+                            <td class="col-dados-mobile mobile-only">
+                                <div class="cliente-dados-stack">
+                                    <div class="cliente-linha-1"><strong>${cliente.rot_cliente_codigo}</strong> - ${dados.nome || dados.fantasia || '-'}</div>
+                                    <div class="cliente-linha-2">${documentoParaExibicao(dados.cnpj_cpf) || '-'}</div>
+                                    <div class="cliente-linha-3">${enderecoCompleto || '-'}</div>
+                                </div>
+                            </td>
                             <td class="col-rateio">
                                 <div class="rateio-indicador">
-                                    <span class="badge ${cliente.rot_possui_rateio ? 'badge-info' : 'badge-gray'}">${cliente.rot_possui_rateio ? 'Rateio' : 'Único'}</span>
+                                    <span class="badge desktop-only ${cliente.rot_possui_rateio ? 'badge-info' : 'badge-gray'}">${cliente.rot_possui_rateio ? 'Rateio' : 'Único'}</span>
                                     <label class="rateio-toggle-wrapper" title="Marcar cliente com rateio">
                                         <input
                                             type="checkbox"
@@ -4500,12 +4516,15 @@ class App {
                                     <span class="rateio-toggle-slider"></span>
                                 </label>
                             </td>
-                            <td class="col-cnpj">${documentoParaExibicao(dados.cnpj_cpf) || '-'}</td>
-                            <td>${enderecoCompleto || '-'}</td>
-                            <td>${dados.bairro || '-'}</td>
-                            <td>${formatarGrupo(dados.grupo_desc)}</td>
+                            <td class="col-cnpj desktop-only">${documentoParaExibicao(dados.cnpj_cpf) || '-'}</td>
+                            <td class="col-endereco desktop-only">${[dados.endereco, dados.num_endereco].filter(Boolean).join(', ') || '-'}</td>
+                            <td class="col-bairro desktop-only">${dados.bairro || '-'}</td>
+                            <td class="col-grupo desktop-only">${formatarGrupo(dados.grupo_desc)}</td>
                             <td class="table-actions">
-                                <button class="btn btn-danger btn-sm" data-acao="remover-cliente" data-id="${cliente.rot_cliente_codigo}">Remover</button>
+                                <button class="btn btn-danger btn-sm btn-remover-cliente" data-acao="remover-cliente" data-id="${cliente.rot_cliente_codigo}">
+                                    <span class="desktop-only">Remover</span>
+                                    <span class="mobile-only">✕</span>
+                                </button>
                             </td>
                         </tr>
                         `;
@@ -4948,7 +4967,7 @@ class App {
 
         tabela.innerHTML = `
             <table class="roteiro-clientes-table tabela-modal-clientes">
-                <thead>
+                <thead class="desktop-only">
                     <tr>
                         <th class="col-acao-modal"></th>
                         <th class="col-codigo">Código</th>
@@ -4960,10 +4979,17 @@ class App {
                         <th class="col-grupo">Grupo</th>
                     </tr>
                 </thead>
+                <thead class="mobile-only">
+                    <tr>
+                        <th class="col-acao-modal"></th>
+                        <th class="col-dados-mobile">Cliente</th>
+                        <th class="col-grupo">Grupo</th>
+                    </tr>
+                </thead>
                 <tbody>
                     ${clientes.map(cliente => {
                         const jaIncluido = selecionadosSet.has(String(cliente.cliente));
-                        const enderecoCompleto = [cliente.endereco, cliente.num_endereco].filter(Boolean).join(', ');
+                        const enderecoCompleto = [cliente.endereco, cliente.num_endereco, cliente.bairro].filter(Boolean).join(', ');
                         return `
                             <tr class="${jaIncluido ? 'cliente-incluido' : ''}">
                                 <td class="col-acao-modal">
@@ -4971,13 +4997,20 @@ class App {
                                         ? `<button class="btn btn-danger btn-sm btn-remover-cliente-modal" data-acao="remover-cliente-modal" data-id="${cliente.cliente}" title="Remover">✕</button>`
                                         : `<button class="btn btn-primary btn-sm btn-adicionar-cliente" data-acao="adicionar-cliente" data-id="${cliente.cliente}">+<span class="btn-text"> Adicionar</span></button>`}
                                 </td>
-                                <td>${cliente.cliente}</td>
-                                <td>${cliente.nome || '-'}</td>
-                                <td>${cliente.fantasia || '-'}</td>
-                                <td class="col-cnpj">${documentoParaExibicao(cliente.cnpj_cpf) || '-'}</td>
-                                <td>${enderecoCompleto || '-'}</td>
-                                <td class="col-bairro">${cliente.bairro || '-'}</td>
-                                <td>${formatarGrupo(cliente.grupo_desc)}</td>
+                                <td class="col-codigo desktop-only">${cliente.cliente}</td>
+                                <td class="col-nome desktop-only">${cliente.nome || '-'}</td>
+                                <td class="col-fantasia desktop-only">${cliente.fantasia || '-'}</td>
+                                <td class="col-dados-mobile mobile-only">
+                                    <div class="cliente-dados-stack">
+                                        <div class="cliente-linha-1"><strong>${cliente.cliente}</strong> - ${cliente.nome || cliente.fantasia || '-'}</div>
+                                        <div class="cliente-linha-2">${documentoParaExibicao(cliente.cnpj_cpf) || '-'}</div>
+                                        <div class="cliente-linha-3">${enderecoCompleto || '-'}</div>
+                                    </div>
+                                </td>
+                                <td class="col-cnpj desktop-only">${documentoParaExibicao(cliente.cnpj_cpf) || '-'}</td>
+                                <td class="col-endereco desktop-only">${[cliente.endereco, cliente.num_endereco].filter(Boolean).join(', ') || '-'}</td>
+                                <td class="col-bairro desktop-only">${cliente.bairro || '-'}</td>
+                                <td class="col-grupo">${formatarGrupo(cliente.grupo_desc)}</td>
                             </tr>
                         `;
                     }).join('')}

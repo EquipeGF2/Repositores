@@ -7459,3 +7459,271 @@ body.modal-open {
         height: 36px !important;
     }
 }
+
+/* ==================== DESKTOP/MOBILE VISIBILITY CLASSES ==================== */
+.mobile-only {
+    display: none !important;
+}
+
+.desktop-only {
+    display: table-cell;
+}
+
+thead.desktop-only {
+    display: table-header-group;
+}
+
+thead.mobile-only {
+    display: none;
+}
+
+span.desktop-only {
+    display: inline;
+}
+
+span.mobile-only {
+    display: none !important;
+}
+
+@media (max-width: 768px) {
+    .mobile-only {
+        display: block !important;
+    }
+
+    td.mobile-only {
+        display: table-cell !important;
+    }
+
+    thead.mobile-only {
+        display: table-header-group !important;
+    }
+
+    span.mobile-only {
+        display: inline !important;
+    }
+
+    .desktop-only {
+        display: none !important;
+    }
+
+    thead.desktop-only {
+        display: none !important;
+    }
+
+    td.desktop-only,
+    th.desktop-only {
+        display: none !important;
+    }
+
+    span.desktop-only {
+        display: none !important;
+    }
+}
+
+/* ==================== MOBILE: ROTEIRO - NOVA ESTRUTURA CIDADES ==================== */
+@media (max-width: 768px) {
+    /* Linha com busca cidade e campo SEQ */
+    .cidades-busca-seq-row {
+        display: flex !important;
+        gap: 8px !important;
+        align-items: flex-end !important;
+        width: 100% !important;
+    }
+
+    .cidades-busca-seq-row .cidade-input-larga {
+        flex: 1 !important;
+    }
+
+    .cidades-busca-seq-row .cidade-ordem-wrapper {
+        flex: 0 0 60px !important;
+    }
+
+    .cidades-busca-seq-row .cidade-ordem-wrapper input {
+        width: 60px !important;
+        height: 38px !important;
+        text-align: center !important;
+        font-weight: bold !important;
+    }
+
+    /* Linha de botões abaixo */
+    .cidades-botoes-row {
+        display: flex !important;
+        gap: 8px !important;
+        margin-top: 8px !important;
+        width: 100% !important;
+    }
+
+    .cidades-botoes-row .btn {
+        flex: 1 !important;
+    }
+
+    /* Esconder containers antigos */
+    .cidades-ordem-adicionar-row {
+        display: none !important;
+    }
+}
+
+/* Desktop: manter estrutura original */
+@media (min-width: 769px) {
+    .cidades-busca-seq-row {
+        display: contents;
+    }
+
+    .cidades-busca-seq-row .cidade-ordem-wrapper {
+        display: none;
+    }
+
+    .cidades-botoes-row {
+        display: contents;
+    }
+
+    .cidades-botoes-row .btn:first-child {
+        display: none;
+    }
+}
+
+/* ==================== MOBILE: ROTEIRO - GRID CLIENTES REDESENHADA ==================== */
+@media (max-width: 768px) {
+    /* Coluna de dados empilhados */
+    .col-dados-mobile {
+        min-width: 160px !important;
+        max-width: none !important;
+    }
+
+    .cliente-dados-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        line-height: 1.3;
+    }
+
+    .cliente-dados-stack .cliente-linha-1 {
+        font-size: 0.8rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 180px;
+    }
+
+    .cliente-dados-stack .cliente-linha-2 {
+        font-size: 0.7rem;
+        color: var(--gray-600);
+    }
+
+    .cliente-dados-stack .cliente-linha-3 {
+        font-size: 0.65rem;
+        color: var(--gray-500);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 180px;
+    }
+
+    /* Tabela de clientes roteiro - layout mobile */
+    .roteiro-clientes-table th,
+    .roteiro-clientes-table td {
+        padding: 0.4rem 0.3rem !important;
+        vertical-align: middle !important;
+    }
+
+    .roteiro-clientes-table .col-ordem-visita {
+        width: 45px !important;
+        min-width: 45px !important;
+    }
+
+    .roteiro-clientes-table .input-ordem-visita {
+        width: 40px !important;
+        padding: 4px !important;
+        font-size: 0.8rem !important;
+    }
+
+    /* Coluna rateio compacta */
+    .roteiro-clientes-table .col-rateio {
+        width: 45px !important;
+        min-width: 45px !important;
+    }
+
+    .roteiro-clientes-table .col-rateio .rateio-indicador {
+        flex-direction: column;
+        gap: 0;
+    }
+
+    /* Coluna venda centralizada compacta */
+    .roteiro-clientes-table .col-venda {
+        width: 45px !important;
+        min-width: 45px !important;
+    }
+
+    /* Coluna ação - botão X */
+    .roteiro-clientes-table .table-actions {
+        width: 36px !important;
+        min-width: 36px !important;
+        padding: 0.2rem !important;
+    }
+
+    .roteiro-clientes-table .btn-remover-cliente {
+        width: 28px !important;
+        height: 28px !important;
+        padding: 0 !important;
+        font-size: 1rem !important;
+        border-radius: 50% !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+}
+
+/* ==================== MOBILE: MODAL ADICIONAR CLIENTE - NOVA ESTRUTURA ==================== */
+@media (max-width: 768px) {
+    /* Filtros fixos no topo do modal */
+    #modalAdicionarCliente .modal-header {
+        position: sticky !important;
+        top: 0 !important;
+        z-index: 15 !important;
+        background: white !important;
+    }
+
+    #modalAdicionarCliente .modal-body {
+        padding-top: 0 !important;
+    }
+
+    #modalAdicionarCliente .modal-body .form-row {
+        position: sticky !important;
+        top: 0 !important;
+        z-index: 12 !important;
+        background: white !important;
+        margin: 0 !important;
+        padding: 8px 0 !important;
+        border-bottom: 1px solid var(--gray-200) !important;
+    }
+
+    /* Tabela modal - layout mobile com grupo */
+    #modalAdicionarCliente .tabela-modal-clientes .col-dados-mobile {
+        min-width: 140px !important;
+    }
+
+    #modalAdicionarCliente .tabela-modal-clientes .col-grupo {
+        min-width: 60px !important;
+        max-width: 80px !important;
+        font-size: 0.65rem !important;
+    }
+
+    #modalAdicionarCliente .tabela-modal-clientes .col-acao-modal {
+        width: 36px !important;
+        min-width: 36px !important;
+    }
+
+    #modalAdicionarCliente .tabela-modal-clientes th,
+    #modalAdicionarCliente .tabela-modal-clientes td {
+        padding: 0.3rem !important;
+        vertical-align: middle !important;
+    }
+
+    /* Thead sticky */
+    #modalAdicionarCliente .tabela-modal-clientes thead {
+        position: sticky !important;
+        top: 50px !important;
+        z-index: 10 !important;
+        background: white !important;
+    }
+}

@@ -677,7 +677,7 @@ export const pages = {
                 <section class="card">
                         <div class="card-header">
                             <div>
-                                <p class="form-card-eyebrow">Cidades atendidas no dia</p>
+                                <p class="form-card-eyebrow">Cidades atendidas no dia e ordem</p>
                             </div>
                         <button class="btn btn-secondary btn-sm" id="btnSelecionarTodasCidades" style="display:none;">
                             <span id="textoSelecionarTodas">✓ Selecionar Todas</span>
@@ -685,18 +685,19 @@ export const pages = {
                     </div>
                         <div class="card-body">
                         <div class="cidades-busca-container">
-                            <div class="autocomplete-input cidade-input-larga">
-                                <input type="text" id="roteiroCidadeBusca" placeholder="Digite para buscar e adicionar cidade...">
-                                <div id="roteiroCidadeSugestoes" class="autocomplete-list"></div>
-                            </div>
-                            <div class="cidades-ordem-adicionar-row">
-                                <div class="cidade-ordem-wrapper ordem-compacta">
-                                    <label for="roteiroCidadeOrdem">SEQ</label>
-                                    <input type="number" id="roteiroCidadeOrdem" min="1" step="1" value="1" aria-label="Sequência da cidade">
+                            <div class="cidades-busca-seq-row">
+                                <div class="autocomplete-input cidade-input-larga">
+                                    <input type="text" id="roteiroCidadeBusca" placeholder="Digite para buscar e adicionar cidade...">
+                                    <div id="roteiroCidadeSugestoes" class="autocomplete-list"></div>
                                 </div>
-                                <button class="btn btn-primary btn-sm btn-compact btn-add-cidade" id="btnAdicionarCidade">+ Adicionar</button>
+                                <div class="cidade-ordem-wrapper ordem-compacta">
+                                    <input type="number" id="roteiroCidadeOrdem" min="1" step="1" value="1" aria-label="Sequência da cidade" placeholder="SEQ">
+                                </div>
                             </div>
-                            <button class="btn btn-secondary btn-sm btn-compact" id="btnCopiarRoteiro">📋 Copiar Roteiro</button>
+                            <div class="cidades-botoes-row">
+                                <button class="btn btn-primary btn-sm btn-compact btn-add-cidade" id="btnAdicionarCidade">+ Adicionar</button>
+                                <button class="btn btn-secondary btn-sm btn-compact" id="btnCopiarRoteiro">📋 Copiar Roteiro</button>
+                            </div>
                         </div>
 
                         <div id="roteiroCidadesMensagem" class="roteiro-hint"></div>
@@ -711,11 +712,10 @@ export const pages = {
                     </div>
                 </section>
 
-                <section class="card">
+                <section class="card card-clientes-roteiro">
                         <div class="card-header">
                             <div>
                                 <p class="form-card-eyebrow">Clientes</p>
-                                <h4>Clientes da cidade selecionada</h4>
                             </div>
                         <button class="btn btn-primary btn-sm btn-compact" id="btnAdicionarClienteRoteiro">➕ Cliente</button>
                         </div>
