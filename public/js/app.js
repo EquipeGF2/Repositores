@@ -3229,6 +3229,23 @@ class App {
         }
     }
 
+    async voltarListaRepositores() {
+        // Limpar contexto do roteiro
+        this.contextoRoteiro = null;
+        this.estadoRoteiro = {
+            diaSelecionado: null,
+            cidadeSelecionada: null,
+            buscaClientes: ''
+        };
+        this.clientesCachePorCidade = {};
+        this.clientesSelecionadosCidadeAtual = [];
+        this.rateioPendentes = {};
+        this.vendasCentralizadasPendentes = {};
+
+        // Navegar de volta para a lista de repositores
+        await this.navigateTo('roteiro-repositor');
+    }
+
     // ==================== CONSULTA GERAL DE REPOSITORES ====================
 
     async aplicarFiltrosCadastroRepositores() {
@@ -3843,13 +3860,12 @@ class App {
                 <input type="checkbox" class="cidade-checkbox" data-id="${cidade.rot_cid_id}">
                 <div class="cidade-item-info" data-acao="selecionar-cidade" data-id="${cidade.rot_cid_id}">
                     <span class="cidade-item-nome">${cidade.rot_cidade}</span>
-                    <div class="cidade-item-ordem" onclick="event.stopPropagation()">
-                        <label>Ordem:</label>
-                        <input type="number" class="input-ordem-cidade" data-id="${cidade.rot_cid_id}" value="${cidade.rot_ordem_cidade || ''}" placeholder="-" min="1">
-                    </div>
+                </div>
+                <div class="cidade-item-ordem" onclick="event.stopPropagation()">
+                    <input type="number" class="input-ordem-cidade" data-id="${cidade.rot_cid_id}" value="${cidade.rot_ordem_cidade || ''}" placeholder="-" min="1">
                 </div>
                 <div class="cidade-item-acoes">
-                    <button class="btn-icon" data-acao="remover-cidade" data-id="${cidade.rot_cid_id}" title="Remover cidade">🗑️</button>
+                    <button class="btn-icon btn-remover-cidade" data-acao="remover-cidade" data-id="${cidade.rot_cid_id}" title="Remover cidade">🗑️</button>
                 </div>
             </div>
         `).join('');
@@ -4940,7 +4956,7 @@ class App {
                         <th class="col-fantasia">Fantasia</th>
                         <th class="col-cnpj">CNPJ/CPF</th>
                         <th class="col-endereco">Endereço</th>
-                        <th>Bairro</th>
+                        <th class="col-bairro">Bairro</th>
                         <th class="col-grupo">Grupo</th>
                     </tr>
                 </thead>
@@ -4949,10 +4965,10 @@ class App {
                         const jaIncluido = selecionadosSet.has(String(cliente.cliente));
                         const enderecoCompleto = [cliente.endereco, cliente.num_endereco].filter(Boolean).join(', ');
                         return `
-                            <tr>
+                            <tr class="${jaIncluido ? 'cliente-incluido' : ''}">
                                 <td class="col-acao-modal">
                                     ${jaIncluido
-                                        ? '<span class="badge badge-success">✓</span>'
+                                        ? `<button class="btn btn-danger btn-sm btn-remover-cliente-modal" data-acao="remover-cliente-modal" data-id="${cliente.cliente}" title="Remover">✕</button>`
                                         : `<button class="btn btn-primary btn-sm btn-adicionar-cliente" data-acao="adicionar-cliente" data-id="${cliente.cliente}">+<span class="btn-text"> Adicionar</span></button>`}
                                 </td>
                                 <td>${cliente.cliente}</td>
@@ -4960,7 +4976,7 @@ class App {
                                 <td>${cliente.fantasia || '-'}</td>
                                 <td class="col-cnpj">${documentoParaExibicao(cliente.cnpj_cpf) || '-'}</td>
                                 <td>${enderecoCompleto || '-'}</td>
-                                <td>${cliente.bairro || '-'}</td>
+                                <td class="col-bairro">${cliente.bairro || '-'}</td>
                                 <td>${formatarGrupo(cliente.grupo_desc)}</td>
                             </tr>
                         `;
@@ -4975,6 +4991,21 @@ class App {
                 this.incluirClienteNaCidade(codigo);
             });
         });
+
+        tabela.querySelectorAll('[data-acao="remover-cliente-modal"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const codigo = btn.dataset.id;
+                this.removerClienteDaCidadeModal(codigo);
+            });
+        });
+    }
+
+    async removerClienteDaCidadeModal(codigo) {
+        const cidadeAtiva = this.cidadesRoteiroCache?.find(c => c.rot_cid_id === this.estadoRoteiro.cidadeSelecionada);
+        if (!cidadeAtiva) return;
+
+        await this.alternarClienteRoteiro(cidadeAtiva.rot_cid_id, codigo, false);
+        await this.renderTabelaClientesCidade();
     }
 
     definirRateioPendente({ rotCliId, clienteCodigo, repositorId, ativo, percentual = null, vigenciaInicio = null }) {
