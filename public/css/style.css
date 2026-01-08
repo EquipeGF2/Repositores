@@ -4938,7 +4938,7 @@ body.modal-open {
 
 .pesquisa-campo-item {
     display: grid;
-    grid-template-columns: auto 1fr 150px auto auto auto;
+    grid-template-columns: 40px 1fr 150px 80px 80px 32px;
     gap: 10px;
     align-items: center;
     padding: 12px;
@@ -5000,11 +5000,12 @@ body.modal-open {
 }
 
 .pesquisa-campo-minmax input {
-    width: 70px;
+    width: 100%;
     padding: 6px 8px;
     border: 1px solid #d1d5db;
     border-radius: 4px;
     font-size: 13px;
+    box-sizing: border-box;
 }
 
 .pesquisa-campo-minmax-hidden {
