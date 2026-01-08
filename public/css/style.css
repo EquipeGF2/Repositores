@@ -6837,3 +6837,259 @@ body.modal-open {
         max-width: 850px;
     }
 }
+
+/* ==================== MOBILE: MODAL NOVO REPOSITOR ==================== */
+@media (max-width: 768px) {
+    /* Modal Novo Repositor - ocupar 90% da tela */
+    .modal-repositor .modal-content {
+        width: 90% !important;
+        max-width: 90% !important;
+        margin: 5% auto !important;
+        max-height: 90vh !important;
+        padding: 0 !important;
+    }
+
+    /* Header com botões - layout compacto */
+    .modal-repositor .modal-header.modal-header-with-actions {
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 12px !important;
+        position: relative;
+    }
+
+    .modal-repositor .modal-header.modal-header-with-actions h3 {
+        flex: 1 1 calc(100% - 40px);
+        font-size: 1.1rem;
+        margin-bottom: 8px;
+        padding-right: 30px;
+    }
+
+    .modal-repositor .modal-header-actions {
+        display: flex;
+        gap: 8px;
+        width: 100%;
+        order: 2;
+    }
+
+    .modal-repositor .modal-header-actions .btn {
+        flex: 1;
+        padding: 10px 12px !important;
+        font-size: 0.9rem !important;
+    }
+
+    .modal-repositor .modal-close {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+    }
+
+    /* Body com menos padding */
+    .modal-repositor .modal-body {
+        padding: 12px !important;
+    }
+
+    /* Grid de repositor - coluna única */
+    .modal-repositor .repositor-grid {
+        grid-template-columns: 1fr !important;
+        gap: 12px !important;
+    }
+
+    /* Cards internos - margens reduzidas */
+    .modal-repositor .form-card {
+        padding: 12px !important;
+    }
+
+    .modal-repositor .form-card-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+    }
+
+    .modal-repositor .form-card-header h4 {
+        font-size: 0.95rem;
+        white-space: normal !important;
+    }
+
+    .modal-repositor .form-card-eyebrow {
+        font-size: 0.7rem;
+    }
+
+    /* Grid de dados do repositor - ajustar */
+    .modal-repositor .dados-repositor-grid {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 10px !important;
+    }
+
+    .modal-repositor .dados-repositor-grid .form-group {
+        width: 100% !important;
+        margin-bottom: 0 !important;
+    }
+
+    .modal-repositor .dados-repositor-grid .span-2-cols {
+        grid-column: span 1 !important;
+    }
+
+    /* Alinhamento card (Representante e Supervisor) */
+    .modal-repositor .alinhamento-card .form-card-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .modal-repositor .alinhamento-card .form-card-header h4 {
+        white-space: normal !important;
+        font-size: 0.95rem;
+    }
+
+    .modal-repositor .alinhamento-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    /* Jornada de trabalho */
+    .modal-repositor #cardJornadaTrabalho .rotina-card-body {
+        flex-direction: column;
+    }
+
+    .modal-repositor .dias-trabalho-grid.compact {
+        display: grid !important;
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 6px !important;
+    }
+
+    /* Checkbox criar usuário */
+    .modal-repositor .criar-usuario-group label span {
+        font-size: 0.85rem !important;
+    }
+}
+
+/* ==================== MOBILE: MODAL VISUALIZAÇÃO REPOSITOR ==================== */
+@media (max-width: 768px) {
+    /* Modal Resumo/Visualização - ocupar 95% da tela */
+    #modalResumoRepositor .modal-content {
+        width: 95% !important;
+        max-width: 95% !important;
+        margin: 2.5% auto !important;
+        max-height: 95vh !important;
+        padding: 0 !important;
+    }
+
+    #modalResumoRepositor .modal-header {
+        padding: 12px !important;
+    }
+
+    #modalResumoRepositor .modal-header h3 {
+        font-size: 1.1rem;
+    }
+
+    #modalResumoRepositor .modal-body {
+        padding: 12px !important;
+    }
+
+    #modalResumoRepositor .modal-body.resumo-repositor-body {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    /* Cards de resumo */
+    #modalResumoRepositor .form-card {
+        padding: 12px !important;
+        margin-bottom: 0;
+    }
+
+    #modalResumoRepositor .form-card-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+        margin-bottom: 10px !important;
+    }
+
+    #modalResumoRepositor .form-card-header h4 {
+        font-size: 0.95rem;
+        white-space: normal !important;
+    }
+
+    #modalResumoRepositor .form-card-eyebrow {
+        font-size: 0.7rem;
+    }
+
+    /* Grid de resumo - ajustar colunas */
+    #modalResumoRepositor .resumo-repositor-grid {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 10px !important;
+    }
+
+    #modalResumoRepositor .resumo-campo {
+        word-break: break-word;
+    }
+
+    #modalResumoRepositor .resumo-campo p {
+        font-size: 0.9rem;
+        word-break: break-word;
+    }
+
+    #modalResumoRepositor .resumo-campo small {
+        font-size: 0.75rem;
+    }
+}
+
+/* ==================== MOBILE: TELA DE RATEIO - TÍTULO DUPLICADO ==================== */
+@media (max-width: 768px) {
+    /* Esconder título duplicado "Manutenção de Rateio" no card quando já existe no header */
+    .card:has(#rateioManutencaoContainer) .card-header .card-title {
+        display: none !important;
+    }
+
+    /* Esconder também o subtítulo */
+    .card:has(#rateioManutencaoContainer) .card-header .text-muted {
+        display: none !important;
+    }
+
+    /* Ajustar o card-header quando título é escondido */
+    .card:has(#rateioManutencaoContainer) .card-header {
+        justify-content: flex-end !important;
+        min-height: auto !important;
+        padding: 10px !important;
+    }
+
+    .card:has(#rateioManutencaoContainer) .card-header > div:first-child {
+        display: none !important;
+    }
+}
+
+/* ==================== MOBILE: FILTRO REPRESENTANTE DROPDOWN ==================== */
+@media (max-width: 768px) {
+    /* Garantir que selects não saiam da área */
+    .filter-bar select,
+    .filter-bar-wide select,
+    .filtros-section select {
+        max-width: 100% !important;
+        width: 100% !important;
+    }
+
+    /* Dropdown de representante na página de repositores */
+    #filtroRepresentante {
+        max-width: 100% !important;
+    }
+
+    /* Dropdown com opções longas - truncar */
+    .filter-bar select option,
+    .filter-bar-wide select option,
+    .filtros-section select option {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* Filter bar em coluna no mobile para repositores */
+    .filter-bar-wide {
+        flex-direction: column !important;
+        gap: 10px !important;
+    }
+
+    .filter-bar-wide .filter-group {
+        width: 100% !important;
+        min-width: 100% !important;
+    }
+}
