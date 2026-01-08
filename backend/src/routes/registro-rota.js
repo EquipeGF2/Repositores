@@ -809,9 +809,16 @@ router.post('/visitas', upload.any(), async (req, res) => {
     };
 
     try {
-      parentFolderId = rvTipo === 'campanha'
-        ? await googleDriveService.ensureCampanhaFolder(repIdNumber, repositor.repo_nome)
-        : await googleDriveService.criarPastaRepositor(repIdNumber, repositor.repo_nome);
+      // Organizar fotos em pastas por tipo e data
+      if (rvTipo === 'campanha') {
+        parentFolderId = await googleDriveService.ensureCampanhaFolder(repIdNumber, repositor.repo_nome);
+      } else if (rvTipo === 'checkin') {
+        parentFolderId = await googleDriveService.ensureCheckinFolder(repIdNumber, repositor.repo_nome, dataHoraRegistro);
+      } else if (rvTipo === 'checkout') {
+        parentFolderId = await googleDriveService.ensureCheckoutFolder(repIdNumber, repositor.repo_nome, dataHoraRegistro);
+      } else {
+        parentFolderId = await googleDriveService.criarPastaRepositor(repIdNumber, repositor.repo_nome);
+      }
     } catch (driveErroPasta) {
       const resposta = tratarErroDrive('DRIVE_FOLDER', driveErroPasta, { repId: repIdNumber });
       if (resposta) return resposta;
@@ -1340,11 +1347,13 @@ router.get('/visitas', async (req, res) => {
         || visita.rv_data_hora_registro
         || visita.data_hora_registro
         || null;
-      const dataPrevistaContexto = visita.data_prevista_base
-        || visita.data_prevista
-        || visita.rv_data_roteiro
+      // Priorizar data_planejada da sessão (o dia que o usuário selecionou para o roteiro)
+      // Isso garante que a pontualidade seja calculada com base no dia do roteiro atual
+      const dataPrevistaContexto = visita.data_planejada
         || visita.rv_data_planejada
-        || visita.data_planejada
+        || visita.rv_data_roteiro
+        || visita.data_prevista
+        || visita.data_prevista_base
         || null;
       const diaRealNumero = referenciaAtendimento ? new Date(referenciaAtendimento).getDay() : null;
       const diaPrevistoLabel = diaPrevistoCodigo
@@ -2774,16 +2783,15 @@ router.post('/coordenadas/manual', async (req, res) => {
     }
 
     // Salvar coordenadas como "manual"
-    await tursoService.salvarCoordenadasCliente(clienteIdNorm, {
-      endereco_original: enderecoOriginal,
-      latitude: lat,
-      longitude: lng,
-      fonte: 'manual',
-      precisao: 'manual',
-      aproximado: false,
-      cidade: null,
-      bairro: null
-    });
+    await tursoService.salvarCoordenadasCliente(
+      clienteIdNorm,
+      enderecoOriginal,
+      lat,
+      lng,
+      'manual',
+      'manual',
+      { cidade: null, bairro: null }
+    );
 
     console.log(`✓ Coordenadas manuais salvas para cliente ${clienteIdNorm}: ${lat}, ${lng}`);
 

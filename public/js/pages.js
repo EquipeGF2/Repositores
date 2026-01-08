@@ -5554,12 +5554,12 @@ export const pages = {
 
             <!-- Modal Detalhes Resposta -->
             <div class="modal modal-detalhes-resposta" id="modalDetalhesResposta">
-                <div class="modal-content" style="max-width: 95vw; width: 1200px; max-height: 90vh;">
+                <div class="modal-content modal-consulta-pesquisa-content">
                     <div class="modal-header">
                         <h3>Respostas da Pesquisa</h3>
                         <button class="modal-close" onclick="window.app.fecharModalDetalhesResposta()">&times;</button>
                     </div>
-                    <div class="modal-body" id="modalDetalhesRespostaBody" style="overflow-y: auto; max-height: calc(90vh - 80px);">
+                    <div class="modal-body" id="modalDetalhesRespostaBody">
                     </div>
                 </div>
             </div>
@@ -5889,6 +5889,108 @@ export const pages = {
                     .respostas-table {
                         display: block;
                         overflow-x: auto;
+                    }
+                }
+
+                /* Modal Consulta Pesquisa - Layout Melhorado */
+                .modal-consulta-pesquisa-content {
+                    width: 98vw !important;
+                    max-width: 98vw !important;
+                    max-height: 95vh !important;
+                    margin: 10px;
+                    padding: 0;
+                }
+
+                .modal-consulta-pesquisa-content .modal-header {
+                    padding: 12px 16px;
+                    border-bottom: 1px solid #e5e7eb;
+                    background: #f8f9fa;
+                }
+
+                .modal-consulta-pesquisa-content .modal-header h3 {
+                    margin: 0;
+                    font-size: 1rem;
+                }
+
+                .modal-consulta-pesquisa-content .modal-body {
+                    padding: 12px;
+                    overflow-y: auto;
+                    max-height: calc(95vh - 60px);
+                }
+
+                .modal-consulta-pesquisa-content .respostas-grid-container {
+                    overflow-x: auto;
+                    width: 100%;
+                }
+
+                .modal-consulta-pesquisa-content .respostas-grid-table {
+                    width: 100%;
+                    min-width: 800px;
+                    border-collapse: collapse;
+                    font-size: 13px;
+                }
+
+                .modal-consulta-pesquisa-content .respostas-grid-table th,
+                .modal-consulta-pesquisa-content .respostas-grid-table td {
+                    padding: 8px 10px;
+                    border: 1px solid #e5e7eb;
+                    text-align: left;
+                    vertical-align: top;
+                }
+
+                .modal-consulta-pesquisa-content .respostas-grid-table th {
+                    background: #f3f4f6;
+                    font-weight: 600;
+                    color: #374151;
+                    white-space: nowrap;
+                    position: sticky;
+                    top: 0;
+                    z-index: 1;
+                }
+
+                .modal-consulta-pesquisa-content .respostas-grid-table tbody tr:nth-child(even) {
+                    background: #f9fafb;
+                }
+
+                .modal-consulta-pesquisa-content .respostas-grid-table tbody tr:hover {
+                    background: #eef2ff;
+                }
+
+                .modal-consulta-pesquisa-content .respostas-grid-table td small {
+                    color: #6b7280;
+                    display: block;
+                    font-size: 11px;
+                }
+
+                .modal-consulta-pesquisa-content .respostas-grid-table td.text-center {
+                    text-align: center;
+                }
+
+                .modal-consulta-pesquisa-content .respostas-grid-table a {
+                    font-size: 18px;
+                    text-decoration: none;
+                }
+
+                @media (max-width: 768px) {
+                    .modal-consulta-pesquisa-content {
+                        width: 100vw !important;
+                        max-width: 100vw !important;
+                        max-height: 100vh !important;
+                        margin: 0;
+                        border-radius: 0;
+                    }
+
+                    .modal-consulta-pesquisa-content .modal-body {
+                        max-height: calc(100vh - 60px);
+                    }
+
+                    .modal-consulta-pesquisa-content .respostas-grid-table {
+                        font-size: 12px;
+                    }
+
+                    .modal-consulta-pesquisa-content .respostas-grid-table th,
+                    .modal-consulta-pesquisa-content .respostas-grid-table td {
+                        padding: 6px 8px;
                     }
                 }
             </style>

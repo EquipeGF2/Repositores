@@ -4937,10 +4937,17 @@ class TursoDatabase {
     async listarRespostasPesquisa(filtros = {}) {
         try {
             let sql = `
-                SELECT r.*, p.pes_titulo, p.pes_obrigatorio, rep.repo_nome
+                SELECT r.*,
+                       r.res_rep_id as res_repo_cod,
+                       r.res_data as res_data_resposta,
+                       p.pes_titulo, p.pes_obrigatorio,
+                       rep.repo_nome,
+                       c.nome as cliente_nome,
+                       c.fantasia as cliente_fantasia
                 FROM cc_pesquisa_respostas r
                 JOIN cc_pesquisas p ON p.pes_id = r.res_pes_id
                 JOIN cad_repositor rep ON rep.repo_cod = r.res_rep_id
+                LEFT JOIN cliente c ON c.cliente = r.res_cliente_codigo
                 WHERE 1=1
             `;
             const args = [];

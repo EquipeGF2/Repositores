@@ -346,6 +346,28 @@ class GoogleDriveService {
     return this.createFolderIfNotExists(root, 'CAMPANHA');
   }
 
+  /**
+   * Cria/obtém pasta para fotos de checkin organizadas por data
+   * Estrutura: REP_X_NOME/checkin/YYYY-MM-DD/
+   */
+  async ensureCheckinFolder(repId, repoNome, dataIso) {
+    const root = await this.criarPastaRepositor(repId, repoNome);
+    const checkinFolder = await this.createFolderIfNotExists(root, 'checkin');
+    const dataFormatada = dataIso.split('T')[0]; // YYYY-MM-DD
+    return this.createFolderIfNotExists(checkinFolder, dataFormatada);
+  }
+
+  /**
+   * Cria/obtém pasta para fotos de checkout organizadas por data
+   * Estrutura: REP_X_NOME/checkout/YYYY-MM-DD/
+   */
+  async ensureCheckoutFolder(repId, repoNome, dataIso) {
+    const root = await this.criarPastaRepositor(repId, repoNome);
+    const checkoutFolder = await this.createFolderIfNotExists(root, 'checkout');
+    const dataFormatada = dataIso.split('T')[0]; // YYYY-MM-DD
+    return this.createFolderIfNotExists(checkoutFolder, dataFormatada);
+  }
+
   slugify(text) {
     return text
       .toString()
