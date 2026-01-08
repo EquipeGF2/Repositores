@@ -368,6 +368,18 @@ class GoogleDriveService {
     return this.createFolderIfNotExists(checkoutFolder, dataFormatada);
   }
 
+  /**
+   * Cria/obtém pasta para fotos de despesas organizadas por rubrica
+   * Estrutura: REP_X_NOME/despesas/RUBRICA_NOME/
+   */
+  async ensureDespesaFolder(repId, repoNome, rubricaNome = 'OUTROS') {
+    const root = await this.criarPastaRepositor(repId, repoNome);
+    const despesasFolder = await this.createFolderIfNotExists(root, 'despesas');
+    // Slugify o nome da rubrica para ficar padronizado
+    const rubricaSlug = this.slugify(rubricaNome) || 'OUTROS';
+    return this.createFolderIfNotExists(despesasFolder, rubricaSlug);
+  }
+
   slugify(text) {
     return text
       .toString()

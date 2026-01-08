@@ -2312,6 +2312,7 @@ export const pages = {
                                     <option value="todos">Todos</option>
                                     <option value="em_atendimento">Em atendimento</option>
                                     <option value="finalizado">Finalizado</option>
+                                    <option value="nao_realizado">Não realizado</option>
                                 </select>
                             </div>
                             <div class="filter-group">
@@ -2340,6 +2341,12 @@ export const pages = {
             </div>
 
             <style>
+                /* Mobile: layout mais compacto */
+                @media (max-width: 768px) {
+                    #visitasContainer { padding: 8px !important; }
+                    .visit-item { padding: 10px; margin-bottom: 8px; border-radius: 8px; }
+                }
+
                 .visit-item {
                     display: flex;
                     align-items: stretch;
@@ -4132,6 +4139,19 @@ export const pages = {
                     box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3);
                 }
 
+                /* Botão download inline na linha da data */
+                .btn-doc-download-inline {
+                    margin-left: auto;
+                    padding: 6px 12px;
+                    font-size: 0.8rem;
+                }
+
+                .doc-line-data {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                }
+
                 #acoesLote {
                     animation: slideDown 0.3s ease;
                 }
@@ -4262,20 +4282,21 @@ export const pages = {
                     border-collapse: collapse;
                     margin-top: 16px;
                     font-size: 0.875rem;
+                    table-layout: fixed;
                 }
 
                 .despesas-table th,
                 .despesas-table td {
-                    padding: 10px 12px;
+                    padding: 10px 8px;
                     border-bottom: 1px solid var(--gray-200);
                     text-align: center;
+                    word-wrap: break-word;
                 }
 
                 .despesas-table th {
                     background: var(--gray-100);
                     font-weight: 600;
                     color: var(--gray-700);
-                    white-space: nowrap;
                 }
 
                 .despesas-table th:first-child,
@@ -4284,7 +4305,6 @@ export const pages = {
                 }
 
                 .despesas-table td.valor {
-                    font-family: var(--font-mono, monospace);
                     white-space: nowrap;
                 }
 
@@ -6080,7 +6100,7 @@ export const mobilePageTitles = {
     'registro-rota': 'Rota',
     'consulta-visitas': 'Visitas',
     'consulta-campanha': 'Campanha',
-    'documentos': 'Docs',
+    'documentos': 'Documentos',
     'consulta-documentos': 'Docs',
     'roteiro-repositor': 'Roteiro',
     'cadastro-rateio': 'Rateio',

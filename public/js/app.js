@@ -6684,53 +6684,115 @@ class App {
             return;
         }
 
-        container.innerHTML = `
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Repositor</th>
-                            <th>Supervisor</th>
-                            <th>Representante</th>
-                            <th>Datas Representante</th>
-                            <th>Status Rep.</th>
-                            <th>Resultado</th>
-                            <th>Motivo</th>
-                            <th>Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${resultados.map((item, index) => {
-                            const representante = item.representante;
-                            const repLabel = representante ? `${representante.representante} - ${representante.desc_representante}` : `${item.rep_representante_codigo || '-'}${item.rep_representante_nome ? ' - ' + item.rep_representante_nome : ''}`;
-                            const datas = representante ? `${this.formatarDataSimples(representante.rep_data_inicio)} até ${this.formatarDataSimples(representante.rep_data_fim)}` : '-';
-                            const statusBadge = item.status_representante.status === 'Ativo' ? 'badge-success' : 'badge-warning';
-                            const resultadoBadge = item.resultado_validacao === 'OK' ? 'badge-success' : 'badge-danger';
-                            const supervisorLabel = normalizarSupervisor(item.rep_supervisor) || '-';
+        // Layout responsivo: cards no mobile, tabela no desktop
+        const isMobile = window.innerWidth < 768;
 
-                            return `
-                                <tr class="${item.resultado_validacao === 'OK' ? '' : 'row-warning'}">
-                                    <td>
-                                        <div><strong>${item.repo_cod}</strong> - ${item.repo_nome}</div>
-                                        <small class="text-muted">${item.repositor_ativo ? 'Repositor ativo' : 'Repositor inativo'}</small>
-                                    </td>
-                                    <td>${supervisorLabel}</td>
-                                    <td>${repLabel || '-'}</td>
-                                    <td>${datas}</td>
-                                    <td><span class="badge ${statusBadge}">${item.status_representante.status}</span></td>
-                                    <td><span class="badge ${resultadoBadge}">${item.resultado_validacao}</span></td>
-                                    <td>${item.motivo_inconsistencia || '-'}</td>
-                                    <td class="table-actions">
-                                        <button class="btn-icon" onclick="window.app.abrirDetalhesRepresentante(${index}, 'validacao')" title="Detalhes do Representante">👁️</button>
-                                        <button class="btn-icon" onclick="window.app.abrirCadastroRepositor(${item.repo_cod})" title="Abrir Cadastro">📄</button>
-                                    </td>
-                                </tr>
-                            `;
-                        }).join('')}
-                    </tbody>
-                </table>
-            </div>
-        `;
+        if (isMobile) {
+            container.innerHTML = `
+                <div class="validacao-cards">
+                    ${resultados.map((item, index) => {
+                        const representante = item.representante;
+                        const repLabel = representante ? `${representante.representante} - ${representante.desc_representante}` : `${item.rep_representante_codigo || '-'}${item.rep_representante_nome ? ' - ' + item.rep_representante_nome : ''}`;
+                        const statusBadge = item.status_representante.status === 'Ativo' ? 'badge-success' : 'badge-warning';
+                        const resultadoBadge = item.resultado_validacao === 'OK' ? 'badge-success' : 'badge-danger';
+                        const supervisorLabel = normalizarSupervisor(item.rep_supervisor) || '-';
+
+                        return `
+                            <div class="validacao-card ${item.resultado_validacao === 'OK' ? '' : 'card-warning'}">
+                                <div class="validacao-card-main">
+                                    <div class="validacao-card-info">
+                                        <div class="validacao-repositor">
+                                            <strong>${item.repo_cod}</strong> - ${item.repo_nome}
+                                            <small class="text-muted">${item.repositor_ativo ? 'Ativo' : 'Inativo'}</small>
+                                        </div>
+                                        <div class="validacao-supervisor">
+                                            <small>Supervisor:</small> ${supervisorLabel}
+                                        </div>
+                                        <div class="validacao-representante">
+                                            <small>Representante:</small> ${repLabel || '-'}
+                                        </div>
+                                    </div>
+                                    <div class="validacao-card-status">
+                                        <div class="validacao-badges">
+                                            <span class="badge ${statusBadge}">${item.status_representante.status}</span>
+                                            <span class="badge ${resultadoBadge}">${item.resultado_validacao}</span>
+                                        </div>
+                                        <div class="validacao-actions">
+                                            <button class="btn-icon" onclick="window.app.abrirDetalhesRepresentante(${index}, 'validacao')" title="Detalhes">👁️</button>
+                                            <button class="btn-icon" onclick="window.app.abrirCadastroRepositor(${item.repo_cod})" title="Cadastro">📄</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                ${item.motivo_inconsistencia ? `<div class="validacao-motivo"><small>⚠️ ${item.motivo_inconsistencia}</small></div>` : ''}
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+                <style>
+                    .validacao-cards { display: flex; flex-direction: column; gap: 12px; }
+                    .validacao-card { background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; }
+                    .validacao-card.card-warning { border-color: #fca5a5; background: #fef2f2; }
+                    .validacao-card-main { display: flex; justify-content: space-between; gap: 12px; }
+                    .validacao-card-info { flex: 1; display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; }
+                    .validacao-repositor { font-size: 0.95rem; }
+                    .validacao-repositor small { display: block; font-size: 0.75rem; margin-top: 2px; }
+                    .validacao-supervisor, .validacao-representante { color: #6b7280; }
+                    .validacao-supervisor small, .validacao-representante small { font-weight: 600; color: #374151; }
+                    .validacao-card-status { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+                    .validacao-badges { display: flex; flex-direction: column; gap: 4px; }
+                    .validacao-actions { display: flex; gap: 4px; }
+                    .validacao-motivo { margin-top: 8px; padding-top: 8px; border-top: 1px solid #e5e7eb; color: #991b1b; font-size: 0.8rem; }
+                </style>
+            `;
+        } else {
+            container.innerHTML = `
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Repositor</th>
+                                <th>Supervisor</th>
+                                <th>Representante</th>
+                                <th>Datas Representante</th>
+                                <th>Status Rep.</th>
+                                <th>Resultado</th>
+                                <th>Motivo</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${resultados.map((item, index) => {
+                                const representante = item.representante;
+                                const repLabel = representante ? `${representante.representante} - ${representante.desc_representante}` : `${item.rep_representante_codigo || '-'}${item.rep_representante_nome ? ' - ' + item.rep_representante_nome : ''}`;
+                                const datas = representante ? `${this.formatarDataSimples(representante.rep_data_inicio)} até ${this.formatarDataSimples(representante.rep_data_fim)}` : '-';
+                                const statusBadge = item.status_representante.status === 'Ativo' ? 'badge-success' : 'badge-warning';
+                                const resultadoBadge = item.resultado_validacao === 'OK' ? 'badge-success' : 'badge-danger';
+                                const supervisorLabel = normalizarSupervisor(item.rep_supervisor) || '-';
+
+                                return `
+                                    <tr class="${item.resultado_validacao === 'OK' ? '' : 'row-warning'}">
+                                        <td>
+                                            <div><strong>${item.repo_cod}</strong> - ${item.repo_nome}</div>
+                                            <small class="text-muted">${item.repositor_ativo ? 'Repositor ativo' : 'Repositor inativo'}</small>
+                                        </td>
+                                        <td>${supervisorLabel}</td>
+                                        <td>${repLabel || '-'}</td>
+                                        <td>${datas}</td>
+                                        <td><span class="badge ${statusBadge}">${item.status_representante.status}</span></td>
+                                        <td><span class="badge ${resultadoBadge}">${item.resultado_validacao}</span></td>
+                                        <td>${item.motivo_inconsistencia || '-'}</td>
+                                        <td class="table-actions">
+                                            <button class="btn-icon" onclick="window.app.abrirDetalhesRepresentante(${index}, 'validacao')" title="Detalhes do Representante">👁️</button>
+                                            <button class="btn-icon" onclick="window.app.abrirCadastroRepositor(${item.repo_cod})" title="Abrir Cadastro">📄</button>
+                                        </td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
     }
 
     async editRepositor(cod) {
@@ -6833,7 +6895,6 @@ class App {
                         <table>
                             <thead>
                                 <tr>
-                                    <th>Data/Hora</th>
                                     <th>Repositor</th>
                                     <th>Campo Alterado</th>
                                     <th>Valor Anterior</th>
@@ -6847,8 +6908,10 @@ class App {
 
                                     return `
                                         <tr>
-                                            <td>${dataFormatada}</td>
-                                            <td>${h.repo_nome || 'Repositor não encontrado'}</td>
+                                            <td>
+                                                <div style="font-weight: 600;">${h.repo_nome || 'Repositor não encontrado'}</div>
+                                                <small style="color: #6b7280;">${dataFormatada}</small>
+                                            </td>
                                             <td><span class="badge badge-info">${h.hist_campo_alterado}</span></td>
                                             <td>${h.hist_valor_anterior || '-'}</td>
                                             <td>${h.hist_valor_novo || '-'}</td>
@@ -7204,48 +7267,95 @@ class App {
             return;
         }
 
-        container.innerHTML = `
-            <div class="table-container">
-                <table style="font-size: 0.85rem;">
-                    <thead>
-                        <tr>
-                            <th>Repositor</th>
-                            <th>Dia</th>
-                            <th>Cidade</th>
-                            <th>Ordem Cidade</th>
-                            <th>Código</th>
-                            <th>Nome</th>
-                            <th>Ordem Visita</th>
-                            <th>Fantasia</th>
-                            <th>Endereço</th>
-                            <th>Bairro</th>
-                            <th>Grupo</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${registros.map(item => {
-                            const cliente = item.cliente_dados || {};
-                            const endereco = this.montarEnderecoCliente(cliente);
-                            return `
-                                <tr>
-                                    <td>${item.repo_cod} - ${item.repo_nome}</td>
-                                    <td>${this.formatarDiaSemanaLabel(item.rot_dia_semana)}</td>
-                                    <td>${item.rot_cidade}</td>
-                                    <td>${item.rot_ordem_cidade || '-'}</td>
-                                    <td>${item.rot_cliente_codigo}</td>
-                                    <td>${cliente.nome || '-'}</td>
-                                    <td>${item.rot_ordem_visita || '-'}</td>
-                                    <td>${cliente.fantasia || '-'}</td>
-                                    <td>${endereco}</td>
-                                    <td>${cliente.bairro || '-'}</td>
-                                    <td>${formatarGrupo(cliente.grupo_desc)}</td>
-                                </tr>
-                            `;
-                        }).join('')}
-                    </tbody>
-                </table>
-            </div>
-        `;
+        // Layout responsivo: cards no mobile, tabela no desktop
+        const isMobile = window.innerWidth < 768;
+
+        if (isMobile) {
+            container.innerHTML = `
+                <div class="roteiro-cards">
+                    ${registros.map(item => {
+                        const cliente = item.cliente_dados || {};
+                        const endereco = this.montarEnderecoCliente(cliente);
+                        return `
+                            <div class="roteiro-card">
+                                <div class="roteiro-card-header">
+                                    <div class="roteiro-repositor">
+                                        <strong>${item.repo_cod} - ${item.repo_nome}</strong>
+                                        <span class="roteiro-dia">${this.formatarDiaSemanaLabel(item.rot_dia_semana)}</span>
+                                    </div>
+                                    <span class="roteiro-ordem">#${item.rot_ordem_visita || '-'}</span>
+                                </div>
+                                <div class="roteiro-card-body">
+                                    <div class="roteiro-cidade">${item.rot_cidade}</div>
+                                    <div class="roteiro-cliente">
+                                        <strong>${item.rot_cliente_codigo}</strong> - ${cliente.nome || '-'}
+                                    </div>
+                                    ${cliente.fantasia ? `<div class="roteiro-fantasia">${cliente.fantasia}</div>` : ''}
+                                    <div class="roteiro-endereco">${endereco} - ${cliente.bairro || '-'}</div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+                <style>
+                    .roteiro-cards { display: flex; flex-direction: column; gap: 8px; }
+                    .roteiro-card { background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; }
+                    .roteiro-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+                    .roteiro-repositor { display: flex; flex-direction: column; gap: 2px; }
+                    .roteiro-repositor strong { font-size: 0.9rem; color: #374151; }
+                    .roteiro-dia { font-size: 0.75rem; color: #6b7280; background: #f3f4f6; padding: 2px 6px; border-radius: 4px; width: fit-content; }
+                    .roteiro-ordem { background: #ef4444; color: white; padding: 2px 8px; border-radius: 6px; font-weight: 600; font-size: 0.8rem; }
+                    .roteiro-card-body { font-size: 0.85rem; display: flex; flex-direction: column; gap: 4px; }
+                    .roteiro-cidade { color: #059669; font-weight: 600; }
+                    .roteiro-cliente { color: #374151; }
+                    .roteiro-fantasia { color: #6b7280; font-style: italic; font-size: 0.8rem; }
+                    .roteiro-endereco { color: #6b7280; font-size: 0.8rem; }
+                </style>
+            `;
+        } else {
+            container.innerHTML = `
+                <div class="table-container">
+                    <table style="font-size: 0.85rem;">
+                        <thead>
+                            <tr>
+                                <th>Repositor</th>
+                                <th>Dia</th>
+                                <th>Cidade</th>
+                                <th>Ordem Cidade</th>
+                                <th>Código</th>
+                                <th>Nome</th>
+                                <th>Ordem Visita</th>
+                                <th>Fantasia</th>
+                                <th>Endereço</th>
+                                <th>Bairro</th>
+                                <th>Grupo</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${registros.map(item => {
+                                const cliente = item.cliente_dados || {};
+                                const endereco = this.montarEnderecoCliente(cliente);
+                                return `
+                                    <tr>
+                                        <td>${item.repo_cod} - ${item.repo_nome}</td>
+                                        <td>${this.formatarDiaSemanaLabel(item.rot_dia_semana)}</td>
+                                        <td>${item.rot_cidade}</td>
+                                        <td>${item.rot_ordem_cidade || '-'}</td>
+                                        <td>${item.rot_cliente_codigo}</td>
+                                        <td>${cliente.nome || '-'}</td>
+                                        <td>${item.rot_ordem_visita || '-'}</td>
+                                        <td>${cliente.fantasia || '-'}</td>
+                                        <td>${endereco}</td>
+                                        <td>${cliente.bairro || '-'}</td>
+                                        <td>${formatarGrupo(cliente.grupo_desc)}</td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
     }
 
     // ==================== EXPORTAÇÃO PDF E EXCEL ====================
@@ -12757,68 +12867,102 @@ class App {
             return;
         }
 
-        // Criar cabeçalhos das rubricas com largura uniforme
-        const rubricaHeaders = rubricas.map(r => `<th>${r.gst_nome}</th>`).join('');
+        // Calcular totais por rubrica
+        const totaisPorRubrica = {};
+        rubricas.forEach(r => {
+            totaisPorRubrica[r.gst_codigo.toLowerCase()] = {
+                nome: r.gst_nome,
+                valor: 0
+            };
+        });
 
         let totalGeral = 0;
-        const rows = despesasPorRepositor.map(grupo => {
-            const rubricaCells = rubricas.map(r => {
-                const rubrica = grupo.rubricas[r.gst_codigo.toLowerCase()] || { valor: 0 };
-                return `<td class="valor">R$ ${rubrica.valor.toFixed(2).replace('.', ',')}</td>`;
-            }).join('');
-
-            // Calcular total do repositor
+        despesasPorRepositor.forEach(grupo => {
+            Object.entries(grupo.rubricas).forEach(([codigo, data]) => {
+                if (totaisPorRubrica[codigo]) {
+                    totaisPorRubrica[codigo].valor += data.valor;
+                }
+            });
             const total = Object.values(grupo.rubricas).reduce((sum, r) => sum + r.valor, 0);
             totalGeral += total;
+        });
+
+        // Gerar cards
+        const cards = despesasPorRepositor.map(grupo => {
+            const total = Object.values(grupo.rubricas).reduce((sum, r) => sum + r.valor, 0);
+
+            // Rubricas com valores
+            const rubricasHtml = rubricas.map(r => {
+                const rubrica = grupo.rubricas[r.gst_codigo.toLowerCase()] || { valor: 0 };
+                if (rubrica.valor === 0) return '';
+                return `
+                    <div class="despesa-rubrica-item">
+                        <span class="despesa-rubrica-nome">${r.gst_nome}</span>
+                        <span class="despesa-rubrica-valor">R$ ${rubrica.valor.toFixed(2).replace('.', ',')}</span>
+                    </div>
+                `;
+            }).filter(Boolean).join('');
 
             return `
-                <tr>
-                    <td><strong>${grupo.repositorNome}</strong></td>
-                    ${rubricaCells}
-                    <td class="valor total">R$ ${total.toFixed(2).replace('.', ',')}</td>
-                    <td>
+                <div class="despesa-card">
+                    <div class="despesa-card-header">
+                        <div class="despesa-card-titulo">${grupo.repositorNome}</div>
+                        <div class="despesa-card-total">R$ ${total.toFixed(2).replace('.', ',')}</div>
+                    </div>
+                    <div class="despesa-card-rubricas">
+                        ${rubricasHtml || '<span class="text-muted">Sem rubricas</span>'}
+                    </div>
+                    <div class="despesa-card-footer">
                         <button class="btn btn-sm btn-primary" onclick="app.abrirModalDetalhesDespesas('${grupo.repositorId}', '${grupo.repositorNome.replace(/'/g, "\\'")}')">
                             👁️ Ver
                         </button>
-                    </td>
-                </tr>
+                    </div>
+                </div>
             `;
         }).join('');
 
-        // Footer com totais
-        const rubricaTotals = rubricas.map(r => {
-            const total = despesasPorRepositor.reduce((sum, g) => {
-                return sum + (g.rubricas[r.gst_codigo.toLowerCase()]?.valor || 0);
-            }, 0);
-            return `<td class="valor"><strong>R$ ${total.toFixed(2).replace('.', ',')}</strong></td>`;
-        }).join('');
+        // Gerar rubricas do total geral
+        const totalGeralRubricasHtml = Object.entries(totaisPorRubrica)
+            .filter(([_, data]) => data.valor > 0)
+            .map(([_, data]) => `
+                <div class="despesa-rubrica-item">
+                    <span class="despesa-rubrica-nome">${data.nome}</span>
+                    <span class="despesa-rubrica-valor">R$ ${data.valor.toFixed(2).replace('.', ',')}</span>
+                </div>
+            `).join('');
 
         container.innerHTML = `
+            <style>
+                .despesa-cards-container { display: flex; flex-direction: column; gap: 12px; }
+                .despesa-card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; }
+                .despesa-card.total-geral { background: linear-gradient(135deg, #065f46 0%, #047857 100%); color: white; border: none; }
+                .despesa-card.total-geral .despesa-card-titulo { color: rgba(255,255,255,0.9); }
+                .despesa-card.total-geral .despesa-card-total { color: white; font-size: 1.5rem; }
+                .despesa-card.total-geral .despesa-rubrica-nome { color: rgba(255,255,255,0.8); }
+                .despesa-card.total-geral .despesa-rubrica-valor { color: white; }
+                .despesa-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+                .despesa-card-titulo { font-weight: 600; color: #374151; font-size: 1rem; }
+                .despesa-card-total { font-size: 1.25rem; font-weight: 700; color: #059669; }
+                .despesa-card-rubricas { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+                .despesa-rubrica-item { display: flex; justify-content: space-between; align-items: center; font-size: 0.875rem; }
+                .despesa-rubrica-nome { color: #6b7280; }
+                .despesa-rubrica-valor { font-weight: 600; color: #374151; }
+                .despesa-card-footer { display: flex; justify-content: flex-end; }
+            </style>
             <p style="margin-bottom: 12px; color: var(--gray-600); font-size: 0.875rem;">
                 Encontrados <strong>${despesasPorRepositor.length}</strong> repositor(es) com despesas
             </p>
-            <div class="table-responsive">
-                <table class="despesas-table">
-                    <thead>
-                        <tr>
-                            <th>Repositor</th>
-                            ${rubricaHeaders}
-                            <th>Total</th>
-                            <th>Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${rows}
-                    </tbody>
-                    <tfoot>
-                        <tr>
-                            <td><strong>TOTAL GERAL</strong></td>
-                            ${rubricaTotals}
-                            <td class="valor total"><strong>R$ ${totalGeral.toFixed(2).replace('.', ',')}</strong></td>
-                            <td></td>
-                        </tr>
-                    </tfoot>
-                </table>
+            <div class="despesa-cards-container">
+                <div class="despesa-card total-geral">
+                    <div class="despesa-card-header">
+                        <div class="despesa-card-titulo">💰 TOTAL GERAL</div>
+                        <div class="despesa-card-total">R$ ${totalGeral.toFixed(2).replace('.', ',')}</div>
+                    </div>
+                    <div class="despesa-card-rubricas">
+                        ${totalGeralRubricasHtml || '<span style="opacity: 0.7;">Sem rubricas</span>'}
+                    </div>
+                </div>
+                ${cards}
             </div>
         `;
     }
@@ -12980,10 +13124,10 @@ class App {
                     body { font-family: Arial, sans-serif; padding: 20px; font-size: 12px; }
                     h1 { font-size: 18px; margin-bottom: 5px; }
                     .periodo { color: #666; margin-bottom: 20px; }
-                    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-                    th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; }
+                    th, td { border: 1px solid #ddd; padding: 6px 4px; text-align: center; word-wrap: break-word; font-size: 11px; }
                     th { background: #f5f5f5; font-weight: bold; }
-                    td:first-child, th:first-child { text-align: left; }
+                    td:first-child, th:first-child { text-align: left; width: 20%; }
                     .total { font-weight: bold; background: #f9f9f9; }
                     .valor-total { color: #dc2626; font-weight: bold; }
                     @media print { body { padding: 0; } }
@@ -14142,18 +14286,16 @@ class App {
                                 <span class="doc-icon">🏷️</span>
                                 <span class="doc-text"><span class="doc-tipo-badge">${doc.dct_nome || 'Sem tipo'}</span></span>
                             </div>
-                            <div class="doc-line">
+                            <div class="doc-line doc-line-data">
                                 <span class="doc-icon">📅</span>
                                 <span class="doc-text truncate-1" title="${dataFormatada}">${dataFormatada}</span>
+                                <button class="btn-doc-download btn-doc-download-inline" onclick="app.downloadDocumento('${doc.doc_id}')">
+                                    📥 Download
+                                </button>
                             </div>
                             ${observacaoExibir ? `<div class="doc-line"><span class="doc-icon">💬</span><span class="doc-text break-any">${observacaoExibir}</span></div>` : ''}
                         </div>
                     </div>
-                </div>
-                <div class="doc-actions mobile-wrap">
-                    <button class="btn-doc-download" onclick="app.downloadDocumento('${doc.doc_id}')">
-                        📥 Download
-                    </button>
                 </div>
             `;
 

@@ -668,21 +668,68 @@ router.post('/upload-multiplo', upload.array('arquivos', 10), async (req, res) =
 
     const repositor = repoResult.rows[0];
 
-    // Garantir estrutura de pastas
-    const { documentosFolderId } = await ensureRepositorFolders(
-      parseInt(repositor_id),
-      repositor.repo_nome
-    );
+    // Verificar se é despesa de viagem para organizar em pasta por rubrica
+    const codigoLower = (tipo.dct_codigo || '').toLowerCase();
+    const nomeLower = (tipo.dct_nome || '').toLowerCase();
+    const isDespesaPorTipo = codigoLower.includes('despesa') || codigoLower.includes('viagem') ||
+                             nomeLower.includes('despesa') || nomeLower.includes('viagem');
+    const isDespesaPorJson = observacao && observacao.includes('"tipo":"despesa_viagem"');
+    const isDespesaViagem = isDespesaPorTipo || isDespesaPorJson;
 
-    const tipoFolderId = await ensureTipoFolder(
-      parseInt(repositor_id),
-      tipo.dct_id,
-      tipo.dct_nome,
-      documentosFolderId
-    );
+    let targetFolderId;
+    let rubricaDetectada = null;
+
+    if (isDespesaViagem && observacao) {
+      // Para despesas, organizar por rubrica
+      console.log('📁 Detectada despesa de viagem - organizando por rubrica');
+
+      // Tentar detectar a rubrica principal a partir do JSON
+      try {
+        const jsonMatch = observacao.match(/^\{[\s\S]*?\}/);
+        if (jsonMatch) {
+          const obsData = JSON.parse(jsonMatch[0]);
+          if (obsData.rubricas && Array.isArray(obsData.rubricas)) {
+            // Encontrar rubricas com valor > 0
+            const rubricasComValor = obsData.rubricas.filter(r => r.valor > 0);
+            if (rubricasComValor.length === 1) {
+              // Só tem uma rubrica - usar ela
+              rubricaDetectada = rubricasComValor[0].codigo || rubricasComValor[0].nome;
+            } else if (rubricasComValor.length > 1) {
+              // Múltiplas rubricas - usar a de maior valor
+              const maiorRubrica = rubricasComValor.sort((a, b) => (b.valor || 0) - (a.valor || 0))[0];
+              rubricaDetectada = maiorRubrica.codigo || maiorRubrica.nome;
+            }
+          }
+        }
+      } catch (e) {
+        console.log('⚠️ Não foi possível detectar rubrica do JSON:', e.message);
+      }
+
+      // Criar pasta de despesas com a rubrica
+      const rubricaNome = rubricaDetectada || 'GERAL';
+      targetFolderId = await googleDriveService.ensureDespesaFolder(
+        parseInt(repositor_id),
+        repositor.repo_nome,
+        rubricaNome
+      );
+      console.log(`📁 Pasta de despesas criada: ${rubricaNome}`);
+    } else {
+      // Garantir estrutura de pastas padrão para documentos
+      const { documentosFolderId } = await ensureRepositorFolders(
+        parseInt(repositor_id),
+        repositor.repo_nome
+      );
+
+      targetFolderId = await ensureTipoFolder(
+        parseInt(repositor_id),
+        tipo.dct_id,
+        tipo.dct_nome,
+        documentosFolderId
+      );
+    }
 
     // Listar arquivos existentes uma única vez
-    const arquivosExistentes = await googleDriveService.listarArquivosPorPasta(tipoFolderId);
+    const arquivosExistentes = await googleDriveService.listarArquivosPorPasta(targetFolderId);
     const nomesUsados = new Set(arquivosExistentes.map(a => (a.name || '').toLowerCase()));
 
     // Processar cada arquivo
@@ -712,7 +759,7 @@ router.post('/upload-multiplo', upload.array('arquivos', 10), async (req, res) =
           buffer: arquivo.buffer,
           mimeType: arquivo.mimetype,
           filename: nomeFinal,
-          parentFolderId: tipoFolderId
+          parentFolderId: targetFolderId
         });
 
         // Log dos valores antes do INSERT
@@ -753,7 +800,7 @@ router.post('/upload-multiplo', upload.array('arquivos', 10), async (req, res) =
               data_ref,
               hora_ref,
               uploadResult.fileId,
-              tipoFolderId
+              targetFolderId
             ]
           );
 
@@ -1055,6 +1102,15 @@ router.get('/despesas/detalhes', async (req, res) => {
 
     if (!repositor_id) {
       return res.status(400).json({ ok: false, message: 'repositor_id é obrigatório' });
+    }
+
+    // Verificar se a tabela existe
+    try {
+      await tursoService.execute(`SELECT 1 FROM cc_despesa_valores LIMIT 1`);
+    } catch (tableError) {
+      // Tabela não existe ainda - retornar lista vazia
+      console.log('Tabela cc_despesa_valores não existe ainda');
+      return res.json({ ok: true, detalhes: [] });
     }
 
     let sql = `
