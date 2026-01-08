@@ -2783,16 +2783,15 @@ router.post('/coordenadas/manual', async (req, res) => {
     }
 
     // Salvar coordenadas como "manual"
-    await tursoService.salvarCoordenadasCliente(clienteIdNorm, {
-      endereco_original: enderecoOriginal,
-      latitude: lat,
-      longitude: lng,
-      fonte: 'manual',
-      precisao: 'manual',
-      aproximado: false,
-      cidade: null,
-      bairro: null
-    });
+    await tursoService.salvarCoordenadasCliente(
+      clienteIdNorm,
+      enderecoOriginal,
+      lat,
+      lng,
+      'manual',
+      'manual',
+      { cidade: null, bairro: null }
+    );
 
     console.log(`✓ Coordenadas manuais salvas para cliente ${clienteIdNorm}: ${lat}, ${lng}`);
 

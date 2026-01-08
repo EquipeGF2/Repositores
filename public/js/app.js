@@ -16877,11 +16877,11 @@ class App {
                 <table class="respostas-grid-table">
                     <thead>
                         <tr>
-                            <th style="min-width: 120px;">Repositor</th>
-                            <th style="min-width: 150px;">Cliente</th>
-                            <th style="min-width: 130px;">Data</th>
-                            ${perguntas.map(p => `<th style="min-width: 150px;">${p}</th>`).join('')}
-                            <th style="min-width: 60px;">Foto</th>
+                            <th>Repositor</th>
+                            <th>Cliente</th>
+                            <th>Data</th>
+                            ${perguntas.map(p => `<th>${p}</th>`).join('')}
+                            <th>Foto</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -16900,15 +16900,15 @@ class App {
                                 <tr>
                                     <td>
                                         <strong>${r.res_repo_cod}</strong>
-                                        <br><small>${r.repo_nome || ''}</small>
+                                        <small>${r.repo_nome || ''}</small>
                                     </td>
                                     <td>
                                         <strong>${r.res_cliente_codigo}</strong>
-                                        <br><small>${r.cliente_nome || ''}</small>
+                                        <small>${r.cliente_nome || ''}</small>
                                     </td>
                                     <td>${data}</td>
                                     ${perguntas.map(p => `<td>${respostasMap[p] || '-'}</td>`).join('')}
-                                    <td style="text-align: center;">
+                                    <td class="text-center">
                                         ${r.res_foto_url ? `
                                             <a href="${r.res_foto_url}" target="_blank" title="Ver foto">
                                                 📷
@@ -16921,40 +16921,6 @@ class App {
                     </tbody>
                 </table>
             </div>
-            <style>
-                .respostas-grid-container {
-                    overflow-x: auto;
-                    width: 100%;
-                }
-                .respostas-grid-table {
-                    width: 100%;
-                    border-collapse: collapse;
-                    font-size: 14px;
-                }
-                .respostas-grid-table th,
-                .respostas-grid-table td {
-                    padding: 10px 12px;
-                    border: 1px solid #e5e7eb;
-                    text-align: left;
-                    vertical-align: top;
-                }
-                .respostas-grid-table th {
-                    background: #f3f4f6;
-                    font-weight: 600;
-                    color: #374151;
-                    white-space: nowrap;
-                }
-                .respostas-grid-table tbody tr:hover {
-                    background: #f9fafb;
-                }
-                .respostas-grid-table td small {
-                    color: #6b7280;
-                }
-                .respostas-grid-table a {
-                    font-size: 18px;
-                    text-decoration: none;
-                }
-            </style>
         `;
 
         modal.classList.add('active');
