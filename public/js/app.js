@@ -2050,8 +2050,8 @@ class App {
                         </span>
                     </td>
                     <td style="text-align: center; white-space: nowrap;">
-                        <button class="btn btn-sm btn-secondary" onclick="app.editarTipoGasto(${t.gst_id})" title="Editar" style="margin-right: 4px;">✏️</button>
-                        <button class="btn btn-sm btn-danger" onclick="app.excluirTipoGasto(${t.gst_id})" title="Excluir">🗑️</button>
+                        <button class="btn btn-sm btn-secondary" onclick="app.editarTipoGasto(${t.gst_id})" title="Editar" style="padding: 4px 8px; font-size: 0.75rem; margin-right: 2px;">✏️</button>
+                        <button class="btn btn-sm btn-danger" onclick="app.excluirTipoGasto(${t.gst_id})" title="Excluir" style="padding: 4px 8px; font-size: 0.75rem;">🗑️</button>
                     </td>
                 </tr>
             `).join('');
@@ -6694,70 +6694,59 @@ class App {
                         const representante = item.representante;
                         const repLabel = representante ? `${representante.representante} - ${representante.desc_representante}` : `${item.rep_representante_codigo || '-'}${item.rep_representante_nome ? ' - ' + item.rep_representante_nome : ''}`;
                         const statusBadge = item.status_representante.status === 'Ativo' ? 'badge-success' : 'badge-warning';
-                        const resultadoBadge = item.resultado_validacao === 'OK' ? 'badge-success' : 'badge-danger';
                         const supervisorLabel = normalizarSupervisor(item.rep_supervisor) || '-';
 
                         return `
-                            <div class="validacao-card ${item.resultado_validacao === 'OK' ? '' : 'card-warning'}">
+                            <div class="validacao-card">
                                 <div class="validacao-card-main">
                                     <div class="validacao-card-info">
                                         <div class="validacao-repositor">
                                             <strong>${item.repo_cod}</strong> - ${item.repo_nome}
-                                            <small class="text-muted">${item.repositor_ativo ? 'Ativo' : 'Inativo'}</small>
-                                        </div>
-                                        <div class="validacao-supervisor">
-                                            <small>Supervisor:</small> ${supervisorLabel}
                                         </div>
                                         <div class="validacao-representante">
                                             <small>Representante:</small> ${repLabel || '-'}
                                         </div>
+                                        <div class="validacao-supervisor">
+                                            <small>Supervisor:</small> ${supervisorLabel}
+                                        </div>
                                     </div>
                                     <div class="validacao-card-status">
-                                        <div class="validacao-badges">
-                                            <span class="badge ${statusBadge}">${item.status_representante.status}</span>
-                                            <span class="badge ${resultadoBadge}">${item.resultado_validacao}</span>
-                                        </div>
+                                        <span class="badge ${statusBadge}">${item.status_representante.status}</span>
                                         <div class="validacao-actions">
                                             <button class="btn-icon" onclick="window.app.abrirDetalhesRepresentante(${index}, 'validacao')" title="Detalhes">👁️</button>
                                             <button class="btn-icon" onclick="window.app.abrirCadastroRepositor(${item.repo_cod})" title="Cadastro">📄</button>
                                         </div>
                                     </div>
                                 </div>
-                                ${item.motivo_inconsistencia ? `<div class="validacao-motivo"><small>⚠️ ${item.motivo_inconsistencia}</small></div>` : ''}
                             </div>
                         `;
                     }).join('')}
                 </div>
                 <style>
-                    .validacao-cards { display: flex; flex-direction: column; gap: 12px; }
-                    .validacao-card { background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; }
-                    .validacao-card.card-warning { border-color: #fca5a5; background: #fef2f2; }
+                    .validacao-cards { display: flex; flex-direction: column; gap: 4px; }
+                    .validacao-card { background: #fafafa; padding: 10px 0; border-bottom: 1px solid #e5e7eb; }
+                    .validacao-card:last-child { border-bottom: none; }
                     .validacao-card-main { display: flex; justify-content: space-between; gap: 12px; }
                     .validacao-card-info { flex: 1; display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; }
-                    .validacao-repositor { font-size: 0.95rem; }
-                    .validacao-repositor small { display: block; font-size: 0.75rem; margin-top: 2px; }
+                    .validacao-repositor { font-size: 0.95rem; font-weight: 600; }
                     .validacao-supervisor, .validacao-representante { color: #6b7280; }
                     .validacao-supervisor small, .validacao-representante small { font-weight: 600; color: #374151; }
                     .validacao-card-status { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
-                    .validacao-badges { display: flex; flex-direction: column; gap: 4px; }
                     .validacao-actions { display: flex; gap: 4px; }
-                    .validacao-motivo { margin-top: 8px; padding-top: 8px; border-top: 1px solid #e5e7eb; color: #991b1b; font-size: 0.8rem; }
                 </style>
             `;
         } else {
             container.innerHTML = `
                 <div class="table-container">
-                    <table>
+                    <table class="validacao-table">
                         <thead>
                             <tr>
-                                <th>Repositor</th>
+                                <th style="width: 60px; text-align: center;">Ações</th>
+                                <th style="min-width: 200px;">Repositor</th>
+                                <th style="min-width: 250px;">Representante</th>
                                 <th>Supervisor</th>
-                                <th>Representante</th>
                                 <th>Datas Representante</th>
                                 <th>Status Rep.</th>
-                                <th>Resultado</th>
-                                <th>Motivo</th>
-                                <th>Ações</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -6766,25 +6755,22 @@ class App {
                                 const repLabel = representante ? `${representante.representante} - ${representante.desc_representante}` : `${item.rep_representante_codigo || '-'}${item.rep_representante_nome ? ' - ' + item.rep_representante_nome : ''}`;
                                 const datas = representante ? `${this.formatarDataSimples(representante.rep_data_inicio)} até ${this.formatarDataSimples(representante.rep_data_fim)}` : '-';
                                 const statusBadge = item.status_representante.status === 'Ativo' ? 'badge-success' : 'badge-warning';
-                                const resultadoBadge = item.resultado_validacao === 'OK' ? 'badge-success' : 'badge-danger';
                                 const supervisorLabel = normalizarSupervisor(item.rep_supervisor) || '-';
 
                                 return `
                                     <tr class="${item.resultado_validacao === 'OK' ? '' : 'row-warning'}">
+                                        <td style="text-align: center;">
+                                            <button class="btn-icon" onclick="window.app.abrirDetalhesRepresentante(${index}, 'validacao')" title="Detalhes do Representante">👁️</button>
+                                            <button class="btn-icon" onclick="window.app.abrirCadastroRepositor(${item.repo_cod})" title="Abrir Cadastro">📄</button>
+                                        </td>
                                         <td>
                                             <div><strong>${item.repo_cod}</strong> - ${item.repo_nome}</div>
                                             <small class="text-muted">${item.repositor_ativo ? 'Repositor ativo' : 'Repositor inativo'}</small>
                                         </td>
-                                        <td>${supervisorLabel}</td>
                                         <td>${repLabel || '-'}</td>
+                                        <td>${supervisorLabel}</td>
                                         <td>${datas}</td>
                                         <td><span class="badge ${statusBadge}">${item.status_representante.status}</span></td>
-                                        <td><span class="badge ${resultadoBadge}">${item.resultado_validacao}</span></td>
-                                        <td>${item.motivo_inconsistencia || '-'}</td>
-                                        <td class="table-actions">
-                                            <button class="btn-icon" onclick="window.app.abrirDetalhesRepresentante(${index}, 'validacao')" title="Detalhes do Representante">👁️</button>
-                                            <button class="btn-icon" onclick="window.app.abrirCadastroRepositor(${item.repo_cod})" title="Abrir Cadastro">📄</button>
-                                        </td>
                                     </tr>
                                 `;
                             }).join('')}
@@ -6971,44 +6957,83 @@ class App {
             return;
         }
 
-        container.innerHTML = `
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Data/Hora</th>
-                            <th>Usuário</th>
-                            <th>Repositor</th>
-                            <th>Dia</th>
-                            <th>Cidade</th>
-                            <th>Cliente</th>
-                            <th>Ação</th>
-                            <th>Detalhes</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${registros.map(item => {
-                            const dataFormatada = item.rot_aud_data_hora ? new Date(item.rot_aud_data_hora).toLocaleString('pt-BR') : '-';
-                            return `
-                                <tr>
-                                    <td>${dataFormatada}</td>
-                                    <td>${item.rot_aud_usuario || '-'}</td>
-                                    <td>${item.repo_nome ? `${item.rot_aud_repositor_id} - ${item.repo_nome}` : item.rot_aud_repositor_id}</td>
-                                    <td>${item.rot_aud_dia_semana || '-'}</td>
-                                    <td>${item.rot_aud_cidade || '-'}</td>
-                                    <td>${item.rot_aud_cliente_codigo || '-'}</td>
-                                    <td><span class="badge badge-info">${item.rot_aud_acao}</span></td>
-                                    <td>${item.rot_aud_detalhes || '-'}</td>
-                                </tr>
-                            `;
-                        }).join('')}
-                    </tbody>
-                </table>
+        const isMobile = window.innerWidth < 768;
+
+        if (isMobile) {
+            container.innerHTML = `
+                <div class="auditoria-cards">
+                    ${registros.map(item => {
+                        const dataFormatada = item.rot_aud_data_hora ? new Date(item.rot_aud_data_hora).toLocaleString('pt-BR') : '-';
+                        const usuario = item.rot_aud_usuario || '-';
+                        return `
+                            <div class="auditoria-card">
+                                <div class="auditoria-card-header">
+                                    <span class="badge badge-info">${item.rot_aud_acao}</span>
+                                    <small>${dataFormatada} • ${usuario}</small>
+                                </div>
+                                <div class="auditoria-card-body">
+                                    <div><strong>Repositor:</strong> ${item.repo_nome ? `${item.rot_aud_repositor_id} - ${item.repo_nome}` : item.rot_aud_repositor_id}</div>
+                                    <div><strong>Dia:</strong> ${item.rot_aud_dia_semana || '-'} | <strong>Cidade:</strong> ${item.rot_aud_cidade || '-'}</div>
+                                    <div><strong>Cliente:</strong> ${item.rot_aud_cliente_codigo || '-'}</div>
+                                    ${item.rot_aud_detalhes ? `<div class="auditoria-detalhes">${item.rot_aud_detalhes}</div>` : ''}
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
                 <p style="margin-top: 1rem; color: var(--gray-600); font-size: 0.9rem;">
                     Total de alterações: ${registros.length}
                 </p>
-            </div>
-        `;
+                <style>
+                    .auditoria-cards { display: flex; flex-direction: column; gap: 8px; }
+                    .auditoria-card { background: #fafafa; padding: 10px; border-bottom: 1px solid #e5e7eb; }
+                    .auditoria-card:last-child { border-bottom: none; }
+                    .auditoria-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 4px; }
+                    .auditoria-card-header small { color: #6b7280; font-size: 0.75rem; }
+                    .auditoria-card-body { font-size: 0.85rem; display: flex; flex-direction: column; gap: 4px; }
+                    .auditoria-card-body strong { color: #374151; }
+                    .auditoria-detalhes { background: #f3f4f6; padding: 6px 8px; border-radius: 4px; font-size: 0.8rem; color: #6b7280; margin-top: 4px; }
+                </style>
+            `;
+        } else {
+            container.innerHTML = `
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Data/Hora/Usuário</th>
+                                <th>Repositor</th>
+                                <th>Dia</th>
+                                <th>Cidade</th>
+                                <th>Cliente</th>
+                                <th>Ação</th>
+                                <th>Detalhes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${registros.map(item => {
+                                const dataFormatada = item.rot_aud_data_hora ? new Date(item.rot_aud_data_hora).toLocaleString('pt-BR') : '-';
+                                const usuario = item.rot_aud_usuario || '-';
+                                return `
+                                    <tr>
+                                        <td style="white-space: nowrap;"><div>${dataFormatada}</div><small style="color: #6b7280;">${usuario}</small></td>
+                                        <td>${item.repo_nome ? `${item.rot_aud_repositor_id} - ${item.repo_nome}` : item.rot_aud_repositor_id}</td>
+                                        <td>${item.rot_aud_dia_semana || '-'}</td>
+                                        <td>${item.rot_aud_cidade || '-'}</td>
+                                        <td>${item.rot_aud_cliente_codigo || '-'}</td>
+                                        <td><span class="badge badge-info">${item.rot_aud_acao}</span></td>
+                                        <td>${item.rot_aud_detalhes || '-'}</td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                    <p style="margin-top: 1rem; color: var(--gray-600); font-size: 0.9rem;">
+                        Total de alterações: ${registros.length}
+                    </p>
+                </div>
+            `;
+        }
     }
 
     inicializarConsultaAlteracoes() {
@@ -7271,45 +7296,71 @@ class App {
         const isMobile = window.innerWidth < 768;
 
         if (isMobile) {
-            container.innerHTML = `
-                <div class="roteiro-cards">
-                    ${registros.map(item => {
-                        const cliente = item.cliente_dados || {};
-                        const endereco = this.montarEnderecoCliente(cliente);
-                        return `
-                            <div class="roteiro-card">
-                                <div class="roteiro-card-header">
-                                    <div class="roteiro-repositor">
-                                        <strong>${item.repo_cod} - ${item.repo_nome}</strong>
-                                        <span class="roteiro-dia">${this.formatarDiaSemanaLabel(item.rot_dia_semana)}</span>
-                                    </div>
-                                    <span class="roteiro-ordem">#${item.rot_ordem_visita || '-'}</span>
+            // Agrupar por dia/cidade/repositor para criar quebras visuais
+            let currentGroup = { dia: null, cidade: null, repositor: null };
+            let html = '<div class="roteiro-groups">';
+
+            registros.forEach((item, index) => {
+                const cliente = item.cliente_dados || {};
+                const dia = this.formatarDiaSemanaLabel(item.rot_dia_semana);
+                const cidade = item.rot_cidade;
+                const repositor = `${item.repo_cod} - ${item.repo_nome}`;
+
+                // Verificar se mudou o grupo
+                const mudouDia = currentGroup.dia !== dia;
+                const mudouCidade = currentGroup.cidade !== cidade;
+                const mudouRepositor = currentGroup.repositor !== repositor;
+
+                if (mudouDia || mudouCidade || mudouRepositor) {
+                    // Fechar grupo anterior se existir
+                    if (index > 0) html += '</div></div>';
+
+                    // Abrir novo grupo
+                    html += `
+                        <div class="roteiro-group">
+                            <div class="roteiro-group-header">
+                                <div class="roteiro-group-title">
+                                    <span class="roteiro-group-dia">${dia}</span>
+                                    <span class="roteiro-group-cidade">${cidade}</span>
                                 </div>
-                                <div class="roteiro-card-body">
-                                    <div class="roteiro-cidade">${item.rot_cidade}</div>
-                                    <div class="roteiro-cliente">
-                                        <strong>${item.rot_cliente_codigo}</strong> - ${cliente.nome || '-'}
-                                    </div>
-                                    ${cliente.fantasia ? `<div class="roteiro-fantasia">${cliente.fantasia}</div>` : ''}
-                                    <div class="roteiro-endereco">${endereco} - ${cliente.bairro || '-'}</div>
-                                </div>
+                                <div class="roteiro-group-repositor">${repositor}</div>
                             </div>
-                        `;
-                    }).join('')}
-                </div>
+                            <div class="roteiro-group-items">
+                    `;
+
+                    currentGroup = { dia, cidade, repositor };
+                }
+
+                // Card simplificado - apenas sequência e cliente
+                html += `
+                    <div class="roteiro-item">
+                        <span class="roteiro-seq">#${item.rot_ordem_visita || '-'}</span>
+                        <span class="roteiro-cliente">${item.rot_cliente_codigo} - ${cliente.nome || '-'}</span>
+                        ${cliente.fantasia ? `<span class="roteiro-fantasia">(${cliente.fantasia})</span>` : ''}
+                    </div>
+                `;
+            });
+
+            // Fechar último grupo
+            if (registros.length > 0) html += '</div></div>';
+            html += '</div>';
+
+            container.innerHTML = `
+                ${html}
                 <style>
-                    .roteiro-cards { display: flex; flex-direction: column; gap: 8px; }
-                    .roteiro-card { background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; }
-                    .roteiro-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
-                    .roteiro-repositor { display: flex; flex-direction: column; gap: 2px; }
-                    .roteiro-repositor strong { font-size: 0.9rem; color: #374151; }
-                    .roteiro-dia { font-size: 0.75rem; color: #6b7280; background: #f3f4f6; padding: 2px 6px; border-radius: 4px; width: fit-content; }
-                    .roteiro-ordem { background: #ef4444; color: white; padding: 2px 8px; border-radius: 6px; font-weight: 600; font-size: 0.8rem; }
-                    .roteiro-card-body { font-size: 0.85rem; display: flex; flex-direction: column; gap: 4px; }
-                    .roteiro-cidade { color: #059669; font-weight: 600; }
-                    .roteiro-cliente { color: #374151; }
-                    .roteiro-fantasia { color: #6b7280; font-style: italic; font-size: 0.8rem; }
-                    .roteiro-endereco { color: #6b7280; font-size: 0.8rem; }
+                    .roteiro-groups { display: flex; flex-direction: column; gap: 16px; }
+                    .roteiro-group { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+                    .roteiro-group-header { background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); color: white; padding: 10px 12px; }
+                    .roteiro-group-title { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+                    .roteiro-group-dia { font-weight: 700; font-size: 0.95rem; }
+                    .roteiro-group-cidade { font-size: 0.85rem; opacity: 0.9; }
+                    .roteiro-group-repositor { font-size: 0.75rem; opacity: 0.8; margin-top: 4px; }
+                    .roteiro-group-items { padding: 8px 0; }
+                    .roteiro-item { display: flex; align-items: baseline; gap: 8px; padding: 6px 12px; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; }
+                    .roteiro-item:last-child { border-bottom: none; }
+                    .roteiro-seq { font-weight: 700; color: #dc2626; min-width: 28px; }
+                    .roteiro-cliente { color: #374151; flex: 1; }
+                    .roteiro-fantasia { color: #6b7280; font-size: 0.8rem; }
                 </style>
             `;
         } else {
@@ -9605,19 +9656,19 @@ class App {
                     ${clientes.map(cliente => {
                         const clienteId = String(cliente.cli_codigo).trim();
                         const clienteNome = cliente.cli_nome || 'Sem nome';
-                        const endereco = [cliente.cli_cidade, cliente.cli_estado].filter(Boolean).join('/');
+                        const cidade = cliente.cli_cidade || '';
 
                         return `
                             <div class="aviso-cliente-item" data-cliente-id="${clienteId}">
                                 <div class="aviso-cliente-info">
-                                    <strong>${clienteId} - ${clienteNome}</strong>
-                                    <small>${endereco}</small>
+                                    <strong>${clienteNome}</strong>
+                                    ${cidade ? `<small>${cidade}</small>` : ''}
                                 </div>
                                 <div class="aviso-cliente-acoes">
-                                    <button class="btn btn-sm btn-primary" onclick="app.incluirClientePendenteNoRoteiro('${clienteId}', '${clienteNome}', ${repId}, '${dataAtual}', '${dataPendente}')">
-                                        ✅ Incluir Hoje
+                                    <button class="btn btn-sm btn-primary" onclick="app.incluirClientePendenteNoRoteiro('${clienteId}', '${clienteNome.replace(/'/g, "\\'")}', ${repId}, '${dataAtual}', '${dataPendente}')" style="padding: 6px 10px; font-size: 0.8rem;">
+                                        ✅ Hoje
                                     </button>
-                                    <button class="btn btn-sm btn-secondary" onclick="app.ignorarClientePendente('${clienteId}', ${repId}, '${dataAtual}')">
+                                    <button class="btn btn-sm btn-secondary" onclick="app.ignorarClientePendente('${clienteId}', ${repId}, '${dataAtual}')" style="padding: 6px 10px; font-size: 0.8rem;">
                                         ❌ Ignorar
                                     </button>
                                 </div>
@@ -12857,6 +12908,11 @@ class App {
         const container = document.getElementById('despesasContainer');
         if (!container) return;
 
+        // Função para formatar valor em R$XX.XXX,00 (com ponto como separador de milhar)
+        const formatarValor = (valor) => {
+            return valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        };
+
         if (despesasPorRepositor.length === 0) {
             container.innerHTML = `
                 <div class="empty-state" style="padding: 40px;">
@@ -12887,7 +12943,7 @@ class App {
             totalGeral += total;
         });
 
-        // Gerar cards
+        // Gerar cards - repositor name on first line, total on second, then rubricas
         const cards = despesasPorRepositor.map(grupo => {
             const total = Object.values(grupo.rubricas).reduce((sum, r) => sum + r.valor, 0);
 
@@ -12898,17 +12954,15 @@ class App {
                 return `
                     <div class="despesa-rubrica-item">
                         <span class="despesa-rubrica-nome">${r.gst_nome}</span>
-                        <span class="despesa-rubrica-valor">R$ ${rubrica.valor.toFixed(2).replace('.', ',')}</span>
+                        <span class="despesa-rubrica-valor"><span style="white-space: nowrap;">R$&nbsp;${formatarValor(rubrica.valor)}</span></span>
                     </div>
                 `;
             }).filter(Boolean).join('');
 
             return `
                 <div class="despesa-card">
-                    <div class="despesa-card-header">
-                        <div class="despesa-card-titulo">${grupo.repositorNome}</div>
-                        <div class="despesa-card-total">R$ ${total.toFixed(2).replace('.', ',')}</div>
-                    </div>
+                    <div class="despesa-card-nome">${grupo.repositorNome}</div>
+                    <div class="despesa-card-total"><span style="white-space: nowrap;">R$&nbsp;${formatarValor(total)}</span></div>
                     <div class="despesa-card-rubricas">
                         ${rubricasHtml || '<span class="text-muted">Sem rubricas</span>'}
                     </div>
@@ -12927,7 +12981,7 @@ class App {
             .map(([_, data]) => `
                 <div class="despesa-rubrica-item">
                     <span class="despesa-rubrica-nome">${data.nome}</span>
-                    <span class="despesa-rubrica-valor">R$ ${data.valor.toFixed(2).replace('.', ',')}</span>
+                    <span class="despesa-rubrica-valor"><span style="white-space: nowrap;">R$&nbsp;${formatarValor(data.valor)}</span></span>
                 </div>
             `).join('');
 
@@ -12940,9 +12994,8 @@ class App {
                 .despesa-card.total-geral .despesa-card-total { color: white; font-size: 1.5rem; }
                 .despesa-card.total-geral .despesa-rubrica-nome { color: rgba(255,255,255,0.8); }
                 .despesa-card.total-geral .despesa-rubrica-valor { color: white; }
-                .despesa-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-                .despesa-card-titulo { font-weight: 600; color: #374151; font-size: 1rem; }
-                .despesa-card-total { font-size: 1.25rem; font-weight: 700; color: #059669; }
+                .despesa-card-nome { font-weight: 600; color: #374151; font-size: 1rem; margin-bottom: 4px; }
+                .despesa-card-total { font-size: 1.25rem; font-weight: 700; color: #059669; margin-bottom: 12px; }
                 .despesa-card-rubricas { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
                 .despesa-rubrica-item { display: flex; justify-content: space-between; align-items: center; font-size: 0.875rem; }
                 .despesa-rubrica-nome { color: #6b7280; }
@@ -12956,7 +13009,7 @@ class App {
                 <div class="despesa-card total-geral">
                     <div class="despesa-card-header">
                         <div class="despesa-card-titulo">💰 TOTAL GERAL</div>
-                        <div class="despesa-card-total">R$ ${totalGeral.toFixed(2).replace('.', ',')}</div>
+                        <div class="despesa-card-total"><span style="white-space: nowrap;">R$&nbsp;${formatarValor(totalGeral)}</span></div>
                     </div>
                     <div class="despesa-card-rubricas">
                         ${totalGeralRubricasHtml || '<span style="opacity: 0.7;">Sem rubricas</span>'}

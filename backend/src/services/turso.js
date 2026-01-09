@@ -1991,6 +1991,14 @@ class TursoService {
       // Garantir que a tabela existe
       await this.ensureSchemaClientesCoordenadas();
 
+      // REGRA DE NEGÓCIO: Se a coordenada existente foi inserida manualmente, não atualizar
+      // exceto se a nova fonte também for manual
+      const existente = await this.buscarCoordenadasCliente(normalizado);
+      if (existente && existente.fonte === 'manual' && fonte !== 'manual') {
+        console.log(`📍 Coordenada do cliente ${normalizado} foi definida manualmente - não será atualizada por ${fonte}`);
+        return; // Não atualizar coordenada manual com GPS/geocodificação automática
+      }
+
       const sql = `
         INSERT INTO cc_clientes_coordenadas (
           cliente_id, endereco_original, latitude, longitude, fonte, precisao, cidade, bairro, geocodificado_em, atualizado_em

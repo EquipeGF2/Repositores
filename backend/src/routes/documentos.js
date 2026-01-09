@@ -680,10 +680,10 @@ router.post('/upload-multiplo', upload.array('arquivos', 10), async (req, res) =
     let rubricaDetectada = null;
 
     if (isDespesaViagem && observacao) {
-      // Para despesas, organizar por rubrica
-      console.log('📁 Detectada despesa de viagem - organizando por rubrica');
+      // Para despesas, organizar por rubrica/tipo de gasto
+      console.log('📁 Detectada despesa de viagem - organizando por tipo de gasto');
 
-      // Tentar detectar a rubrica principal a partir do JSON
+      // Tentar detectar a rubrica principal a partir do JSON (dv_gst_codigo)
       try {
         const jsonMatch = observacao.match(/^\{[\s\S]*?\}/);
         if (jsonMatch) {
@@ -705,14 +705,25 @@ router.post('/upload-multiplo', upload.array('arquivos', 10), async (req, res) =
         console.log('⚠️ Não foi possível detectar rubrica do JSON:', e.message);
       }
 
-      // Criar pasta de despesas com a rubrica
-      const rubricaNome = rubricaDetectada || 'GERAL';
+      // Normalizar nome da rubrica para criar pasta (ex: "PASSAGEM DE ONIBUS" -> "PASSAGEM")
+      const normalizarRubrica = (rubrica) => {
+        if (!rubrica) return 'GERAL';
+        const upper = rubrica.toUpperCase().trim();
+        // Simplificar nomes longos
+        if (upper.includes('PASSAGEM')) return 'PASSAGEM';
+        if (upper.includes('ONIBUS') || upper.includes('ÔNIBUS')) return 'PASSAGEM';
+        // Manter outros nomes como estão (VIAGEM, COMPRAS, ESTADIA, CAMPANHA, etc.)
+        return upper.replace(/\s+/g, '_');
+      };
+
+      // Criar pasta de despesas com a rubrica (tipo de gasto)
+      const rubricaNome = normalizarRubrica(rubricaDetectada);
       targetFolderId = await googleDriveService.ensureDespesaFolder(
         parseInt(repositor_id),
         repositor.repo_nome,
         rubricaNome
       );
-      console.log(`📁 Pasta de despesas criada: ${rubricaNome}`);
+      console.log(`📁 Pasta de despesas criada por tipo de gasto: ${rubricaNome}`);
     } else {
       // Garantir estrutura de pastas padrão para documentos
       const { documentosFolderId } = await ensureRepositorFolders(

@@ -2283,9 +2283,7 @@ export const pages = {
             .join('');
 
         const hoje = new Date().toISOString().split('T')[0];
-        const umMesAtras = new Date();
-        umMesAtras.setMonth(umMesAtras.getMonth() - 1);
-        const dataInicio = umMesAtras.toISOString().split('T')[0];
+        const dataInicio = hoje; // Default to today
 
         return `
             <div class="card">
@@ -2312,7 +2310,6 @@ export const pages = {
                                     <option value="todos">Todos</option>
                                     <option value="em_atendimento">Em atendimento</option>
                                     <option value="finalizado">Finalizado</option>
-                                    <option value="nao_realizado">Não realizado</option>
                                 </select>
                             </div>
                             <div class="filter-group">
@@ -2344,18 +2341,19 @@ export const pages = {
                 /* Mobile: layout mais compacto */
                 @media (max-width: 768px) {
                     #visitasContainer { padding: 8px !important; }
-                    .visit-item { padding: 10px; margin-bottom: 8px; border-radius: 8px; }
+                    .visit-item { padding: 8px 0; margin-bottom: 0; border-radius: 0; border: none; border-bottom: 1px solid #e5e7eb; }
                 }
 
                 .visit-item {
                     display: flex;
                     align-items: stretch;
                     justify-content: space-between;
-                    padding: 16px;
+                    padding: 8px 0;
                     background: white;
-                    border: 1px solid #e5e7eb;
-                    border-radius: 12px;
-                    margin-bottom: 12px;
+                    border: none;
+                    border-bottom: 1px solid #e5e7eb;
+                    border-radius: 0;
+                    margin-bottom: 0;
                     transition: all 0.2s ease;
                 }
 
@@ -6101,7 +6099,7 @@ export const mobilePageTitles = {
     'consulta-visitas': 'Visitas',
     'consulta-campanha': 'Campanha',
     'documentos': 'Documentos',
-    'consulta-documentos': 'Docs',
+    'consulta-documentos': 'Documentos',
     'roteiro-repositor': 'Roteiro',
     'cadastro-rateio': 'Rateio',
     'manutencao-centralizacao': 'Centralização'
