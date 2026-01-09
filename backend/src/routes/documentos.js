@@ -1144,14 +1144,15 @@ router.get('/despesas/detalhes', async (req, res) => {
     sql += ' ORDER BY dv.dv_data_ref DESC, dv.dv_gst_codigo';
 
     const result = await tursoService.execute(sql, args);
+    const rows = result?.rows || result || [];
 
     res.json({
       ok: true,
-      detalhes: result.rows
+      detalhes: Array.isArray(rows) ? rows : []
     });
   } catch (error) {
     console.error('Erro ao consultar detalhes de despesas:', error);
-    res.status(500).json({ ok: false, message: 'Erro ao consultar detalhes de despesas' });
+    res.status(500).json({ ok: false, message: 'Erro ao consultar detalhes de despesas', error: error.message });
   }
 });
 

@@ -4237,7 +4237,7 @@ export const pages = {
 
             <!-- Modal de Detalhes das Despesas -->
             <div class="modal" id="modalDetalhesDespesas">
-                <div class="modal-content" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
+                <div class="modal-content modal-despesas-detalhes">
                     <div class="modal-header">
                         <h3 id="modalDetalhesDespesasTitulo">Despesas do Repositor</h3>
                         <button class="modal-close" onclick="document.getElementById('modalDetalhesDespesas').classList.remove('active')">&times;</button>
@@ -4249,6 +4249,63 @@ export const pages = {
             </div>
 
             <style>
+                /* Modal de detalhes de despesas - responsivo */
+                .modal-despesas-detalhes {
+                    max-width: 900px;
+                    max-height: 90vh;
+                    overflow-y: auto;
+                    width: 95%;
+                }
+
+                @media (max-width: 768px) {
+                    .modal-despesas-detalhes {
+                        max-width: 100%;
+                        width: 100%;
+                        max-height: 100vh;
+                        height: 100%;
+                        border-radius: 0;
+                        margin: 0;
+                    }
+
+                    .modal-despesas-detalhes .modal-header {
+                        position: sticky;
+                        top: 0;
+                        z-index: 10;
+                        background: white;
+                    }
+
+                    .modal-despesas-detalhes .modal-header h3 {
+                        font-size: 1rem;
+                    }
+
+                    .modal-despesas-detalhes .despesa-rubrica-section {
+                        margin-bottom: 12px;
+                    }
+
+                    .modal-despesas-detalhes .despesa-rubrica-header {
+                        padding: 10px 12px;
+                        font-size: 0.85rem;
+                    }
+
+                    .modal-despesas-detalhes .despesa-rubrica-body {
+                        padding: 8px;
+                    }
+
+                    .modal-despesas-detalhes .despesa-fotos-grid {
+                        grid-template-columns: repeat(2, 1fr);
+                        gap: 8px;
+                    }
+
+                    .modal-despesas-detalhes .despesa-foto-item img {
+                        height: 80px;
+                    }
+
+                    .modal-despesas-detalhes .despesa-foto-info {
+                        font-size: 0.65rem;
+                        padding: 4px 6px;
+                    }
+                }
+
                 .despesa-filter-section .filter-group {
                     min-width: 140px;
                 }

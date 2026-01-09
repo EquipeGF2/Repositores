@@ -13071,11 +13071,16 @@ class App {
                 docsPorRubrica[codigo].docs.push(det);
             });
 
+            // Função para formatar valor
+            const formatarValorModal = (valor) => {
+                return (valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            };
+
             body.innerHTML = Object.entries(docsPorRubrica).map(([codigo, grupo]) => `
                 <div class="despesa-rubrica-section">
                     <div class="despesa-rubrica-header">
                         <span>📁 ${grupo.nome}</span>
-                        <span style="font-weight: 600; color: var(--primary-red);">R$ ${grupo.total.toFixed(2).replace('.', ',')}</span>
+                        <span style="font-weight: 600; color: var(--primary-red); white-space: nowrap;">R$&nbsp;${formatarValorModal(grupo.total)}</span>
                     </div>
                     <div class="despesa-rubrica-body">
                         <div class="despesa-fotos-grid">
@@ -13089,7 +13094,7 @@ class App {
                                              onclick="window.open('${imgUrl}', '_blank')"
                                              onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📄</text></svg>'">
                                         <div class="despesa-foto-info">
-                                            R$ ${(doc.dv_valor || 0).toFixed(2).replace('.', ',')} ${dataRef ? `• ${dataRef}` : ''}
+                                            <span style="white-space: nowrap;">R$&nbsp;${formatarValorModal(doc.dv_valor)}</span> ${dataRef ? `• ${dataRef}` : ''}
                                         </div>
                                     </div>
                                 `;
