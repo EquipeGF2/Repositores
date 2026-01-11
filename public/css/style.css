@@ -7566,19 +7566,36 @@ span.mobile-only {
 /* Desktop: manter estrutura original */
 @media (min-width: 769px) {
     .cidades-busca-seq-row {
-        display: contents;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 1;
     }
 
     .cidades-busca-seq-row .cidade-ordem-wrapper {
         display: none;
     }
 
-    .cidades-botoes-row {
-        display: contents;
+    .cidades-busca-seq-row .cidade-busca-wrapper {
+        flex: 1;
+        max-width: 400px;
     }
 
-    .cidades-botoes-row .btn:first-child {
-        display: none;
+    .cidades-busca-seq-row .cidade-busca-wrapper input {
+        height: 40px;
+    }
+
+    .cidades-botoes-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .cidades-botoes-row .btn {
+        height: 40px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
     }
 }
 

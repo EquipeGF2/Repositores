@@ -1128,8 +1128,7 @@ router.get('/despesas/detalhes', async (req, res) => {
       SELECT
         dv.*,
         d.doc_nome_drive,
-        d.doc_drive_file_id,
-        d.doc_url_drive
+        d.doc_drive_file_id
       FROM cc_despesa_valores dv
       LEFT JOIN cc_documentos d ON d.doc_id = dv.dv_doc_id
       WHERE dv.dv_repositor_id = ?
@@ -1146,9 +1145,17 @@ router.get('/despesas/detalhes', async (req, res) => {
     const result = await tursoService.execute(sql, args);
     const rows = result?.rows || result || [];
 
+    // Adicionar URL do Drive para cada documento
+    const detalhes = (Array.isArray(rows) ? rows : []).map(row => ({
+      ...row,
+      doc_url_drive: row.doc_drive_file_id
+        ? `https://drive.google.com/uc?export=view&id=${row.doc_drive_file_id}`
+        : null
+    }));
+
     res.json({
       ok: true,
-      detalhes: Array.isArray(rows) ? rows : []
+      detalhes
     });
   } catch (error) {
     console.error('Erro ao consultar detalhes de despesas:', error);

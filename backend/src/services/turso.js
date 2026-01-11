@@ -1927,6 +1927,11 @@ class TursoService {
    */
   async buscarCoordenadasCliente(clienteId, enderecoAtual = null) {
     try {
+      if (!clienteId) {
+        console.log('📍 buscarCoordenadasCliente: clienteId não informado');
+        return null;
+      }
+
       const normalizado = normalizeClienteId(clienteId);
 
       const result = await this.execute(
@@ -1934,11 +1939,16 @@ class TursoService {
         [normalizado]
       );
 
-      if (!result || result.length === 0) {
+      // Tratar diferentes formatos de retorno
+      const rows = result?.rows || result || [];
+      if (!rows || rows.length === 0) {
         return null;
       }
 
-      const coord = result[0];
+      const coord = rows[0];
+      if (!coord) {
+        return null;
+      }
 
       // Se foi passado endereço atual, verificar se mudou
       if (enderecoAtual) {

@@ -5209,7 +5209,16 @@ class App {
                 btnAplicarFiltros.addEventListener('click', () => this.aplicarFiltrosRateio());
             }
 
-            await this.carregarListaRateioManutencao();
+            // NÃO carregar automaticamente - aguardar clique no botão Filtrar
+            const container = document.getElementById('rateioManutencaoContainer');
+            if (container) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📋</div>
+                        <p>Selecione os filtros e clique em "Recarregar" para visualizar os dados</p>
+                    </div>
+                `;
+            }
         } catch (error) {
             console.error('Erro ao inicializar cadastro de rateio:', error);
             this.showNotification('Erro ao inicializar tela de rateio. Tente recarregar a página.', 'error');
@@ -5868,6 +5877,17 @@ class App {
                     this.aplicarFiltrosCentralizacao();
                 }
             });
+        }
+
+        // NÃO carregar automaticamente - aguardar clique no botão Filtrar
+        const container = document.getElementById('centralizacaoManutencaoContainer');
+        if (container) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">🔗</div>
+                    <p>Selecione os filtros e clique em "Recarregar" para visualizar os dados</p>
+                </div>
+            `;
         }
     }
 
@@ -17736,7 +17756,9 @@ class App {
             pesquisaAtualIndex: 0,
             respostasColetadas: [],
             contextoVisita: { repId, clienteId, clienteNome, dataVisita },
-            fotoPesquisa: null,
+            fotosPesquisa: [],  // Array de fotos
+            maxFotosPesquisa: 10,
+            fotoPesquisaBlob: null,
             veioDocheckout: veioDocheckout,
             // Staging: guarda respostas e fotos localmente até finalizar
             respostasStaging: new Map()
