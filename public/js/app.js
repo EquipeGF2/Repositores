@@ -1142,6 +1142,8 @@ class App {
                     this.inicializarAbaUsuariosConfig();
                 } else if (tabName === 'acessos') {
                     this.inicializarAbaAcessosConfig();
+                } else if (tabName === 'espacos') {
+                    this.carregarTiposEspacoConfig();
                 }
             });
         });
@@ -1214,6 +1216,17 @@ class App {
         const btnSalvarTipoGasto = document.getElementById('btnSalvarTipoGasto');
         if (btnSalvarTipoGasto) {
             btnSalvarTipoGasto.addEventListener('click', () => this.salvarTipoGasto());
+        }
+
+        // ==================== TIPOS DE ESPAÇO ====================
+        const btnNovoTipoEspacoConfig = document.getElementById('btnNovoTipoEspacoConfig');
+        if (btnNovoTipoEspacoConfig) {
+            btnNovoTipoEspacoConfig.addEventListener('click', () => this.abrirModalTipoEspacoConfig());
+        }
+
+        const btnSalvarTipoEspacoConfig = document.getElementById('btnSalvarTipoEspacoConfig');
+        if (btnSalvarTipoEspacoConfig) {
+            btnSalvarTipoEspacoConfig.addEventListener('click', () => this.salvarTipoEspacoConfig());
         }
     }
 
@@ -18752,8 +18765,8 @@ class App {
     // ==================== MÓDULO DE ESPAÇOS ====================
 
     async inicializarPaginaEspacos() {
-        // Carregar tipos de espaço ao abrir a página
-        await this.carregarTiposEspaco();
+        // Carregar clientes com espaço ao abrir a página
+        await this.carregarClientesEspaco();
     }
 
     async inicializarPaginaConsultaEspacos() {
@@ -18772,7 +18785,7 @@ class App {
     async carregarFiltrosConsultaEspacos() {
         try {
             // Carregar repositores
-            const repositores = await db.getRepositoresAtivos();
+            const repositores = await db.getRepositoresDetalhados({ status: 'ativos' });
             const selectRep = document.getElementById('filtro_rep_espaco');
             if (selectRep) {
                 selectRep.innerHTML = '<option value="">Todos</option>' +
@@ -18958,6 +18971,121 @@ class App {
             if (response?.ok) {
                 this.showNotification('Tipo de espaço excluído com sucesso', 'success');
                 await this.carregarTiposEspaco();
+            }
+        } catch (error) {
+            console.error('Erro ao excluir tipo de espaço:', error);
+            this.showNotification(error.message || 'Erro ao excluir tipo de espaço', 'error');
+        }
+    }
+
+    // === Tipos de Espaço (Configurações) ===
+
+    async carregarTiposEspacoConfig() {
+        const tbody = document.getElementById('tiposEspacoBodyConfig');
+        if (!tbody) return;
+
+        try {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px;">Carregando...</td></tr>';
+
+            const response = await fetchJson(`${API_BASE_URL}/api/espacos/tipos?ativos=false`);
+
+            if (!response?.ok || !response.data?.length) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px;">Nenhum tipo de espaço cadastrado</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = response.data.map(tipo => `
+                <tr>
+                    <td><strong>${tipo.te_nome}</strong></td>
+                    <td>${tipo.te_descricao || '-'}</td>
+                    <td>
+                        <span class="badge ${tipo.te_ativo ? 'badge-success' : 'badge-secondary'}">
+                            ${tipo.te_ativo ? 'Ativo' : 'Inativo'}
+                        </span>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-secondary" onclick="window.app.editarTipoEspacoConfig(${tipo.te_id})">Editar</button>
+                        <button class="btn btn-sm btn-danger" onclick="window.app.excluirTipoEspacoConfig(${tipo.te_id})" ${tipo.te_ativo ? '' : 'disabled'}>Excluir</button>
+                    </td>
+                </tr>
+            `).join('');
+        } catch (error) {
+            console.error('Erro ao carregar tipos de espaço:', error);
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px; color: #b91c1c;">Erro ao carregar tipos de espaço</td></tr>';
+        }
+    }
+
+    abrirModalTipoEspacoConfig(id = null) {
+        const modal = document.getElementById('modalTipoEspacoConfig');
+        const title = document.getElementById('modalTipoEspacoConfigTitulo');
+        const form = document.getElementById('formTipoEspacoConfig');
+
+        if (form) form.reset();
+        document.getElementById('tipoEspacoIdConfig').value = id || '';
+        title.textContent = id ? 'Editar Tipo de Espaço' : 'Novo Tipo de Espaço';
+
+        modal.classList.add('active');
+    }
+
+    async editarTipoEspacoConfig(id) {
+        try {
+            const response = await fetchJson(`${API_BASE_URL}/api/espacos/tipos?ativos=false`);
+            const tipo = response?.data?.find(t => t.te_id === id);
+
+            if (tipo) {
+                this.abrirModalTipoEspacoConfig(id);
+                document.getElementById('tipoEspacoNomeConfig').value = tipo.te_nome || '';
+                document.getElementById('tipoEspacoDescricaoConfig').value = tipo.te_descricao || '';
+            }
+        } catch (error) {
+            console.error('Erro ao buscar tipo de espaço:', error);
+            this.showNotification('Erro ao carregar dados do tipo de espaço', 'error');
+        }
+    }
+
+    async salvarTipoEspacoConfig() {
+        const id = document.getElementById('tipoEspacoIdConfig').value;
+        const nome = document.getElementById('tipoEspacoNomeConfig').value.trim();
+        const descricao = document.getElementById('tipoEspacoDescricaoConfig').value.trim();
+
+        if (!nome) {
+            this.showNotification('Nome é obrigatório', 'warning');
+            return;
+        }
+
+        try {
+            const url = id
+                ? `${API_BASE_URL}/api/espacos/tipos/${id}`
+                : `${API_BASE_URL}/api/espacos/tipos`;
+
+            const response = await fetchJson(url, {
+                method: id ? 'PUT' : 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nome, descricao })
+            });
+
+            if (response?.ok) {
+                this.showNotification(`Tipo de espaço ${id ? 'atualizado' : 'criado'} com sucesso`, 'success');
+                document.getElementById('modalTipoEspacoConfig').classList.remove('active');
+                await this.carregarTiposEspacoConfig();
+            }
+        } catch (error) {
+            console.error('Erro ao salvar tipo de espaço:', error);
+            this.showNotification(error.message || 'Erro ao salvar tipo de espaço', 'error');
+        }
+    }
+
+    async excluirTipoEspacoConfig(id) {
+        if (!confirm('Deseja realmente excluir este tipo de espaço?')) return;
+
+        try {
+            const response = await fetchJson(`${API_BASE_URL}/api/espacos/tipos/${id}`, {
+                method: 'DELETE'
+            });
+
+            if (response?.ok) {
+                this.showNotification('Tipo de espaço excluído com sucesso', 'success');
+                await this.carregarTiposEspacoConfig();
             }
         } catch (error) {
             console.error('Erro ao excluir tipo de espaço:', error);

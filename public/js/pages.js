@@ -2686,6 +2686,7 @@ export const pages = {
                         <button class="config-tab" data-config-tab="coordenadas">📍 Coordenadas</button>
                         <button class="config-tab" data-config-tab="usuarios">👤 Usuários</button>
                         <button class="config-tab" data-config-tab="acessos">🔐 Acessos</button>
+                        <button class="config-tab" data-config-tab="espacos">📦 Tipos de Espaço</button>
                     </div>
 
                     <!-- Aba Geral -->
@@ -2921,6 +2922,66 @@ export const pages = {
                         <div style="margin-top: 16px;">
                             <button type="button" class="btn btn-primary" id="btnSalvarPermissoesConfig">Salvar Permissões</button>
                         </div>
+                    </div>
+
+                    <!-- Aba Tipos de Espaço -->
+                    <div class="config-tab-content" id="config-tab-espacos">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <div>
+                                <h4 style="color: var(--text-primary); margin: 0;">Tipos de Espaço</h4>
+                                <p class="text-muted" style="margin: 4px 0 0; font-size: 13px;">
+                                    Cadastre os tipos de espaço disponíveis para compra (ex: Ponta de Gôndola, Ilha, Display).
+                                </p>
+                            </div>
+                            <button type="button" class="btn btn-primary btn-sm" id="btnNovoTipoEspacoConfig">
+                                + Novo Tipo de Espaço
+                            </button>
+                        </div>
+
+                        <div id="tiposEspacoConfigResultado">
+                            <div class="table-responsive">
+                                <table class="data-table" id="tabelaTiposEspacoConfig">
+                                    <thead>
+                                        <tr>
+                                            <th>Nome</th>
+                                            <th>Descrição</th>
+                                            <th style="width: 80px;">Status</th>
+                                            <th style="width: 120px;">Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tiposEspacoBodyConfig">
+                                        <tr><td colspan="4" style="text-align: center; padding: 20px;">Carregando...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal para Tipo de Espaço -->
+            <div class="modal" id="modalTipoEspacoConfig">
+                <div class="modal-content" style="max-width: 450px;">
+                    <div class="modal-header">
+                        <h3 id="modalTipoEspacoConfigTitulo">Novo Tipo de Espaço</h3>
+                        <button class="modal-close" onclick="document.getElementById('modalTipoEspacoConfig').classList.remove('active')">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="formTipoEspacoConfig">
+                            <input type="hidden" id="tipoEspacoIdConfig">
+                            <div class="form-group">
+                                <label for="tipoEspacoNomeConfig">Nome *</label>
+                                <input type="text" id="tipoEspacoNomeConfig" required maxlength="100" placeholder="Ex: Ponta de Gôndola">
+                            </div>
+                            <div class="form-group">
+                                <label for="tipoEspacoDescricaoConfig">Descrição</label>
+                                <textarea id="tipoEspacoDescricaoConfig" rows="3" placeholder="Descrição opcional do tipo de espaço"></textarea>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalTipoEspacoConfig').classList.remove('active')">Cancelar</button>
+                        <button type="button" class="btn btn-primary" id="btnSalvarTipoEspacoConfig">Salvar</button>
                     </div>
                 </div>
             </div>
@@ -6126,83 +6187,33 @@ export const pages = {
                     <h3 class="card-title">Compra de Espaço</h3>
                 </div>
                 <div class="card-body">
-                    <!-- Tabs para alternar entre cadastros -->
-                    <div class="tabs-espacos" style="display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid #e5e7eb; padding-bottom: 12px;">
-                        <button type="button" class="btn btn-tab-espaco active" data-tab="tipos" onclick="window.app.alternarTabEspacos('tipos')">
-                            Tipos de Espaço
-                        </button>
-                        <button type="button" class="btn btn-tab-espaco" data-tab="clientes" onclick="window.app.alternarTabEspacos('clientes')">
-                            Clientes com Espaço
-                        </button>
-                    </div>
+                    <p class="text-muted" style="margin-bottom: 16px;">
+                        Cadastre aqui os clientes que possuem espaços contratados.
+                        <small>(Para cadastrar tipos de espaço, acesse Configurações do Sistema → Tipos de Espaço)</small>
+                    </p>
 
-                    <!-- Tab: Tipos de Espaço -->
-                    <div id="tabTiposEspaco" class="tab-content-espaco">
-                        <div class="filter-bar" style="margin-bottom: 16px;">
-                            <button class="btn btn-primary btn-sm" onclick="window.app.abrirModalTipoEspaco()">
-                                + Novo Tipo de Espaço
+                    <div class="filter-bar filter-bar-wide" style="margin-bottom: 16px;">
+                        <div class="filter-group">
+                            <label for="filtro_cidade_espaco">Cidade</label>
+                            <input type="text" id="filtro_cidade_espaco" placeholder="Buscar cidade...">
+                        </div>
+                        <div class="filter-group">
+                            <label for="filtro_tipo_espaco">Tipo de Espaço</label>
+                            <select id="filtro_tipo_espaco">
+                                <option value="">Todos</option>
+                            </select>
+                        </div>
+                        <div class="filter-group" style="align-self: flex-end;">
+                            <button class="btn btn-primary btn-sm" onclick="window.app.abrirModalClienteEspaco()">
+                                + Adicionar Cliente
                             </button>
                         </div>
-                        <div id="tiposEspacoResultado">
-                            <div class="empty-state">
-                                <div class="empty-state-icon">📦</div>
-                                <p>Carregando tipos de espaço...</p>
-                            </div>
-                        </div>
                     </div>
-
-                    <!-- Tab: Clientes com Espaço -->
-                    <div id="tabClientesEspaco" class="tab-content-espaco" style="display: none;">
-                        <div class="filter-bar filter-bar-wide" style="margin-bottom: 16px;">
-                            <div class="filter-group">
-                                <label for="filtro_cidade_espaco">Cidade</label>
-                                <input type="text" id="filtro_cidade_espaco" placeholder="Buscar cidade...">
-                            </div>
-                            <div class="filter-group">
-                                <label for="filtro_tipo_espaco">Tipo de Espaço</label>
-                                <select id="filtro_tipo_espaco">
-                                    <option value="">Todos</option>
-                                </select>
-                            </div>
-                            <div class="filter-group" style="align-self: flex-end;">
-                                <button class="btn btn-primary btn-sm" onclick="window.app.abrirModalClienteEspaco()">
-                                    + Adicionar Cliente
-                                </button>
-                            </div>
+                    <div id="clientesEspacoResultado">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">🏪</div>
+                            <p>Carregando clientes com espaço...</p>
                         </div>
-                        <div id="clientesEspacoResultado">
-                            <div class="empty-state">
-                                <div class="empty-state-icon">🏪</div>
-                                <p>Carregando clientes com espaço...</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Modal Tipo de Espaço -->
-            <div class="modal" id="modalTipoEspaco">
-                <div class="modal-content" style="max-width: 500px;">
-                    <div class="modal-header">
-                        <h3 id="modalTipoEspacoTitle">Novo Tipo de Espaço</h3>
-                        <button class="modal-close" onclick="window.app.fecharModalTipoEspaco()">&times;</button>
-                    </div>
-                    <div class="modal-body">
-                        <form id="formTipoEspaco" onsubmit="window.app.salvarTipoEspaco(event)">
-                            <input type="hidden" id="tipoEspacoId" value="">
-                            <div class="form-group">
-                                <label for="tipoEspacoNome">Nome *</label>
-                                <input type="text" id="tipoEspacoNome" required placeholder="Ex: Ponta de Gôndola, Ilha, etc.">
-                            </div>
-                            <div class="form-group">
-                                <label for="tipoEspacoDescricao">Descrição</label>
-                                <textarea id="tipoEspacoDescricao" rows="3" placeholder="Descrição opcional do tipo de espaço"></textarea>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" onclick="window.app.fecharModalTipoEspaco()">Cancelar</button>
-                                <button type="submit" class="btn btn-primary">Salvar</button>
-                            </div>
-                        </form>
                     </div>
                 </div>
             </div>
