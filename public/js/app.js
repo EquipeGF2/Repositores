@@ -10915,18 +10915,35 @@ class App {
 
     async obterEnderecoPorCoordenadas(lat, lon) {
         try {
-            // Tentar via backend primeiro (evita CORS)
-            const backendUrl = `${API_BASE_URL}/api/geocode/reverse?lat=${lat}&lon=${lon}`;
-            const data = await fetchJson(backendUrl);
+            // Usar Nominatim (OpenStreetMap) diretamente para reverse geocoding
+            // Nominatim tem CORS habilitado e não requer API key
+            const nominatimUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`;
 
-            if (data?.endereco) {
-                return data.endereco;
+            const response = await fetch(nominatimUrl, {
+                headers: {
+                    'Accept': 'application/json',
+                    'User-Agent': 'GermaniRepositores/1.0'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Nominatim error: ${response.status}`);
             }
 
-            // Fallback: mostrar apenas coordenadas formatadas
+            const data = await response.json();
+
+            if (data?.display_name) {
+                // Simplificar o endereço retornado (remover país e informações excessivas)
+                const parts = data.display_name.split(', ');
+                // Pegar os primeiros 4-5 componentes relevantes
+                const endereco = parts.slice(0, 5).join(', ').replace(/, Brasil$/, '');
+                return endereco;
+            }
+
+            // Se não encontrou endereço, retornar coordenadas
             return `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
         } catch (error) {
-            console.warn('Geocodificação indisponível, usando coordenadas:', error.message);
+            console.warn('Geocodificação reversa indisponível:', error.message);
             // Em caso de erro, retornar coordenadas formatadas
             return `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
         }
@@ -18769,6 +18786,27 @@ class App {
                 if (selectTipo) {
                     selectTipo.innerHTML = '<option value="">Todos</option>' +
                         tiposResp.data.map(t => `<option value="${t.te_id}">${t.te_nome}</option>`).join('');
+                }
+            }
+
+            // Carregar clientes cadastrados em Compra de Espaço
+            const clientesResp = await fetchJson(`${API_BASE_URL}/api/espacos/clientes`);
+            if (clientesResp?.ok && clientesResp.data) {
+                const selectCliente = document.getElementById('filtro_cliente_espaco');
+                if (selectCliente) {
+                    // Agrupar clientes únicos (pode haver múltiplos tipos de espaço por cliente)
+                    const clientesUnicos = new Map();
+                    clientesResp.data.forEach(ce => {
+                        if (!clientesUnicos.has(ce.ce_cliente_codigo)) {
+                            clientesUnicos.set(ce.ce_cliente_codigo, {
+                                codigo: ce.ce_cliente_codigo,
+                                nome: ce.cliente_nome || ce.ce_cidade
+                            });
+                        }
+                    });
+                    selectCliente.innerHTML = '<option value="">Todos</option>' +
+                        Array.from(clientesUnicos.values())
+                            .map(c => `<option value="${c.codigo}">${c.codigo} - ${c.nome}</option>`).join('');
                 }
             }
         } catch (error) {
