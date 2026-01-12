@@ -428,7 +428,9 @@ class App {
             'consulta-campanha': 'mod_repositores',
             'estrutura-banco-comercial': 'mod_repositores',
             'controle-acessos': 'mod_configuracoes',
-            'roteiro-repositor': 'mod_repositores'
+            'roteiro-repositor': 'mod_repositores',
+            'cadastro-espacos': 'mod_repositores',
+            'consulta-espacos': 'mod_repositores'
         };
         this.filtroStatusRepositores = 'ativos';
         this.performanceState = {
@@ -2965,6 +2967,10 @@ class App {
                 await this.inicializarConsultaPesquisa();
             } else if (pageName === 'manutencao-coordenadas') {
                 await this.inicializarManutencaoCoordenadas();
+            } else if (pageName === 'cadastro-espacos') {
+                await this.inicializarPaginaEspacos();
+            } else if (pageName === 'consulta-espacos') {
+                await this.inicializarPaginaConsultaEspacos();
             }
         } catch (error) {
             console.error('Erro ao carregar página:', error);
@@ -11762,6 +11768,16 @@ class App {
                 return;
             }
 
+            // Verificar espaços pendentes antes do checkout
+            if (tipoRegistro === 'checkout') {
+                const espacosStatus = await this.verificarEspacosPendentes(repId, clienteId);
+                if (espacosStatus.temEspacos && espacosStatus.espacosPendentes && espacosStatus.espacosPendentes.length > 0) {
+                    // Abrir modal de registro de espaços
+                    this.abrirModalRegistroEspacos(repId, clienteId, clienteNome, dataVisita, espacosStatus.espacosPendentes, gpsCoords);
+                    return;
+                }
+            }
+
             // Pesquisas obrigatórias devem ser respondidas via botão de pesquisa, não no checkout
             // O checkout só será habilitado após responder as pesquisas obrigatórias
 
@@ -18714,6 +18730,704 @@ class App {
         }
         this.pesquisaVisitaState.fotoPesquisa = null;
         this.pesquisaVisitaState.fotoPesquisaUrl = null;
+    }
+
+    // ==================== MÓDULO DE ESPAÇOS ====================
+
+    async inicializarPaginaEspacos() {
+        // Carregar tipos de espaço ao abrir a página
+        await this.carregarTiposEspaco();
+    }
+
+    async inicializarPaginaConsultaEspacos() {
+        // Carregar filtros
+        await this.carregarFiltrosConsultaEspacos();
+
+        // Definir datas padrão (últimos 30 dias)
+        const hoje = new Date();
+        const inicio = new Date();
+        inicio.setDate(hoje.getDate() - 30);
+
+        document.getElementById('filtro_data_fim_espaco').value = hoje.toISOString().split('T')[0];
+        document.getElementById('filtro_data_inicio_espaco').value = inicio.toISOString().split('T')[0];
+    }
+
+    async carregarFiltrosConsultaEspacos() {
+        try {
+            // Carregar repositores
+            const repositores = await db.getRepositoresAtivos();
+            const selectRep = document.getElementById('filtro_rep_espaco');
+            if (selectRep) {
+                selectRep.innerHTML = '<option value="">Todos</option>' +
+                    repositores.map(r => `<option value="${r.rep_cod}">${r.rep_nome}</option>`).join('');
+            }
+
+            // Carregar tipos de espaço
+            const tiposResp = await fetchJson(`${API_BASE_URL}/api/espacos/tipos`);
+            if (tiposResp?.ok && tiposResp.data) {
+                const selectTipo = document.getElementById('filtro_tipo_espaco_consulta');
+                if (selectTipo) {
+                    selectTipo.innerHTML = '<option value="">Todos</option>' +
+                        tiposResp.data.map(t => `<option value="${t.te_id}">${t.te_nome}</option>`).join('');
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao carregar filtros de consulta de espaços:', error);
+        }
+    }
+
+    alternarTabEspacos(tab) {
+        // Atualizar botões
+        document.querySelectorAll('.btn-tab-espaco').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tab === tab);
+        });
+
+        // Alternar conteúdo
+        document.getElementById('tabTiposEspaco').style.display = tab === 'tipos' ? 'block' : 'none';
+        document.getElementById('tabClientesEspaco').style.display = tab === 'clientes' ? 'block' : 'none';
+
+        // Carregar dados da aba
+        if (tab === 'tipos') {
+            this.carregarTiposEspaco();
+        } else {
+            this.carregarClientesEspaco();
+        }
+    }
+
+    // === Tipos de Espaço ===
+
+    async carregarTiposEspaco() {
+        const container = document.getElementById('tiposEspacoResultado');
+        if (!container) return;
+
+        try {
+            container.innerHTML = '<div class="loading">Carregando...</div>';
+
+            const response = await fetchJson(`${API_BASE_URL}/api/espacos/tipos?ativos=false`);
+
+            if (!response?.ok || !response.data?.length) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📦</div>
+                        <p>Nenhum tipo de espaço cadastrado</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="espacos-grid">
+                    ${response.data.map(tipo => `
+                        <div class="espaco-card ${tipo.te_ativo ? '' : 'inactive'}">
+                            <div class="espaco-card-header">
+                                <span class="espaco-card-title">${tipo.te_nome}</span>
+                                <div class="espaco-card-actions">
+                                    <button class="btn btn-sm btn-secondary" onclick="window.app.editarTipoEspaco(${tipo.te_id})">Editar</button>
+                                    <button class="btn btn-sm btn-danger" onclick="window.app.excluirTipoEspaco(${tipo.te_id})" ${tipo.te_ativo ? '' : 'disabled'}>Excluir</button>
+                                </div>
+                            </div>
+                            ${tipo.te_descricao ? `<p class="text-muted" style="font-size: 13px; margin: 0;">${tipo.te_descricao}</p>` : ''}
+                            ${!tipo.te_ativo ? '<span class="badge badge-warning" style="margin-top: 8px; display: inline-block;">Inativo</span>' : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        } catch (error) {
+            console.error('Erro ao carregar tipos de espaço:', error);
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">⚠️</div>
+                    <p>Erro ao carregar tipos de espaço</p>
+                </div>
+            `;
+        }
+    }
+
+    abrirModalTipoEspaco(id = null) {
+        const modal = document.getElementById('modalTipoEspaco');
+        const title = document.getElementById('modalTipoEspacoTitle');
+        const form = document.getElementById('formTipoEspaco');
+
+        if (form) form.reset();
+        document.getElementById('tipoEspacoId').value = id || '';
+        title.textContent = id ? 'Editar Tipo de Espaço' : 'Novo Tipo de Espaço';
+
+        modal.classList.add('active');
+    }
+
+    async editarTipoEspaco(id) {
+        try {
+            const response = await fetchJson(`${API_BASE_URL}/api/espacos/tipos?ativos=false`);
+            const tipo = response?.data?.find(t => t.te_id === id);
+
+            if (tipo) {
+                this.abrirModalTipoEspaco(id);
+                document.getElementById('tipoEspacoNome').value = tipo.te_nome || '';
+                document.getElementById('tipoEspacoDescricao').value = tipo.te_descricao || '';
+            }
+        } catch (error) {
+            console.error('Erro ao buscar tipo de espaço:', error);
+            this.showNotification('Erro ao carregar dados do tipo de espaço', 'error');
+        }
+    }
+
+    fecharModalTipoEspaco() {
+        document.getElementById('modalTipoEspaco')?.classList.remove('active');
+    }
+
+    async salvarTipoEspaco(event) {
+        event.preventDefault();
+
+        const id = document.getElementById('tipoEspacoId').value;
+        const nome = document.getElementById('tipoEspacoNome').value.trim();
+        const descricao = document.getElementById('tipoEspacoDescricao').value.trim();
+
+        if (!nome) {
+            this.showNotification('Nome é obrigatório', 'warning');
+            return;
+        }
+
+        try {
+            const url = id
+                ? `${API_BASE_URL}/api/espacos/tipos/${id}`
+                : `${API_BASE_URL}/api/espacos/tipos`;
+
+            const response = await fetchJson(url, {
+                method: id ? 'PUT' : 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nome, descricao })
+            });
+
+            if (response?.ok) {
+                this.showNotification(`Tipo de espaço ${id ? 'atualizado' : 'criado'} com sucesso`, 'success');
+                this.fecharModalTipoEspaco();
+                await this.carregarTiposEspaco();
+            }
+        } catch (error) {
+            console.error('Erro ao salvar tipo de espaço:', error);
+            this.showNotification(error.message || 'Erro ao salvar tipo de espaço', 'error');
+        }
+    }
+
+    async excluirTipoEspaco(id) {
+        if (!confirm('Deseja realmente excluir este tipo de espaço?')) return;
+
+        try {
+            const response = await fetchJson(`${API_BASE_URL}/api/espacos/tipos/${id}`, {
+                method: 'DELETE'
+            });
+
+            if (response?.ok) {
+                this.showNotification('Tipo de espaço excluído com sucesso', 'success');
+                await this.carregarTiposEspaco();
+            }
+        } catch (error) {
+            console.error('Erro ao excluir tipo de espaço:', error);
+            this.showNotification(error.message || 'Erro ao excluir tipo de espaço', 'error');
+        }
+    }
+
+    // === Clientes com Espaço ===
+
+    async carregarClientesEspaco() {
+        const container = document.getElementById('clientesEspacoResultado');
+        if (!container) return;
+
+        try {
+            container.innerHTML = '<div class="loading">Carregando...</div>';
+
+            // Carregar tipos para o filtro
+            const tiposResp = await fetchJson(`${API_BASE_URL}/api/espacos/tipos`);
+            if (tiposResp?.ok && tiposResp.data) {
+                const selectTipo = document.getElementById('filtro_tipo_espaco');
+                if (selectTipo) {
+                    selectTipo.innerHTML = '<option value="">Todos</option>' +
+                        tiposResp.data.map(t => `<option value="${t.te_id}">${t.te_nome}</option>`).join('');
+                }
+            }
+
+            // Buscar filtros
+            const cidade = document.getElementById('filtro_cidade_espaco')?.value || '';
+            const tipoEspacoId = document.getElementById('filtro_tipo_espaco')?.value || '';
+
+            const params = new URLSearchParams();
+            if (cidade) params.append('cidade', cidade);
+            if (tipoEspacoId) params.append('tipo_espaco_id', tipoEspacoId);
+
+            const response = await fetchJson(`${API_BASE_URL}/api/espacos/clientes?${params.toString()}`);
+
+            if (!response?.ok || !response.data?.length) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🏪</div>
+                        <p>Nenhum cliente com espaço cadastrado</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="table-responsive">
+                    <table class="clientes-espaco-table">
+                        <thead>
+                            <tr>
+                                <th>Cidade</th>
+                                <th>Cliente</th>
+                                <th>Tipo de Espaço</th>
+                                <th>Quantidade</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${response.data.map(ce => `
+                                <tr>
+                                    <td>${ce.ce_cidade}</td>
+                                    <td>
+                                        <strong>${ce.ce_cliente_codigo}</strong>
+                                        ${ce.cliente_nome ? `<br><small class="text-muted">${ce.cliente_nome}</small>` : ''}
+                                    </td>
+                                    <td>${ce.tipo_espaco_nome || '-'}</td>
+                                    <td>${ce.ce_quantidade}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-danger" onclick="window.app.removerClienteEspaco(${ce.ce_id})">
+                                            Remover
+                                        </button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        } catch (error) {
+            console.error('Erro ao carregar clientes com espaço:', error);
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">⚠️</div>
+                    <p>Erro ao carregar clientes com espaço</p>
+                </div>
+            `;
+        }
+    }
+
+    async abrirModalClienteEspaco() {
+        const modal = document.getElementById('modalClienteEspaco');
+        const form = document.getElementById('formClienteEspaco');
+
+        if (form) form.reset();
+        document.getElementById('clienteEspacoClienteCodigo').value = '';
+
+        // Carregar tipos de espaço no select
+        try {
+            const tiposResp = await fetchJson(`${API_BASE_URL}/api/espacos/tipos`);
+            if (tiposResp?.ok && tiposResp.data) {
+                const selectTipo = document.getElementById('clienteEspacoTipo');
+                if (selectTipo) {
+                    selectTipo.innerHTML = '<option value="">Selecione</option>' +
+                        tiposResp.data.map(t => `<option value="${t.te_id}">${t.te_nome}</option>`).join('');
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao carregar tipos:', error);
+        }
+
+        // Configurar autocomplete de cidade
+        const cidades = await db.getCidadesPotencial();
+        if (this.autocompleteClienteEspacoCidade) {
+            this.autocompleteClienteEspacoCidade.destroy?.();
+        }
+
+        this.autocompleteClienteEspacoCidade = new Autocomplete({
+            inputId: 'clienteEspacoCidade',
+            formatDisplay: (cidade) => cidade,
+            formatValue: (cidade) => cidade,
+            extractKey: (cidade) => cidade,
+            onSelect: async (cidade) => {
+                // Quando selecionar cidade, carregar clientes
+                await this.carregarClientesParaEspaco(cidade);
+            }
+        });
+        this.autocompleteClienteEspacoCidade.setItems(cidades);
+
+        modal.classList.add('active');
+    }
+
+    async carregarClientesParaEspaco(cidade) {
+        const inputCliente = document.getElementById('clienteEspacoCliente');
+        if (!inputCliente) return;
+
+        inputCliente.disabled = true;
+        inputCliente.placeholder = 'Carregando clientes...';
+
+        try {
+            const clientes = await db.getClientesPorCidade(cidade);
+
+            if (this.autocompleteClienteEspacoCliente) {
+                this.autocompleteClienteEspacoCliente.destroy?.();
+            }
+
+            this.autocompleteClienteEspacoCliente = new Autocomplete({
+                inputId: 'clienteEspacoCliente',
+                hiddenInputId: 'clienteEspacoClienteCodigo',
+                formatDisplay: (cliente) => `${cliente.cliente} - ${cliente.nome || cliente.fantasia}`,
+                formatValue: (cliente) => `${cliente.cliente} - ${cliente.nome || cliente.fantasia}`,
+                extractKey: (cliente) => cliente.cliente,
+                onSelect: (cliente) => {
+                    document.getElementById('clienteEspacoClienteCodigo').value = cliente.cliente;
+                }
+            });
+            this.autocompleteClienteEspacoCliente.setItems(clientes);
+
+            inputCliente.disabled = false;
+            inputCliente.placeholder = 'Digite código ou nome do cliente...';
+        } catch (error) {
+            console.error('Erro ao carregar clientes:', error);
+            inputCliente.placeholder = 'Erro ao carregar clientes';
+        }
+    }
+
+    fecharModalClienteEspaco() {
+        document.getElementById('modalClienteEspaco')?.classList.remove('active');
+    }
+
+    async salvarClienteEspaco(event) {
+        event.preventDefault();
+
+        const cidade = document.getElementById('clienteEspacoCidade').value.trim();
+        const clienteCodigo = document.getElementById('clienteEspacoClienteCodigo').value;
+        const tipoEspacoId = document.getElementById('clienteEspacoTipo').value;
+        const quantidade = parseInt(document.getElementById('clienteEspacoQuantidade').value) || 1;
+
+        if (!cidade || !clienteCodigo || !tipoEspacoId) {
+            this.showNotification('Preencha todos os campos obrigatórios', 'warning');
+            return;
+        }
+
+        try {
+            const response = await fetchJson(`${API_BASE_URL}/api/espacos/clientes`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    cidade,
+                    cliente_id: clienteCodigo,
+                    tipo_espaco_id: tipoEspacoId,
+                    quantidade
+                })
+            });
+
+            if (response?.ok) {
+                this.showNotification('Cliente com espaço adicionado com sucesso', 'success');
+                this.fecharModalClienteEspaco();
+                await this.carregarClientesEspaco();
+            }
+        } catch (error) {
+            console.error('Erro ao adicionar cliente com espaço:', error);
+            this.showNotification(error.message || 'Erro ao adicionar cliente com espaço', 'error');
+        }
+    }
+
+    async removerClienteEspaco(id) {
+        if (!confirm('Deseja realmente remover este espaço do cliente?')) return;
+
+        try {
+            const response = await fetchJson(`${API_BASE_URL}/api/espacos/clientes/${id}`, {
+                method: 'DELETE'
+            });
+
+            if (response?.ok) {
+                this.showNotification('Espaço removido do cliente com sucesso', 'success');
+                await this.carregarClientesEspaco();
+            }
+        } catch (error) {
+            console.error('Erro ao remover espaço do cliente:', error);
+            this.showNotification(error.message || 'Erro ao remover espaço do cliente', 'error');
+        }
+    }
+
+    // === Consulta de Registros de Espaços ===
+
+    async consultarRegistrosEspacos() {
+        const container = document.getElementById('consultaEspacosResultado');
+        if (!container) return;
+
+        try {
+            container.innerHTML = '<div class="loading">Consultando...</div>';
+
+            const repositorId = document.getElementById('filtro_rep_espaco')?.value || '';
+            const clienteId = document.getElementById('filtro_cliente_espaco')?.value || '';
+            const tipoEspacoId = document.getElementById('filtro_tipo_espaco_consulta')?.value || '';
+            const dataInicio = document.getElementById('filtro_data_inicio_espaco')?.value || '';
+            const dataFim = document.getElementById('filtro_data_fim_espaco')?.value || '';
+
+            const params = new URLSearchParams();
+            if (repositorId) params.append('repositor_id', repositorId);
+            if (clienteId) params.append('cliente_id', clienteId);
+            if (tipoEspacoId) params.append('tipo_espaco_id', tipoEspacoId);
+            if (dataInicio) params.append('data_inicio', dataInicio);
+            if (dataFim) params.append('data_fim', dataFim);
+
+            const response = await fetchJson(`${API_BASE_URL}/api/espacos/registros?${params.toString()}`);
+
+            if (!response?.ok || !response.data?.length) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📦</div>
+                        <p>Nenhum registro de espaço encontrado</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="table-responsive">
+                    <table class="registros-espaco-table">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>Repositor</th>
+                                <th>Cliente</th>
+                                <th>Tipo</th>
+                                <th>Esperado</th>
+                                <th>Registrado</th>
+                                <th>Status</th>
+                                <th>Foto</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${response.data.map(reg => {
+                                const status = reg.re_qtd_registrada >= reg.re_qtd_esperada ? 'ok' :
+                                              reg.re_qtd_registrada > 0 ? 'warning' : 'error';
+                                return `
+                                    <tr>
+                                        <td>${this.formatarDataBR(reg.re_data_registro)}</td>
+                                        <td>${reg.repositor_nome || reg.re_repositor_id}</td>
+                                        <td>
+                                            <strong>${reg.re_cliente_id}</strong>
+                                            ${reg.cliente_nome ? `<br><small class="text-muted">${reg.cliente_nome}</small>` : ''}
+                                        </td>
+                                        <td>${reg.tipo_espaco_nome || '-'}</td>
+                                        <td class="text-center">${reg.re_qtd_esperada}</td>
+                                        <td class="text-center">${reg.re_qtd_registrada}</td>
+                                        <td>
+                                            <span class="badge-${status}">
+                                                ${status === 'ok' ? 'OK' : status === 'warning' ? 'Parcial' : 'Pendente'}
+                                            </span>
+                                        </td>
+                                        <td class="text-center">
+                                            ${reg.re_foto_url ? `<a href="${reg.re_foto_url}" target="_blank">📷</a>` : '-'}
+                                        </td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        } catch (error) {
+            console.error('Erro ao consultar registros de espaços:', error);
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">⚠️</div>
+                    <p>Erro ao consultar registros de espaços</p>
+                </div>
+            `;
+        }
+    }
+
+    formatarDataBR(dataISO) {
+        if (!dataISO) return '-';
+        const [ano, mes, dia] = dataISO.split('-');
+        return `${dia}/${mes}/${ano}`;
+    }
+
+    // === Verificação de Espaços Pendentes (para registro de rota) ===
+
+    async verificarEspacosPendentes(repositorId, clienteId) {
+        try {
+            const dataHoje = new Date().toISOString().split('T')[0];
+            const response = await fetchJson(
+                `${API_BASE_URL}/api/espacos/pendentes?repositor_id=${repositorId}&cliente_id=${clienteId}&data=${dataHoje}`
+            );
+
+            if (response?.ok && response.data) {
+                return response.data;
+            }
+            return { temEspacos: false, espacosPendentes: [], espacosRegistrados: [] };
+        } catch (error) {
+            console.error('Erro ao verificar espaços pendentes:', error);
+            return { temEspacos: false, espacosPendentes: [], espacosRegistrados: [] };
+        }
+    }
+
+    async abrirModalRegistroEspacos(repId, clienteId, clienteNome, dataVisita, espacosPendentes, gpsCoords) {
+        // Armazenar estado
+        this.espacosRegistroState = {
+            repId,
+            clienteId,
+            clienteNome,
+            dataVisita,
+            espacosPendentes,
+            gpsCoords,
+            registrosRealizados: []
+        };
+
+        // Criar ou obter modal
+        let modal = document.getElementById('modalRegistroEspacos');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'modalRegistroEspacos';
+            modal.className = 'modal';
+            document.body.appendChild(modal);
+        }
+
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 600px;">
+                <div class="modal-header">
+                    <h3>📦 Registro de Espaços</h3>
+                    <button class="modal-close" onclick="window.app.fecharModalRegistroEspacos()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning" style="margin-bottom: 16px;">
+                        <strong>Atenção:</strong> Este cliente possui ${espacosPendentes.length} espaço(s) contratado(s) que precisam ser registrados antes do checkout.
+                    </div>
+                    <p style="margin-bottom: 16px;"><strong>Cliente:</strong> ${clienteId} - ${clienteNome}</p>
+
+                    <div id="listaEspacosPendentes">
+                        ${espacosPendentes.map((esp, idx) => `
+                            <div class="espaco-pendente-item" data-idx="${idx}" style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-bottom: 12px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                    <div>
+                                        <strong>${esp.tipo_espaco_nome || 'Espaço'}</strong>
+                                        <div class="text-muted" style="font-size: 13px;">Quantidade esperada: ${esp.quantidade_esperada || esp.ce_quantidade || 1}</div>
+                                    </div>
+                                    <span class="badge badge-warning" id="statusEspaco${idx}">Pendente</span>
+                                </div>
+                                <div class="form-group" style="margin-bottom: 8px;">
+                                    <label style="font-size: 13px;">Quantidade registrada:</label>
+                                    <input type="number" id="qtdEspaco${idx}" min="0" value="${esp.quantidade_esperada || esp.ce_quantidade || 1}"
+                                           style="width: 100px; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 8px;">
+                                    <label style="font-size: 13px;">Observação (opcional):</label>
+                                    <input type="text" id="obsEspaco${idx}" placeholder="Observação..."
+                                           style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;">
+                                </div>
+                                <button class="btn btn-primary btn-sm" onclick="window.app.registrarEspacoItem(${idx}, ${esp.tipo_espaco_id || esp.ce_tipo_espaco_id}, ${esp.quantidade_esperada || esp.ce_quantidade || 1})">
+                                    Confirmar Registro
+                                </button>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="window.app.fecharModalRegistroEspacos()">Cancelar Checkout</button>
+                    <button type="button" class="btn btn-primary" id="btnFinalizarEspacos" onclick="window.app.finalizarRegistroEspacos()" disabled>
+                        Continuar para Checkout
+                    </button>
+                </div>
+            </div>
+        `;
+
+        modal.classList.add('active');
+    }
+
+    async registrarEspacoItem(idx, tipoEspacoId, quantidadeEsperada) {
+        const qtdInput = document.getElementById(`qtdEspaco${idx}`);
+        const obsInput = document.getElementById(`obsEspaco${idx}`);
+        const statusBadge = document.getElementById(`statusEspaco${idx}`);
+
+        const quantidadeRegistrada = parseInt(qtdInput?.value) || 0;
+        const observacao = obsInput?.value || '';
+
+        if (quantidadeRegistrada < 0) {
+            this.showNotification('Quantidade deve ser maior ou igual a zero', 'warning');
+            return;
+        }
+
+        const { repId, clienteId, dataVisita, gpsCoords } = this.espacosRegistroState;
+
+        try {
+            const response = await fetchJson(`${API_BASE_URL}/api/espacos/registros`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    repositor_id: repId,
+                    cliente_id: clienteId,
+                    tipo_espaco_id: tipoEspacoId,
+                    quantidade_esperada: quantidadeEsperada,
+                    quantidade_registrada: quantidadeRegistrada,
+                    observacao,
+                    data_registro: dataVisita
+                })
+            });
+
+            if (response?.ok) {
+                // Marcar como registrado
+                this.espacosRegistroState.registrosRealizados.push(idx);
+
+                // Atualizar UI
+                if (statusBadge) {
+                    if (quantidadeRegistrada >= quantidadeEsperada) {
+                        statusBadge.className = 'badge badge-ok';
+                        statusBadge.textContent = 'OK';
+                    } else {
+                        statusBadge.className = 'badge badge-warning';
+                        statusBadge.textContent = 'Parcial';
+                    }
+                }
+
+                // Desabilitar inputs
+                if (qtdInput) qtdInput.disabled = true;
+                if (obsInput) obsInput.disabled = true;
+
+                // Desabilitar botão de confirmar
+                const btnConfirmar = document.querySelector(`[onclick*="registrarEspacoItem(${idx}"]`);
+                if (btnConfirmar) {
+                    btnConfirmar.disabled = true;
+                    btnConfirmar.textContent = 'Registrado';
+                }
+
+                this.showNotification('Espaço registrado com sucesso', 'success');
+
+                // Verificar se todos foram registrados
+                const totalPendentes = this.espacosRegistroState.espacosPendentes.length;
+                const totalRegistrados = this.espacosRegistroState.registrosRealizados.length;
+
+                if (totalRegistrados >= totalPendentes) {
+                    const btnFinalizar = document.getElementById('btnFinalizarEspacos');
+                    if (btnFinalizar) {
+                        btnFinalizar.disabled = false;
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao registrar espaço:', error);
+            this.showNotification(error.message || 'Erro ao registrar espaço', 'error');
+        }
+    }
+
+    async finalizarRegistroEspacos() {
+        const { espacosPendentes, registrosRealizados } = this.espacosRegistroState;
+
+        // Verificar se todos foram registrados
+        if (registrosRealizados.length < espacosPendentes.length) {
+            this.showNotification('Registre todos os espaços pendentes antes de continuar', 'warning');
+            return;
+        }
+
+        // Fechar modal de espaços
+        this.fecharModalRegistroEspacos();
+
+        // Informar que pode prosseguir com checkout
+        this.showNotification('Espaços registrados! Clique em Salvar para finalizar o checkout.', 'success');
+    }
+
+    fecharModalRegistroEspacos() {
+        const modal = document.getElementById('modalRegistroEspacos');
+        if (modal) {
+            modal.classList.remove('active');
+        }
+        this.espacosRegistroState = null;
     }
 
     // ==================== NOTIFICAÇÕES ====================
