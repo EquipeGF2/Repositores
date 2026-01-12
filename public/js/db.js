@@ -4988,7 +4988,7 @@ class TursoDatabase {
             let sql = `
                 SELECT r.*,
                        r.res_rep_id as res_repo_cod,
-                       r.res_data as res_data_resposta,
+                       r.res_criado_em as res_data_resposta,
                        p.pes_titulo, p.pes_obrigatorio,
                        rep.repo_nome
                 FROM cc_pesquisa_respostas r

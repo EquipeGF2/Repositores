@@ -182,6 +182,23 @@ router.post('/registros', async (req, res) => {
   }
 });
 
+// GET /api/espacos/clientes-com-espaco - Verificar quais clientes de uma lista têm espaços cadastrados
+router.get('/clientes-com-espaco', async (req, res) => {
+  try {
+    const { clientes } = req.query;
+    if (!clientes) {
+      return res.status(400).json({ ok: false, message: 'Lista de clientes é obrigatória' });
+    }
+
+    const listaClientes = clientes.split(',').map(c => String(c).trim().replace(/\.0$/, ''));
+    const clientesComEspaco = await tursoService.buscarClientesComEspaco(listaClientes);
+    res.json({ ok: true, data: clientesComEspaco });
+  } catch (error) {
+    console.error('Erro ao verificar clientes com espaço:', error);
+    res.status(500).json({ ok: false, message: 'Erro ao verificar clientes com espaço' });
+  }
+});
+
 // GET /api/espacos/pendentes - Verificar espaços pendentes de um cliente
 router.get('/pendentes', async (req, res) => {
   try {

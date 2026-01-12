@@ -1082,6 +1082,7 @@ export const pages = {
                     <div class="tab-switcher">
                         <button class="tab-button active" data-target="aba-cadastro">Alterações de Cadastro</button>
                         <button class="tab-button" data-target="aba-roteiro">Alterações de Roteiro</button>
+                        <button class="tab-button" data-target="aba-checkings-cancelados">Checkings Cancelados</button>
                     </div>
 
                     <div id="aba-cadastro" class="tab-pane active">
@@ -1183,6 +1184,37 @@ export const pages = {
                             <div class="empty-state">
                                 <div class="empty-state-icon">🗺️</div>
                                 <p>Use os filtros acima para consultar as alterações de roteiro.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="aba-checkings-cancelados" class="tab-pane">
+                        <div class="filter-bar filter-bar-compact">
+                            <div class="filter-group">
+                                <label for="filtro_repositor_checking_cancelado">Repositor</label>
+                                <select id="filtro_repositor_checking_cancelado">
+                                    <option value="">Todos</option>
+                                    ${repositorOptions}
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="filtro_data_inicio_checking_cancelado">Data Início</label>
+                                <input type="date" id="filtro_data_inicio_checking_cancelado">
+                            </div>
+                            <div class="filter-group">
+                                <label for="filtro_data_fim_checking_cancelado">Data Fim</label>
+                                <input type="date" id="filtro_data_fim_checking_cancelado">
+                            </div>
+                            <div class="filter-group">
+                                <label>&nbsp;</label>
+                                <button class="btn btn-primary" onclick="window.app.buscarCheckingsCancelados()">🔍 Buscar</button>
+                            </div>
+                        </div>
+
+                        <div id="resultadosCheckingsCancelados">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">🚫</div>
+                                <p>Use os filtros acima para consultar os checkings cancelados.</p>
                             </div>
                         </div>
                     </div>
@@ -2235,6 +2267,11 @@ export const pages = {
                 .status-visited {
                     background: #d1fae5;
                     color: #065f46;
+                }
+
+                .status-nao-atendido {
+                    background: #1f2937;
+                    color: white;
                 }
 
                 .btn-small {

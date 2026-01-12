@@ -2349,6 +2349,143 @@ class TursoService {
     return result?.rows || result || [];
   }
 
+  async buscarClientesComEspaco(listaClientes) {
+    await this.ensureSchemaEspacos();
+    if (!listaClientes || listaClientes.length === 0) return [];
+
+    const placeholders = listaClientes.map(() => '?').join(',');
+    const result = await this.execute(
+      `SELECT DISTINCT ces_cliente_id FROM cc_clientes_espacos WHERE ces_ativo = 1 AND ces_cliente_id IN (${placeholders})`,
+      listaClientes
+    );
+    const rows = result?.rows || result || [];
+    return rows.map(r => String(r.ces_cliente_id).trim().replace(/\.0$/, ''));
+  }
+
+  async listarNaoAtendimentos({ repositorId, data }) {
+    // Buscar não atendimentos do dia
+    try {
+      const result = await this.execute(
+        `SELECT na_cliente_id, na_motivo FROM cc_nao_atendimento WHERE na_repositor_id = ? AND na_data_visita = ?`,
+        [repositorId, data]
+      );
+      return result?.rows || [];
+    } catch (error) {
+      // Se a tabela não existe, retorna vazio
+      if (error?.message?.includes('no such table')) {
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  async registrarNaoAtendimento({ repositorId, clienteId, clienteNome, dataVisita, motivo }) {
+    // Criar tabela de não atendimentos se não existir
+    await this.execute(`
+      CREATE TABLE IF NOT EXISTS cc_nao_atendimento (
+        na_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        na_repositor_id INTEGER NOT NULL,
+        na_cliente_id TEXT NOT NULL,
+        na_cliente_nome TEXT,
+        na_data_visita TEXT NOT NULL,
+        na_motivo TEXT NOT NULL,
+        na_criado_em TEXT NOT NULL
+      )
+    `);
+
+    const agora = new Date().toISOString();
+
+    // Verificar se já existe registro para esta combinação de repositor/cliente/data
+    const existente = await this.execute(
+      `SELECT na_id FROM cc_nao_atendimento WHERE na_repositor_id = ? AND na_cliente_id = ? AND na_data_visita = ?`,
+      [repositorId, clienteId, dataVisita]
+    );
+
+    if (existente?.rows?.length > 0) {
+      // Atualizar registro existente
+      await this.execute(
+        `UPDATE cc_nao_atendimento SET na_motivo = ?, na_cliente_nome = ?, na_criado_em = ? WHERE na_id = ?`,
+        [motivo, clienteNome || null, agora, existente.rows[0].na_id]
+      );
+      return { id: existente.rows[0].na_id, updated: true };
+    }
+
+    // Inserir novo registro
+    const result = await this.execute(
+      `INSERT INTO cc_nao_atendimento (na_repositor_id, na_cliente_id, na_cliente_nome, na_data_visita, na_motivo, na_criado_em)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [repositorId, clienteId, clienteNome || null, dataVisita, motivo, agora]
+    );
+
+    return { id: result?.lastInsertRowid, inserted: true };
+  }
+
+  async listarCheckingsCancelados(filtros = {}) {
+    let sql = `
+      SELECT
+        rv.rv_id,
+        rv.rv_cliente_id,
+        rv.rv_cliente_nome,
+        rv.rv_rep_id,
+        rv.rv_data,
+        rv.rv_cancelado_em,
+        rv.rv_cancelado_motivo,
+        rep.repo_nome
+      FROM cc_registro_visita rv
+      LEFT JOIN cad_repositor rep ON rep.repo_cod = rv.rv_rep_id
+      WHERE rv.rv_status = 'CANCELADO'
+    `;
+    const args = [];
+
+    if (filtros.repositorId) {
+      sql += ' AND rv.rv_rep_id = ?';
+      args.push(filtros.repositorId);
+    }
+    if (filtros.dataInicio) {
+      sql += ' AND DATE(rv.rv_cancelado_em) >= ?';
+      args.push(filtros.dataInicio);
+    }
+    if (filtros.dataFim) {
+      sql += ' AND DATE(rv.rv_cancelado_em) <= ?';
+      args.push(filtros.dataFim);
+    }
+
+    sql += ' ORDER BY rv.rv_cancelado_em DESC LIMIT 500';
+
+    const result = await this.execute(sql, args);
+    const rows = result?.rows || result || [];
+
+    // Enriquecer com nomes dos clientes do banco comercial
+    if (rows.length > 0) {
+      const clienteIds = [...new Set(rows.map(r => String(r.rv_cliente_id).trim().replace(/\.0$/, '')))];
+      try {
+        const comercialClient = this.getComercialClient();
+        if (comercialClient) {
+          const placeholders = clienteIds.map(() => '?').join(',');
+          const clientesResult = await comercialClient.execute({
+            sql: `SELECT cliente, nome, fantasia FROM tab_cliente WHERE cliente IN (${placeholders})`,
+            args: clienteIds
+          });
+          const clientesMap = new Map();
+          (clientesResult?.rows || []).forEach(c => {
+            const codNorm = String(c.cliente).trim().replace(/\.0$/, '');
+            clientesMap.set(codNorm, c.fantasia || c.nome || '');
+          });
+          rows.forEach(r => {
+            const idNorm = String(r.rv_cliente_id).trim().replace(/\.0$/, '');
+            if (!r.rv_cliente_nome) {
+              r.rv_cliente_nome = clientesMap.get(idNorm) || '';
+            }
+          });
+        }
+      } catch (error) {
+        console.warn('Não foi possível buscar nomes dos clientes:', error.message);
+      }
+    }
+
+    return rows;
+  }
+
   async verificarEspacosPendentes(repositorId, clienteId, dataRegistro) {
     await this.ensureSchemaEspacos();
     const clienteNorm = String(clienteId).trim().replace(/\.0$/, '');

@@ -1716,6 +1716,78 @@ router.post('/cancelar-atendimento', async (req, res) => {
   }
 });
 
+// ==================== GET /api/registro-rota/nao-atendimentos ====================
+router.get('/nao-atendimentos', async (req, res) => {
+  try {
+    const { repositor_id, data } = req.query;
+
+    if (!repositor_id || !data) {
+      return res.status(400).json({ ok: false, message: 'repositor_id e data são obrigatórios' });
+    }
+
+    const resultados = await tursoService.listarNaoAtendimentos({
+      repositorId: parseInt(repositor_id),
+      data: data
+    });
+
+    res.json({ ok: true, data: resultados });
+  } catch (error) {
+    if (error instanceof DatabaseNotConfiguredError) {
+      return res.status(503).json({ ok: false, code: error.code, message: error.message });
+    }
+    console.error('Erro ao listar não atendimentos:', error);
+    res.status(500).json({ ok: false, message: 'Erro ao listar não atendimentos' });
+  }
+});
+
+// ==================== POST /api/registro-rota/nao-atendimento ====================
+router.post('/nao-atendimento', async (req, res) => {
+  try {
+    const { repositor_id, cliente_id, cliente_nome, data_visita, motivo } = req.body || {};
+
+    if (!repositor_id || !cliente_id || !motivo) {
+      return res.status(400).json({ ok: false, message: 'repositor_id, cliente_id e motivo são obrigatórios' });
+    }
+
+    const resultado = await tursoService.registrarNaoAtendimento({
+      repositorId: parseInt(repositor_id),
+      clienteId: String(cliente_id).trim().replace(/\.0$/, ''),
+      clienteNome: cliente_nome,
+      dataVisita: data_visita || new Date().toISOString().split('T')[0],
+      motivo: motivo
+    });
+
+    res.json({ ok: true, data: resultado });
+  } catch (error) {
+    if (error instanceof DatabaseNotConfiguredError) {
+      return res.status(503).json({ ok: false, code: error.code, message: error.message });
+    }
+    console.error('Erro ao registrar não atendimento:', error);
+    res.status(500).json({ ok: false, message: 'Erro ao registrar não atendimento' });
+  }
+});
+
+// ==================== GET /api/registro-rota/checkings-cancelados ====================
+router.get('/checkings-cancelados', async (req, res) => {
+  try {
+    const { repositor_id, data_inicio, data_fim } = req.query;
+
+    const resultados = await tursoService.listarCheckingsCancelados({
+      repositorId: repositor_id ? parseInt(repositor_id) : null,
+      dataInicio: data_inicio,
+      dataFim: data_fim
+    });
+
+    res.json({ ok: true, data: resultados });
+  } catch (error) {
+    if (error instanceof DatabaseNotConfiguredError) {
+      return res.status(503).json({ ok: false, code: error.code, message: error.message });
+    }
+    console.error('Erro ao listar checkings cancelados:', error);
+    res.status(500).json({ ok: false, message: 'Erro ao listar checkings cancelados' });
+  }
+});
+
 // ==================== PATCH /api/registro-rota/sessoes/:sessao_id/servicos ====================
 router.patch('/sessoes/:sessao_id/servicos', async (req, res) => {
   try {

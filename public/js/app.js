@@ -7075,6 +7075,106 @@ class App {
         }
     }
 
+    async buscarCheckingsCancelados() {
+        const container = document.getElementById('resultadosCheckingsCancelados');
+        if (!container) return;
+
+        container.innerHTML = '<div class="loading">Buscando...</div>';
+
+        try {
+            const repositorId = document.getElementById('filtro_repositor_checking_cancelado')?.value || '';
+            const dataInicio = document.getElementById('filtro_data_inicio_checking_cancelado')?.value || '';
+            const dataFim = document.getElementById('filtro_data_fim_checking_cancelado')?.value || '';
+
+            const params = new URLSearchParams();
+            if (repositorId) params.append('repositor_id', repositorId);
+            if (dataInicio) params.append('data_inicio', dataInicio);
+            if (dataFim) params.append('data_fim', dataFim);
+
+            const response = await fetchJson(`${API_BASE_URL}/api/registro-rota/checkings-cancelados?${params.toString()}`);
+
+            if (!response?.ok || !response.data?.length) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔍</div>
+                        <p>Nenhum checking cancelado encontrado para os filtros selecionados.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const isMobile = window.innerWidth < 768;
+
+            if (isMobile) {
+                container.innerHTML = `
+                    <div class="checkings-cards">
+                        ${response.data.map(item => {
+                            const dataCancelamento = item.rv_cancelado_em ? new Date(item.rv_cancelado_em).toLocaleString('pt-BR') : '-';
+                            return `
+                                <div class="checking-card" style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                                        <div>
+                                            <div style="font-weight: 600; color: #111827;">${item.rv_rep_id} - ${item.repo_nome || ''}</div>
+                                            <div style="color: #6b7280; font-size: 13px;">${dataCancelamento}</div>
+                                        </div>
+                                    </div>
+                                    <div style="margin-bottom: 8px;">
+                                        <strong>Cliente:</strong> ${item.rv_cliente_id} - ${item.rv_cliente_nome || ''}
+                                    </div>
+                                    <div style="color: #dc2626;">
+                                        <strong>Motivo:</strong> ${item.rv_cancelado_motivo || 'Não informado'}
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                    <p style="margin-top: 1rem; color: var(--gray-600); font-size: 0.9rem;">
+                        Total: ${response.data.length} cancelamento(s)
+                    </p>
+                `;
+            } else {
+                container.innerHTML = `
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Data Cancelamento</th>
+                                    <th>Repositor</th>
+                                    <th>Cliente</th>
+                                    <th>Motivo</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${response.data.map(item => {
+                                    const dataCancelamento = item.rv_cancelado_em ? new Date(item.rv_cancelado_em).toLocaleString('pt-BR') : '-';
+                                    return `
+                                        <tr>
+                                            <td>${dataCancelamento}</td>
+                                            <td><strong>${item.rv_rep_id}</strong> - ${item.repo_nome || ''}</td>
+                                            <td><strong>${item.rv_cliente_id}</strong> - ${item.rv_cliente_nome || ''}</td>
+                                            <td style="color: #dc2626;">${item.rv_cancelado_motivo || 'Não informado'}</td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                    <p style="margin-top: 1rem; color: var(--gray-600); font-size: 0.9rem;">
+                        Total: ${response.data.length} cancelamento(s)
+                    </p>
+                `;
+            }
+        } catch (error) {
+            console.error('Erro ao buscar checkings cancelados:', error);
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">⚠️</div>
+                    <p>Erro ao buscar checkings cancelados</p>
+                </div>
+            `;
+        }
+    }
+
     inicializarConsultaAlteracoes() {
         const botoes = document.querySelectorAll('.tab-button');
         botoes.forEach(btn => {
@@ -9847,6 +9947,41 @@ class App {
             return;
         }
 
+        // Buscar clientes com espaços cadastrados (em background para não bloquear)
+        const clienteIds = roteiro.map(c => normalizeClienteId(c.cli_codigo));
+        this.registroRotaState.clientesComEspaco = new Set();
+        fetchJson(`${API_BASE_URL}/api/espacos/clientes-com-espaco?clientes=${clienteIds.join(',')}`)
+            .then(resp => {
+                if (resp?.ok && resp.data) {
+                    this.registroRotaState.clientesComEspaco = new Set(resp.data.map(c => normalizeClienteId(c)));
+                    // Re-renderizar botões de espaços se necessário
+                    this.atualizarBotoesEspacosRoteiro();
+                }
+            })
+            .catch(err => console.warn('Erro ao verificar clientes com espaço:', err));
+
+        // Buscar não atendimentos do dia
+        fetchJson(`${API_BASE_URL}/api/registro-rota/nao-atendimentos?repositor_id=${repId}&data=${dataVisita}`)
+            .then(resp => {
+                if (resp?.ok && resp.data) {
+                    resp.data.forEach(na => {
+                        const cliNorm = normalizeClienteId(na.na_cliente_id);
+                        const statusAtual = this.registroRotaState.resumoVisitas.get(cliNorm) || {};
+                        // Só marcar como não atendido se não houver outro status (finalizado, em_atendimento)
+                        if (!statusAtual.status || statusAtual.status === 'sem_checkin') {
+                            this.registroRotaState.resumoVisitas.set(cliNorm, {
+                                ...statusAtual,
+                                status: 'nao_atendido',
+                                nao_atendimento_motivo: na.na_motivo
+                            });
+                        }
+                    });
+                    // Re-renderizar o roteiro para atualizar o status visual
+                    this.atualizarStatusVisuaisRoteiro();
+                }
+            })
+            .catch(err => console.warn('Erro ao verificar não atendimentos:', err));
+
         // Preservar dados locais atualizados antes de sobrescrever com dados do backend
         const resumoLocalAnterior = this.registroRotaState.resumoVisitas || new Map();
 
@@ -9946,19 +10081,23 @@ class App {
             const statusCliente = mapaResumo.get(cliId) || { status: 'sem_checkin' };
             const statusBase = statusCliente.status || 'sem_checkin';
 
-            const podeNovaVisita = statusBase === 'finalizado';
+            const podeNovaVisita = statusBase === 'finalizado' || statusBase === 'nao_atendido';
 
             const statusClasse = statusBase === 'finalizado'
                 ? 'status-visited'
                 : statusBase === 'em_atendimento'
                     ? 'status-visited'
-                    : 'status-pending';
+                    : statusBase === 'nao_atendido'
+                        ? 'status-nao-atendido'
+                        : 'status-pending';
 
             const statusTexto = statusBase === 'em_atendimento'
                 ? 'Em atendimento'
                 : statusBase === 'finalizado'
                     ? `Finalizado${statusCliente.tempo_minutos ? ` ${String(statusCliente.tempo_minutos).padStart(2, '0')} min` : ''}`
-                    : 'Pendente';
+                    : statusBase === 'nao_atendido'
+                        ? 'Não atendido'
+                        : 'Pendente';
 
             const tempoTexto = statusCliente?.tempo_minutos != null && statusBase === 'finalizado'
                 ? `<div class="route-item-time">⏱️ ${statusCliente.tempo_minutos} min</div>`
@@ -10011,9 +10150,10 @@ class App {
                 ? `<button onclick="app.abrirPesquisaCliente(${repId}, '${cliId}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-pesquisa" style="background:#8b5cf6;color:white;">📝 Pesquisa (${pesquisasPendentes.length})</button>`
                 : '';
 
-            // Botão de espaços - aparece se em atendimento
+            // Botão de espaços - aparece se em atendimento E cliente tem espaços cadastrados
+            const clienteTemEspaco = this.registroRotaState.clientesComEspaco?.has(cliId);
             const btnEspacos = podeCheckout
-                ? `<button onclick="app.verificarEAbrirRegistroEspacos(${repId}, '${cliId}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-espacos" style="background:#f59e0b;color:white;">📦 Espaços</button>`
+                ? `<button data-btn-espaco="${cliId}" onclick="app.verificarEAbrirRegistroEspacos(${repId}, '${cliId}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-espacos" style="background:#f59e0b;color:white;${clienteTemEspaco === false ? 'display:none;' : ''}">📦 Espaços</button>`
                 : '';
 
             // Checkout sempre aparece quando em atendimento (pode estar desabilitado)
@@ -10030,7 +10170,12 @@ class App {
                 ? `<button onclick="app.confirmarCancelarAtendimento(${repId}, '${cliId}', '${nomeEsc}')" class="btn-small btn-danger" title="Cancelar atendimento em aberto">🛑 Cancelar</button>`
                 : '';
 
-            const botoes = `${btnNovaVisita}${btnCheckin}${btnAtividades}${btnPesquisa}${btnEspacos}${btnCampanha}${btnCheckout}${btnCancelar}`;
+            // Botão de não atendimento - aparece se cliente está pendente (não atendido)
+            const btnNaoAtendimento = (statusBase === 'sem_checkin' && !checkinBloqueadoPorAtraso)
+                ? `<button onclick="app.abrirModalNaoAtendimento(${repId}, '${cliId}', '${nomeEsc}', '${dataVisita}')" class="btn-small" style="background:#1f2937;color:white;" title="Registrar não atendimento">⛔ Não atendimento</button>`
+                : '';
+
+            const botoes = `${btnNovaVisita}${btnCheckin}${btnAtividades}${btnPesquisa}${btnEspacos}${btnCampanha}${btnCheckout}${btnCancelar}${btnNaoAtendimento}`;
             const avisoAtraso = checkinBloqueadoPorAtraso
                 ? '<span style="display:block;color:#b91c1c;font-size:12px;margin-top:6px;">Atraso superior a 7 dias. Check-in bloqueado.</span>'
                 : '';
@@ -10088,6 +10233,60 @@ class App {
         }
     }
 }
+
+    atualizarBotoesEspacosRoteiro() {
+        // Atualiza a visibilidade dos botões de espaços após verificar quais clientes têm espaços cadastrados
+        const clientesComEspaco = this.registroRotaState.clientesComEspaco || new Set();
+        const botoes = document.querySelectorAll('[data-btn-espaco]');
+        botoes.forEach(btn => {
+            const clienteId = btn.getAttribute('data-btn-espaco');
+            if (clientesComEspaco.has(clienteId)) {
+                btn.style.display = '';
+            } else {
+                btn.style.display = 'none';
+            }
+        });
+    }
+
+    atualizarStatusVisuaisRoteiro() {
+        // Atualiza o status visual dos itens do roteiro após carregar não atendimentos
+        const container = document.getElementById('roteiroContainer');
+        if (!container) return;
+
+        const items = container.querySelectorAll('.route-item');
+        items.forEach(item => {
+            const clienteId = item.dataset.clienteId;
+            if (!clienteId) return;
+
+            const statusCliente = this.registroRotaState.resumoVisitas?.get(clienteId) || {};
+            const statusBase = statusCliente.status || 'sem_checkin';
+
+            if (statusBase === 'nao_atendido') {
+                const statusSpan = item.querySelector('.route-status');
+                if (statusSpan) {
+                    statusSpan.className = 'route-status status-nao-atendido';
+                    statusSpan.textContent = 'Não atendido';
+                }
+
+                // Esconder botões de checkin e não atendimento, mostrar nova visita
+                const actions = item.querySelector('.route-item-actions');
+                if (actions) {
+                    const repId = item.dataset.repId;
+                    const dataVisita = item.dataset.dataVisita;
+                    const clienteNome = item.dataset.clienteNome || '';
+                    const enderecoLinha = item.dataset.enderecoLinha || '';
+                    const enderecoCadastro = item.dataset.enderecoCadastro || '';
+
+                    const nomeEsc = clienteNome.replace(/'/g, "\\'");
+                    const endEsc = enderecoLinha.replace(/'/g, "\\'");
+                    const cadastroEsc = enderecoCadastro.replace(/'/g, "\\'");
+
+                    const btnNovaVisita = `<button onclick="app.abrirModalCaptura(${repId}, '${clienteId}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkin', '${cadastroEsc}', true)" class="btn-small">🆕 Nova visita</button>`;
+                    actions.innerHTML = `<span class="route-status status-nao-atendido">Não atendido</span>${btnNovaVisita}`;
+                }
+            }
+        });
+    }
 
     async buscarResumoVisitas(repId, dataVisita) {
         try {
@@ -10254,6 +10453,107 @@ class App {
         }
     }
 
+    async abrirModalNaoAtendimento(repId, clienteId, clienteNome, dataVisita) {
+        const conteudo = document.createElement('div');
+        conteudo.className = 'modal-body-text';
+        conteudo.innerHTML = `
+            <p style="margin-bottom: 12px;">Registrar não atendimento para este cliente. O cliente não aparecerá como pendente nos próximos dias.</p>
+            <div style="margin-bottom: 12px;">
+                <strong>Cliente:</strong> ${clienteId} - ${clienteNome}
+            </div>
+            <div style="margin-bottom: 12px;">
+                <strong>Data:</strong> ${dataVisita.split('-').reverse().join('/')}
+            </div>
+            <label for="motivoNaoAtendimento" style="font-weight: 600; font-size: 14px;">Motivo do não atendimento *</label>
+            <textarea id="motivoNaoAtendimento" required maxlength="500" placeholder="Ex.: Cliente fechado, sem acesso, etc." class="input" style="width:100%; min-height: 80px;"></textarea>
+        `;
+
+        const rodape = document.createElement('div');
+        rodape.className = 'modal-footer modal-footer-inline';
+
+        const btnVoltar = document.createElement('button');
+        btnVoltar.className = 'btn btn-secondary';
+        btnVoltar.type = 'button';
+        btnVoltar.textContent = 'Cancelar';
+
+        const btnConfirmar = document.createElement('button');
+        btnConfirmar.className = 'btn';
+        btnConfirmar.style.cssText = 'background:#1f2937;color:white;';
+        btnConfirmar.type = 'button';
+        btnConfirmar.textContent = 'Confirmar não atendimento';
+
+        rodape.appendChild(btnVoltar);
+        rodape.appendChild(btnConfirmar);
+
+        const modal = this.criarModalOverlay({
+            titulo: 'Registrar Não Atendimento',
+            conteudo,
+            rodape
+        });
+
+        const motivoInput = conteudo.querySelector('#motivoNaoAtendimento');
+        let carregando = false;
+
+        const setLoading = (status) => {
+            carregando = status;
+            btnConfirmar.disabled = status;
+            btnVoltar.disabled = status;
+            btnConfirmar.textContent = status ? 'Registrando...' : 'Confirmar não atendimento';
+        };
+
+        btnVoltar.addEventListener('click', () => {
+            if (!carregando) modal.fechar();
+        });
+
+        btnConfirmar.addEventListener('click', async () => {
+            if (carregando) return;
+
+            const motivo = motivoInput?.value?.trim() || '';
+            if (!motivo) {
+                this.showNotification('Informe o motivo do não atendimento', 'warning');
+                motivoInput?.focus();
+                return;
+            }
+
+            setLoading(true);
+
+            try {
+                const response = await fetchJson(`${this.registroRotaState.backendUrl}/api/registro-rota/nao-atendimento`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        repositor_id: repId,
+                        cliente_id: clienteId,
+                        cliente_nome: clienteNome,
+                        data_visita: dataVisita,
+                        motivo: motivo
+                    })
+                });
+
+                if (!response?.ok) {
+                    throw new Error(response?.message || 'Erro ao registrar não atendimento');
+                }
+
+                // Atualizar status local
+                const normalizeClienteId = (v) => String(v ?? '').trim().replace(/\.0$/, '');
+                this.atualizarStatusClienteLocal(normalizeClienteId(clienteId), {
+                    status: 'nao_atendido',
+                    nao_atendimento_motivo: motivo,
+                    rep_id: repId
+                });
+
+                this.showNotification('Não atendimento registrado com sucesso.', 'success');
+                modal.fechar();
+                await this.carregarRoteiroRepositor();
+            } catch (error) {
+                console.error('Erro ao registrar não atendimento:', error);
+                this.showNotification(error.message || 'Erro ao registrar não atendimento', 'error');
+            } finally {
+                setLoading(false);
+            }
+        });
+    }
+
     atualizarStatusClienteLocal(clienteId, novoStatus = {}) {
         const normalizeClienteId = (v) => String(v ?? '').trim().replace(/\.0$/, '');
         const clienteIdNorm = normalizeClienteId(clienteId);
@@ -10370,9 +10670,10 @@ class App {
             ? `<button onclick="app.abrirPesquisaCliente(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-pesquisa" style="background:#8b5cf6;color:white;">📝 Pesquisa (${pesquisasPendentes.length})</button>`
             : '';
 
-        // Botão de espaços - aparece se em atendimento
-        const btnEspacos = podeCheckout
-            ? `<button onclick="app.verificarEAbrirRegistroEspacos(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-espacos" style="background:#f59e0b;color:white;">📦 Espaços</button>`
+        // Botão de espaços - aparece se em atendimento E cliente tem espaços cadastrados
+        const clienteTemEspaco = this.registroRotaState.clientesComEspaco?.has(clienteIdNorm);
+        const btnEspacos = (podeCheckout && clienteTemEspaco)
+            ? `<button data-btn-espaco="${clienteIdNorm}" onclick="app.verificarEAbrirRegistroEspacos(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-espacos" style="background:#f59e0b;color:white;">📦 Espaços</button>`
             : '';
 
         // Checkout sempre aparece quando em atendimento (pode estar desabilitado)
@@ -10386,7 +10687,12 @@ class App {
             ? `<button onclick="app.abrirModalCaptura(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkin', '${cadastroEsc}', true)" class="btn-small">🆕 Nova visita</button>`
             : '';
 
-        const botoes = `${btnNovaVisita}${btnCheckin}${btnAtividades}${btnPesquisa}${btnEspacos}${btnCampanha}${btnCheckout}`;
+        // Botão de não atendimento - aparece se cliente está pendente (não atendido)
+        const btnNaoAtendimento = (statusBase === 'sem_checkin' && !checkinBloqueadoPorAtraso)
+            ? `<button onclick="app.abrirModalNaoAtendimento(${repId}, '${clienteIdNorm}', '${clienteNome.replace(/'/g, "\\'")}', '${dataVisita}')" class="btn-small" style="background:#1f2937;color:white;" title="Registrar não atendimento">⛔ Não atendimento</button>`
+            : '';
+
+        const botoes = `${btnNovaVisita}${btnCheckin}${btnAtividades}${btnPesquisa}${btnEspacos}${btnCampanha}${btnCheckout}${btnNaoAtendimento}`;
         const avisoAtraso = checkinBloqueadoPorAtraso
             ? '<span style="display:block;color:#b91c1c;font-size:12px;margin-top:6px;">Atraso superior a 7 dias. Check-in bloqueado.</span>'
             : '';
@@ -17466,8 +17772,7 @@ class App {
                                         <small>${r.repo_nome || ''}</small>
                                     </td>
                                     <td>
-                                        <strong>${r.res_cliente_codigo}</strong>
-                                        <small>${r.cliente_nome || ''}</small>
+                                        <strong>${r.res_cliente_codigo}</strong> - ${r.cliente_nome || ''}
                                     </td>
                                     <td>${data}</td>
                                     ${perguntas.map(p => `<td>${respostasMap[p] || '-'}</td>`).join('')}
@@ -19428,8 +19733,7 @@ class App {
                                         <td>${this.formatarDataBR(reg.re_data_registro)}</td>
                                         <td>${reg.repositor_nome || reg.re_repositor_id}</td>
                                         <td>
-                                            <strong>${reg.re_cliente_id}</strong>
-                                            ${reg.cliente_nome ? `<br><small class="text-muted">${reg.cliente_nome}</small>` : ''}
+                                            <strong>${reg.re_cliente_id}</strong> - ${reg.cliente_nome || ''}
                                         </td>
                                         <td>${reg.tipo_espaco_nome || '-'}</td>
                                         <td class="text-center">${reg.re_qtd_esperada}</td>
