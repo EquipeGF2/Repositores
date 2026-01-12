@@ -2942,9 +2942,9 @@ export const pages = {
                                     <thead>
                                         <tr>
                                             <th>Nome</th>
-                                            <th>Descrição</th>
-                                            <th style="width: 80px;">Status</th>
-                                            <th style="width: 120px;">Ações</th>
+                                            <th class="hide-mobile">Descrição</th>
+                                            <th style="width: 70px;">Status</th>
+                                            <th style="width: 90px;">Ações</th>
                                         </tr>
                                     </thead>
                                     <tbody id="tiposEspacoBodyConfig">
@@ -2953,6 +2953,12 @@ export const pages = {
                                 </table>
                             </div>
                         </div>
+                        <style>
+                            @media (max-width: 768px) {
+                                #tabelaTiposEspacoConfig .hide-mobile { display: none; }
+                                #tabelaTiposEspacoConfig .btn-sm { padding: 4px 6px; font-size: 12px; }
+                            }
+                        </style>
                     </div>
                 </div>
             </div>
@@ -6330,9 +6336,6 @@ export const pages = {
     'consulta-espacos': async () => {
         return `
             <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Consulta de Espaços</h3>
-                </div>
                 <div class="card-body">
                     <div class="filter-bar filter-bar-wide" style="margin-bottom: 20px;">
                         <div class="filter-group">

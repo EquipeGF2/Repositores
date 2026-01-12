@@ -18789,7 +18789,7 @@ class App {
             const selectRep = document.getElementById('filtro_rep_espaco');
             if (selectRep) {
                 selectRep.innerHTML = '<option value="">Todos</option>' +
-                    repositores.map(r => `<option value="${r.rep_cod}">${r.rep_nome}</option>`).join('');
+                    repositores.map(r => `<option value="${r.repo_cod}">${r.repo_nome}</option>`).join('');
             }
 
             // Carregar tipos de espaço
@@ -18810,10 +18810,10 @@ class App {
                     // Agrupar clientes únicos (pode haver múltiplos tipos de espaço por cliente)
                     const clientesUnicos = new Map();
                     clientesResp.data.forEach(ce => {
-                        if (!clientesUnicos.has(ce.ce_cliente_codigo)) {
-                            clientesUnicos.set(ce.ce_cliente_codigo, {
-                                codigo: ce.ce_cliente_codigo,
-                                nome: ce.cliente_nome || ce.ce_cidade
+                        if (!clientesUnicos.has(ce.ces_cliente_id)) {
+                            clientesUnicos.set(ce.ces_cliente_id, {
+                                codigo: ce.ces_cliente_id,
+                                nome: ce.cliente_nome || ce.ces_cidade
                             });
                         }
                     });
@@ -18997,14 +18997,14 @@ class App {
             tbody.innerHTML = response.data.map(tipo => `
                 <tr>
                     <td><strong>${tipo.esp_nome}</strong></td>
-                    <td>${tipo.esp_descricao || '-'}</td>
+                    <td class="hide-mobile">${tipo.esp_descricao || '-'}</td>
                     <td style="text-align: center;">
                         <span class="badge ${tipo.esp_ativo ? 'badge-success' : 'badge-secondary'}">
                             ${tipo.esp_ativo ? 'Ativo' : 'Inativo'}
                         </span>
                     </td>
                     <td style="text-align: center; white-space: nowrap;">
-                        <button class="btn btn-sm btn-secondary" onclick="window.app.editarTipoEspacoConfig(${tipo.esp_id})" title="Editar" style="margin-right: 4px;">✏️</button>
+                        <button class="btn btn-sm btn-secondary" onclick="window.app.editarTipoEspacoConfig(${tipo.esp_id})" title="Editar">✏️</button>
                         <button class="btn btn-sm btn-danger" onclick="window.app.excluirTipoEspacoConfig(${tipo.esp_id})" title="Excluir" ${tipo.esp_ativo ? '' : 'disabled'}>🗑️</button>
                     </td>
                 </tr>
@@ -19150,15 +19150,15 @@ class App {
                         <tbody>
                             ${response.data.map(ce => `
                                 <tr>
-                                    <td>${ce.ce_cidade}</td>
+                                    <td>${ce.ces_cidade}</td>
                                     <td>
-                                        <strong>${ce.ce_cliente_codigo}</strong>
+                                        <strong>${ce.ces_cliente_id}</strong>
                                         ${ce.cliente_nome ? `<br><small class="text-muted">${ce.cliente_nome}</small>` : ''}
                                     </td>
-                                    <td>${ce.tipo_espaco_nome || '-'}</td>
-                                    <td>${ce.ce_quantidade}</td>
+                                    <td>${ce.tipo_nome || '-'}</td>
+                                    <td>${ce.ces_quantidade}</td>
                                     <td>
-                                        <button class="btn btn-sm btn-danger" onclick="window.app.removerClienteEspaco(${ce.ce_id})">
+                                        <button class="btn btn-sm btn-danger" onclick="window.app.removerClienteEspaco(${ce.ces_id})">
                                             Remover
                                         </button>
                                     </td>
