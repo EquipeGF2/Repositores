@@ -2219,27 +2219,26 @@ class TursoService {
     const rows = result?.rows || result || [];
 
     // Enriquecer com nomes dos clientes do banco comercial
-    if (rows.length > 0 && this.comercialClient) {
+    if (rows.length > 0) {
       const clienteIds = [...new Set(rows.map(r => String(r.ces_cliente_id).trim()))];
       try {
-        // Buscar clientes usando LIKE para lidar com formatos diferentes
-        const promises = clienteIds.map(async (id) => {
-          const result = await this.comercialClient.execute({
-            sql: `SELECT cod_cliente, nome, fantasia FROM tab_cliente WHERE CAST(cod_cliente AS TEXT) = ? OR cod_cliente = ? LIMIT 1`,
-            args: [id, id]
+        const comercialClient = this.getComercialClient();
+        if (comercialClient) {
+          const placeholders = clienteIds.map(() => '?').join(',');
+          const result = await comercialClient.execute({
+            sql: `SELECT cliente, nome, fantasia FROM tab_cliente WHERE cliente IN (${placeholders})`,
+            args: clienteIds
           });
-          return result?.rows?.[0] || null;
-        });
-        const clientesResults = await Promise.all(promises);
-        const clientesMap = new Map();
-        clientesResults.filter(Boolean).forEach(c => {
-          const codNorm = String(c.cod_cliente).trim().replace(/\.0$/, '');
-          clientesMap.set(codNorm, c.fantasia || c.nome);
-        });
-        rows.forEach(r => {
-          const idNorm = String(r.ces_cliente_id).trim().replace(/\.0$/, '');
-          r.cliente_nome = clientesMap.get(idNorm) || '';
-        });
+          const clientesMap = new Map();
+          (result?.rows || []).forEach(c => {
+            const codNorm = String(c.cliente).trim().replace(/\.0$/, '');
+            clientesMap.set(codNorm, c.fantasia || c.nome || '');
+          });
+          rows.forEach(r => {
+            const idNorm = String(r.ces_cliente_id).trim().replace(/\.0$/, '');
+            r.cliente_nome = clientesMap.get(idNorm) || '';
+          });
+        }
       } catch (error) {
         console.warn('Não foi possível buscar nomes dos clientes:', error.message);
       }
@@ -2356,25 +2355,33 @@ class TursoService {
 
     // Buscar espaços configurados para o cliente
     const espacosCliente = await this.buscarEspacosCliente(clienteNorm);
-    if (espacosCliente.length === 0) return { temPendente: false, espacos: [] };
+    if (espacosCliente.length === 0) {
+      return { temEspacos: false, espacosPendentes: [], espacosRegistrados: [] };
+    }
 
     // Verificar quais já foram registrados hoje
     const registrados = await this.execute(
-      `SELECT reg_tipo_espaco_id FROM cc_registro_espacos
+      `SELECT reg_tipo_espaco_id, reg_quantidade_registrada FROM cc_registro_espacos
        WHERE reg_repositor_id = ? AND reg_cliente_id = ? AND reg_data_registro = ?`,
       [repositorId, clienteNorm, dataRegistro]
     );
-    const tiposRegistrados = new Set((registrados?.rows || registrados || []).map(r => r.reg_tipo_espaco_id));
+    const registradosRows = registrados?.rows || registrados || [];
+    const tiposRegistrados = new Set(registradosRows.map(r => r.reg_tipo_espaco_id));
 
     // Filtrar espaços pendentes
     const pendentes = espacosCliente.filter(e => !tiposRegistrados.has(e.ces_tipo_espaco_id));
 
     return {
-      temPendente: pendentes.length > 0,
-      espacos: pendentes.map(e => ({
-        tipoEspacoId: e.ces_tipo_espaco_id,
-        tipoNome: e.tipo_nome,
-        quantidadeEsperada: e.ces_quantidade
+      temEspacos: true,
+      espacosPendentes: pendentes.map(e => ({
+        tipo_espaco_id: e.ces_tipo_espaco_id,
+        tipo_nome: e.tipo_nome,
+        quantidade_esperada: e.ces_quantidade,
+        ces_quantidade: e.ces_quantidade
+      })),
+      espacosRegistrados: registradosRows.map(r => ({
+        tipo_espaco_id: r.reg_tipo_espaco_id,
+        quantidade_registrada: r.reg_quantidade_registrada
       }))
     };
   }

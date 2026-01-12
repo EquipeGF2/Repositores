@@ -1,7 +1,14 @@
 import express from 'express';
+import multer from 'multer';
 import { tursoService } from '../services/turso.js';
+import googleDriveService from '../services/googleDrive.js';
 
 const router = express.Router();
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 } // 20MB
+});
 
 // ==================== TIPOS DE ESPAÇO ====================
 
@@ -194,6 +201,72 @@ router.get('/pendentes', async (req, res) => {
   } catch (error) {
     console.error('Erro ao verificar espaços pendentes:', error);
     res.status(500).json({ ok: false, message: 'Erro ao verificar espaços pendentes' });
+  }
+});
+
+// POST /api/espacos/upload-foto - Upload de foto de espaço com nomenclatura correta
+// Nome: REP{COD}_CLI{COD}_ESPACO_{DATA}_{HORA}_{SEQUENCIAL}
+router.post('/upload-foto', upload.single('foto'), async (req, res) => {
+  try {
+    const { repositor_id, cliente_id } = req.body;
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({ ok: false, message: 'Foto é obrigatória' });
+    }
+    if (!repositor_id || !cliente_id) {
+      return res.status(400).json({ ok: false, message: 'repositor_id e cliente_id são obrigatórios' });
+    }
+
+    // Buscar nome do repositor
+    const repositor = await tursoService.obterRepositor(parseInt(repositor_id));
+    const repoNome = repositor?.repo_nome || `REP_${repositor_id}`;
+
+    // Garantir pasta espaco existe
+    const espacoFolderId = await googleDriveService.ensureEspacoFolder(parseInt(repositor_id), repoNome);
+
+    // Gerar nome do arquivo: REP{COD}_CLI{COD}_ESPACO_{DATA}_{HORA}_{SEQUENCIAL}
+    const now = new Date();
+    // Ajustar para horário de Brasília (UTC-3)
+    const brasiliaOffset = -3 * 60 * 60 * 1000;
+    const brasiliaTime = new Date(now.getTime() + brasiliaOffset);
+
+    const data = brasiliaTime.toISOString().split('T')[0].replace(/-/g, '');
+    const hora = brasiliaTime.toISOString().split('T')[1].substring(0, 8).replace(/:/g, '');
+
+    // Buscar sequencial - contar registros de hoje para este cliente
+    const dataHoje = brasiliaTime.toISOString().split('T')[0];
+    const registrosHoje = await tursoService.execute(
+      `SELECT COUNT(*) as total FROM cc_registro_espacos
+       WHERE reg_repositor_id = ? AND reg_cliente_id = ? AND reg_data_registro = ?`,
+      [parseInt(repositor_id), String(cliente_id).trim(), dataHoje]
+    );
+    const sequencial = String(((registrosHoje?.rows?.[0]?.total || 0) + 1)).padStart(2, '0');
+
+    const clienteIdNorm = String(cliente_id).trim().replace(/\.0$/, '');
+    const filename = `REP${repositor_id}_CLI${clienteIdNorm}_ESPACO_${data}_${hora.substring(0, 6)}_${sequencial}`;
+    const ext = file.mimetype.split('/')[1] || 'jpg';
+    const fullFilename = `${filename}.${ext}`;
+
+    // Upload para o Drive
+    const uploadResult = await googleDriveService.uploadFotoBase64({
+      base64Data: file.buffer.toString('base64'),
+      mimeType: file.mimetype,
+      filename: fullFilename,
+      repId: parseInt(repositor_id),
+      repoNome,
+      parentFolderId: espacoFolderId
+    });
+
+    res.json({
+      ok: true,
+      url: uploadResult?.webViewLink || '',
+      fileId: uploadResult?.fileId || '',
+      filename: fullFilename
+    });
+  } catch (error) {
+    console.error('Erro ao fazer upload da foto de espaço:', error);
+    res.status(500).json({ ok: false, message: error.message || 'Erro ao fazer upload da foto' });
   }
 });
 

@@ -19668,14 +19668,13 @@ class App {
         btnConfirmar.textContent = 'Enviando...';
 
         try {
-            // Upload da foto primeiro
+            // Upload da foto primeiro - usando endpoint específico para espaços
             const formData = new FormData();
             formData.append('foto', esp.fotoFile);
-            formData.append('tipo', 'espaco');
             formData.append('cliente_id', clienteId);
             formData.append('repositor_id', repId);
 
-            const uploadResp = await fetch(`${API_BASE_URL}/api/upload-foto`, {
+            const uploadResp = await fetch(`${API_BASE_URL}/api/espacos/upload-foto`, {
                 method: 'POST',
                 body: formData
             });

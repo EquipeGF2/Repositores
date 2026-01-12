@@ -380,6 +380,11 @@ class GoogleDriveService {
     return this.createFolderIfNotExists(despesasFolder, rubricaSlug);
   }
 
+  async ensureEspacoFolder(repId, repoNome) {
+    const root = await this.criarPastaRepositor(repId, repoNome);
+    return this.createFolderIfNotExists(root, 'espaco');
+  }
+
   slugify(text) {
     return text
       .toString()
