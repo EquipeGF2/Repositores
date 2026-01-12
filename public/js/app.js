@@ -10011,6 +10011,11 @@ class App {
                 ? `<button onclick="app.abrirPesquisaCliente(${repId}, '${cliId}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-pesquisa" style="background:#8b5cf6;color:white;">📝 Pesquisa (${pesquisasPendentes.length})</button>`
                 : '';
 
+            // Botão de espaços - aparece se em atendimento
+            const btnEspacos = podeCheckout
+                ? `<button onclick="app.verificarEAbrirRegistroEspacos(${repId}, '${cliId}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-espacos" style="background:#f59e0b;color:white;">📦 Espaços</button>`
+                : '';
+
             // Checkout sempre aparece quando em atendimento (pode estar desabilitado)
             const btnCheckout = podeCheckout
                 ? `<button onclick="app.abrirModalCaptura(${repId}, '${cliId}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkout', '${cadastroEsc}')" class="btn-small btn-checkout" ${textoCheckout}>🚪 Checkout</button>`
@@ -10025,7 +10030,7 @@ class App {
                 ? `<button onclick="app.confirmarCancelarAtendimento(${repId}, '${cliId}', '${nomeEsc}')" class="btn-small btn-danger" title="Cancelar atendimento em aberto">🛑 Cancelar</button>`
                 : '';
 
-            const botoes = `${btnNovaVisita}${btnCheckin}${btnAtividades}${btnPesquisa}${btnCampanha}${btnCheckout}${btnCancelar}`;
+            const botoes = `${btnNovaVisita}${btnCheckin}${btnAtividades}${btnPesquisa}${btnEspacos}${btnCampanha}${btnCheckout}${btnCancelar}`;
             const avisoAtraso = checkinBloqueadoPorAtraso
                 ? '<span style="display:block;color:#b91c1c;font-size:12px;margin-top:6px;">Atraso superior a 7 dias. Check-in bloqueado.</span>'
                 : '';
@@ -10365,6 +10370,11 @@ class App {
             ? `<button onclick="app.abrirPesquisaCliente(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-pesquisa" style="background:#8b5cf6;color:white;">📝 Pesquisa (${pesquisasPendentes.length})</button>`
             : '';
 
+        // Botão de espaços - aparece se em atendimento
+        const btnEspacos = podeCheckout
+            ? `<button onclick="app.verificarEAbrirRegistroEspacos(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${dataVisita}')" class="btn-small btn-espacos" style="background:#f59e0b;color:white;">📦 Espaços</button>`
+            : '';
+
         // Checkout sempre aparece quando em atendimento (pode estar desabilitado)
         const btnCheckout = podeCheckout
             ? `<button onclick="app.abrirModalCaptura(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkout', '${cadastroEsc}')" class="btn-small btn-checkout" ${estadoCheckout}>🚪 Checkout</button>`
@@ -10376,7 +10386,7 @@ class App {
             ? `<button onclick="app.abrirModalCaptura(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkin', '${cadastroEsc}', true)" class="btn-small">🆕 Nova visita</button>`
             : '';
 
-        const botoes = `${btnNovaVisita}${btnCheckin}${btnAtividades}${btnPesquisa}${btnCampanha}${btnCheckout}`;
+        const botoes = `${btnNovaVisita}${btnCheckin}${btnAtividades}${btnPesquisa}${btnEspacos}${btnCampanha}${btnCheckout}`;
         const avisoAtraso = checkinBloqueadoPorAtraso
             ? '<span style="display:block;color:#b91c1c;font-size:12px;margin-top:6px;">Atraso superior a 7 dias. Check-in bloqueado.</span>'
             : '';
@@ -12074,12 +12084,12 @@ class App {
         const normalizeClienteId = (v) => String(v ?? '').trim().replace(/\.0$/, '');
         const clienteIdNorm = normalizeClienteId(clienteId);
 
-        // Buscar sessão ativa - primeiro tenta pela data, depois qualquer sessão aberta
-        let sessaoAberta = await this.buscarSessaoAberta(repId, dataPlanejada);
+        // Buscar sessão ativa - forçar refresh para evitar problemas de cache
+        let sessaoAberta = await this.buscarSessaoAberta(repId, dataPlanejada, true);
 
         // Se não encontrou pela data, buscar qualquer atendimento aberto (pode ser de outro dia)
         if (!sessaoAberta || normalizeClienteId(sessaoAberta.cliente_id) !== clienteIdNorm) {
-            const atendimentoAberto = await this.buscarAtendimentoAberto(repId);
+            const atendimentoAberto = await this.buscarAtendimentoAberto(repId, true);
             if (atendimentoAberto?.existe && atendimentoAberto?.rv_id &&
                 normalizeClienteId(atendimentoAberto.cliente_id) === clienteIdNorm) {
                 // Encontrou sessão aberta para o mesmo cliente (de outro dia)
@@ -19163,7 +19173,7 @@ class App {
                                         <div>
                                             <div style="color: #4f46e5; font-weight: 500;">${ce.tipo_nome || '-'}</div>
                                             <div style="color: #6b7280; font-size: 13px;">Qtd: ${ce.ces_quantidade}</div>
-                                            ${ce.ces_vigencia_inicio ? `<div style="color: #6b7280; font-size: 12px;">Vigência: ${new Date(ce.ces_vigencia_inicio).toLocaleDateString('pt-BR')}</div>` : ''}
+                                            ${ce.ces_vigencia_inicio ? `<div style="color: #6b7280; font-size: 12px;">Vigência: ${ce.ces_vigencia_inicio.split('-').reverse().join('/')}</div>` : ''}
                                         </div>
                                         <div style="display: flex; gap: 8px;">
                                             <button class="btn btn-sm btn-danger" onclick="window.app.removerClienteEspaco(${ce.ces_id})" title="Remover">🗑️</button>
@@ -19198,7 +19208,7 @@ class App {
                                         </td>
                                         <td>${ce.tipo_nome || '-'}</td>
                                         <td style="text-align: center;">${ce.ces_quantidade}</td>
-                                        <td>${ce.ces_vigencia_inicio ? new Date(ce.ces_vigencia_inicio).toLocaleDateString('pt-BR') : '-'}</td>
+                                        <td>${ce.ces_vigencia_inicio ? ce.ces_vigencia_inicio.split('-').reverse().join('/') : '-'}</td>
                                         <td style="text-align: center;">
                                             <button class="btn btn-sm btn-danger" onclick="window.app.removerClienteEspaco(${ce.ces_id})" title="Remover">🗑️</button>
                                         </td>
@@ -19472,6 +19482,44 @@ class App {
         } catch (error) {
             console.error('Erro ao verificar espaços pendentes:', error);
             return { temEspacos: false, espacosPendentes: [], espacosRegistrados: [] };
+        }
+    }
+
+    async verificarEAbrirRegistroEspacos(repId, clienteId, clienteNome, dataVisita) {
+        try {
+            this.showNotification('Verificando espaços...', 'info');
+
+            const espacosStatus = await this.verificarEspacosPendentes(repId, clienteId);
+
+            if (!espacosStatus.temEspacos) {
+                this.showNotification('Este cliente não possui espaços cadastrados.', 'warning');
+                return;
+            }
+
+            if (!espacosStatus.espacosPendentes || espacosStatus.espacosPendentes.length === 0) {
+                this.showNotification('Todos os espaços já foram registrados hoje!', 'success');
+                return;
+            }
+
+            // Obter GPS atual
+            let gpsCoords = { latitude: 0, longitude: 0 };
+            try {
+                const position = await new Promise((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
+                });
+                gpsCoords = {
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude
+                };
+            } catch (gpsError) {
+                console.warn('Não foi possível obter GPS:', gpsError);
+            }
+
+            // Abrir modal de registro de espaços
+            this.abrirModalRegistroEspacos(repId, clienteId, clienteNome, dataVisita, espacosStatus.espacosPendentes, gpsCoords);
+        } catch (error) {
+            console.error('Erro ao verificar espaços:', error);
+            this.showNotification('Erro ao verificar espaços do cliente.', 'error');
         }
     }
 

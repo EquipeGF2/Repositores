@@ -2220,19 +2220,25 @@ class TursoService {
 
     // Enriquecer com nomes dos clientes do banco comercial
     if (rows.length > 0 && this.comercialClient) {
-      const clienteIds = [...new Set(rows.map(r => r.ces_cliente_id))];
-      const placeholders = clienteIds.map(() => '?').join(',');
+      const clienteIds = [...new Set(rows.map(r => String(r.ces_cliente_id).trim()))];
       try {
-        const clientes = await this.comercialClient.execute({
-          sql: `SELECT cod_cliente, nome, fantasia FROM tab_cliente WHERE cod_cliente IN (${placeholders})`,
-          args: clienteIds
+        // Buscar clientes usando LIKE para lidar com formatos diferentes
+        const promises = clienteIds.map(async (id) => {
+          const result = await this.comercialClient.execute({
+            sql: `SELECT cod_cliente, nome, fantasia FROM tab_cliente WHERE CAST(cod_cliente AS TEXT) = ? OR cod_cliente = ? LIMIT 1`,
+            args: [id, id]
+          });
+          return result?.rows?.[0] || null;
         });
+        const clientesResults = await Promise.all(promises);
         const clientesMap = new Map();
-        (clientes?.rows || clientes || []).forEach(c => {
-          clientesMap.set(String(c.cod_cliente).trim(), c.fantasia || c.nome);
+        clientesResults.filter(Boolean).forEach(c => {
+          const codNorm = String(c.cod_cliente).trim().replace(/\.0$/, '');
+          clientesMap.set(codNorm, c.fantasia || c.nome);
         });
         rows.forEach(r => {
-          r.cliente_nome = clientesMap.get(String(r.ces_cliente_id).trim()) || '';
+          const idNorm = String(r.ces_cliente_id).trim().replace(/\.0$/, '');
+          r.cliente_nome = clientesMap.get(idNorm) || '';
         });
       } catch (error) {
         console.warn('Não foi possível buscar nomes dos clientes:', error.message);
