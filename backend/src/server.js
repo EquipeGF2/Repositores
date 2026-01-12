@@ -15,6 +15,7 @@ import healthRoutes from './routes/health.js';
 import authRoutes from './routes/auth.js';
 import usuariosRoutes from './routes/usuarios.js';
 import pesquisaRoutes from './routes/pesquisa.js';
+import espacosRoutes from './routes/espacos.js';
 import { authService } from './services/auth.js';
 
 const app = express();
@@ -125,6 +126,7 @@ app.use('/api/campanhas', campanhasRoutes);
 app.use('/api/rateio', rateioRoutes);
 app.use('/api/venda-centralizada', vendaCentralizadaRoutes);
 app.use('/api/pesquisa', pesquisaRoutes);
+app.use('/api/espacos', espacosRoutes);
 
 // Rota 404
 app.use((req, res) => {
@@ -156,6 +158,7 @@ async function inicializar() {
     await tursoService.ensureSchemaDocumentos();
     await tursoService.ensureUsuariosSchema();
     await tursoService.ensureSchemaClientesCoordenadas();
+    await tursoService.ensureSchemaEspacos();
 
     // Criar usuário administrador inicial se não existir
     try {

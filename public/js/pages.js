@@ -6115,6 +6115,301 @@ export const pages = {
                 }
             </style>
         `;
+    },
+
+    // ==================== CADASTRO DE ESPAÇOS ====================
+
+    'cadastro-espacos': async () => {
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Compra de Espaço</h3>
+                </div>
+                <div class="card-body">
+                    <!-- Tabs para alternar entre cadastros -->
+                    <div class="tabs-espacos" style="display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid #e5e7eb; padding-bottom: 12px;">
+                        <button type="button" class="btn btn-tab-espaco active" data-tab="tipos" onclick="window.app.alternarTabEspacos('tipos')">
+                            Tipos de Espaço
+                        </button>
+                        <button type="button" class="btn btn-tab-espaco" data-tab="clientes" onclick="window.app.alternarTabEspacos('clientes')">
+                            Clientes com Espaço
+                        </button>
+                    </div>
+
+                    <!-- Tab: Tipos de Espaço -->
+                    <div id="tabTiposEspaco" class="tab-content-espaco">
+                        <div class="filter-bar" style="margin-bottom: 16px;">
+                            <button class="btn btn-primary btn-sm" onclick="window.app.abrirModalTipoEspaco()">
+                                + Novo Tipo de Espaço
+                            </button>
+                        </div>
+                        <div id="tiposEspacoResultado">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">📦</div>
+                                <p>Carregando tipos de espaço...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab: Clientes com Espaço -->
+                    <div id="tabClientesEspaco" class="tab-content-espaco" style="display: none;">
+                        <div class="filter-bar filter-bar-wide" style="margin-bottom: 16px;">
+                            <div class="filter-group">
+                                <label for="filtro_cidade_espaco">Cidade</label>
+                                <input type="text" id="filtro_cidade_espaco" placeholder="Buscar cidade...">
+                            </div>
+                            <div class="filter-group">
+                                <label for="filtro_tipo_espaco">Tipo de Espaço</label>
+                                <select id="filtro_tipo_espaco">
+                                    <option value="">Todos</option>
+                                </select>
+                            </div>
+                            <div class="filter-group" style="align-self: flex-end;">
+                                <button class="btn btn-primary btn-sm" onclick="window.app.abrirModalClienteEspaco()">
+                                    + Adicionar Cliente
+                                </button>
+                            </div>
+                        </div>
+                        <div id="clientesEspacoResultado">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">🏪</div>
+                                <p>Carregando clientes com espaço...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Tipo de Espaço -->
+            <div class="modal" id="modalTipoEspaco">
+                <div class="modal-content" style="max-width: 500px;">
+                    <div class="modal-header">
+                        <h3 id="modalTipoEspacoTitle">Novo Tipo de Espaço</h3>
+                        <button class="modal-close" onclick="window.app.fecharModalTipoEspaco()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="formTipoEspaco" onsubmit="window.app.salvarTipoEspaco(event)">
+                            <input type="hidden" id="tipoEspacoId" value="">
+                            <div class="form-group">
+                                <label for="tipoEspacoNome">Nome *</label>
+                                <input type="text" id="tipoEspacoNome" required placeholder="Ex: Ponta de Gôndola, Ilha, etc.">
+                            </div>
+                            <div class="form-group">
+                                <label for="tipoEspacoDescricao">Descrição</label>
+                                <textarea id="tipoEspacoDescricao" rows="3" placeholder="Descrição opcional do tipo de espaço"></textarea>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" onclick="window.app.fecharModalTipoEspaco()">Cancelar</button>
+                                <button type="submit" class="btn btn-primary">Salvar</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Cliente com Espaço -->
+            <div class="modal" id="modalClienteEspaco">
+                <div class="modal-content" style="max-width: 600px;">
+                    <div class="modal-header">
+                        <h3>Adicionar Cliente com Espaço</h3>
+                        <button class="modal-close" onclick="window.app.fecharModalClienteEspaco()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="formClienteEspaco" onsubmit="window.app.salvarClienteEspaco(event)">
+                            <div class="form-group">
+                                <label for="clienteEspacoCidade">Cidade *</label>
+                                <input type="text" id="clienteEspacoCidade" required placeholder="Digite para buscar a cidade...">
+                            </div>
+                            <div class="form-group">
+                                <label for="clienteEspacoCliente">Cliente *</label>
+                                <input type="text" id="clienteEspacoCliente" required placeholder="Selecione primeiro a cidade..." disabled>
+                                <input type="hidden" id="clienteEspacoClienteCodigo">
+                            </div>
+                            <div class="form-group">
+                                <label for="clienteEspacoTipo">Tipo de Espaço *</label>
+                                <select id="clienteEspacoTipo" required>
+                                    <option value="">Selecione</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="clienteEspacoQuantidade">Quantidade *</label>
+                                <input type="number" id="clienteEspacoQuantidade" required min="1" value="1" placeholder="Quantidade de espaços">
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" onclick="window.app.fecharModalClienteEspaco()">Cancelar</button>
+                                <button type="submit" class="btn btn-primary">Salvar</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <style>
+                .tabs-espacos .btn-tab-espaco {
+                    background: #f3f4f6;
+                    color: #374151;
+                    border: 1px solid #e5e7eb;
+                    padding: 8px 16px;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                }
+                .tabs-espacos .btn-tab-espaco:hover {
+                    background: #e5e7eb;
+                }
+                .tabs-espacos .btn-tab-espaco.active {
+                    background: #4f46e5;
+                    color: white;
+                    border-color: #4f46e5;
+                }
+                .espacos-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+                    gap: 16px;
+                }
+                .espaco-card {
+                    background: white;
+                    border: 1px solid #e5e7eb;
+                    border-radius: 8px;
+                    padding: 16px;
+                }
+                .espaco-card-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 8px;
+                }
+                .espaco-card-title {
+                    font-weight: 600;
+                    color: #111827;
+                }
+                .espaco-card-actions {
+                    display: flex;
+                    gap: 4px;
+                }
+                .espaco-card-actions button {
+                    padding: 4px 8px;
+                    font-size: 12px;
+                }
+                .clientes-espaco-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                }
+                .clientes-espaco-table th,
+                .clientes-espaco-table td {
+                    padding: 12px;
+                    text-align: left;
+                    border-bottom: 1px solid #e5e7eb;
+                }
+                .clientes-espaco-table th {
+                    background: #f9fafb;
+                    font-weight: 600;
+                    color: #374151;
+                }
+                .clientes-espaco-table tbody tr:hover {
+                    background: #f9fafb;
+                }
+            </style>
+        `;
+    },
+
+    // ==================== CONSULTA DE ESPAÇOS ====================
+
+    'consulta-espacos': async () => {
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Consulta de Espaços</h3>
+                </div>
+                <div class="card-body">
+                    <div class="filter-bar filter-bar-wide" style="margin-bottom: 20px;">
+                        <div class="filter-group">
+                            <label for="filtro_rep_espaco">Repositor</label>
+                            <select id="filtro_rep_espaco">
+                                <option value="">Todos</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filtro_cliente_espaco">Cliente</label>
+                            <input type="text" id="filtro_cliente_espaco" placeholder="Código ou nome...">
+                        </div>
+                        <div class="filter-group">
+                            <label for="filtro_tipo_espaco_consulta">Tipo de Espaço</label>
+                            <select id="filtro_tipo_espaco_consulta">
+                                <option value="">Todos</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filtro_data_inicio_espaco">Data Início</label>
+                            <input type="date" id="filtro_data_inicio_espaco">
+                        </div>
+                        <div class="filter-group">
+                            <label for="filtro_data_fim_espaco">Data Fim</label>
+                            <input type="date" id="filtro_data_fim_espaco">
+                        </div>
+                        <div class="filter-group" style="align-self: flex-end;">
+                            <button class="btn btn-primary" onclick="window.app.consultarRegistrosEspacos()">
+                                Consultar
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="consultaEspacosResultado">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📦</div>
+                            <p>Use os filtros acima para consultar os registros de espaços</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <style>
+                .registros-espaco-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                }
+                .registros-espaco-table th,
+                .registros-espaco-table td {
+                    padding: 12px;
+                    text-align: left;
+                    border-bottom: 1px solid #e5e7eb;
+                }
+                .registros-espaco-table th {
+                    background: #f9fafb;
+                    font-weight: 600;
+                    color: #374151;
+                    position: sticky;
+                    top: 0;
+                }
+                .registros-espaco-table tbody tr:hover {
+                    background: #f9fafb;
+                }
+                .badge-ok {
+                    background: #dcfce7;
+                    color: #166534;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    font-weight: 500;
+                }
+                .badge-warning {
+                    background: #fef3c7;
+                    color: #92400e;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    font-weight: 500;
+                }
+                .badge-error {
+                    background: #fee2e2;
+                    color: #991b1b;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    font-weight: 500;
+                }
+            </style>
+        `;
     }
 };
 
@@ -6147,7 +6442,9 @@ export const pageTitles = {
     'documentos': 'Registro de Documentos',
     'consulta-documentos': 'Consulta de Documentos',
     'consulta-despesas': 'Consulta de Despesas',
-    'analise-performance': 'Visitas'
+    'analise-performance': 'Visitas',
+    'cadastro-espacos': 'Compra de Espaço',
+    'consulta-espacos': 'Consulta de Espaços'
 };
 
 export const mobilePageTitles = {
@@ -6159,5 +6456,7 @@ export const mobilePageTitles = {
     'consulta-documentos': 'Documentos',
     'roteiro-repositor': 'Roteiro',
     'cadastro-rateio': 'Rateio',
-    'manutencao-centralizacao': 'Centralização'
+    'manutencao-centralizacao': 'Centralização',
+    'cadastro-espacos': 'Espaços',
+    'consulta-espacos': 'Espaços'
 };

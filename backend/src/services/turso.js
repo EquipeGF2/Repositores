@@ -2075,6 +2075,271 @@ class TursoService {
 
     return mapa;
   }
+
+  // ==================== MÓDULO DE ESPAÇOS ====================
+
+  /**
+   * Garante que as tabelas do módulo de espaços existam
+   */
+  async ensureSchemaEspacos() {
+    const client = await this.getClient();
+
+    // Tabela de tipos de espaço
+    await client.execute({
+      sql: `
+        CREATE TABLE IF NOT EXISTS cc_tipos_espaco (
+          esp_id INTEGER PRIMARY KEY AUTOINCREMENT,
+          esp_nome TEXT NOT NULL UNIQUE,
+          esp_descricao TEXT,
+          esp_ativo INTEGER DEFAULT 1,
+          esp_criado_em TEXT DEFAULT (datetime('now')),
+          esp_atualizado_em TEXT DEFAULT (datetime('now'))
+        )
+      `,
+      args: []
+    });
+
+    // Tabela de clientes com espaço adquirido
+    await client.execute({
+      sql: `
+        CREATE TABLE IF NOT EXISTS cc_clientes_espacos (
+          ces_id INTEGER PRIMARY KEY AUTOINCREMENT,
+          ces_cliente_id TEXT NOT NULL,
+          ces_cidade TEXT NOT NULL,
+          ces_tipo_espaco_id INTEGER NOT NULL,
+          ces_quantidade INTEGER NOT NULL DEFAULT 1,
+          ces_ativo INTEGER DEFAULT 1,
+          ces_criado_em TEXT DEFAULT (datetime('now')),
+          ces_atualizado_em TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (ces_tipo_espaco_id) REFERENCES cc_tipos_espaco(esp_id)
+        )
+      `,
+      args: []
+    });
+
+    // Tabela de registro de espaços durante visitas
+    await client.execute({
+      sql: `
+        CREATE TABLE IF NOT EXISTS cc_registro_espacos (
+          reg_id INTEGER PRIMARY KEY AUTOINCREMENT,
+          reg_visita_id INTEGER,
+          reg_repositor_id INTEGER NOT NULL,
+          reg_cliente_id TEXT NOT NULL,
+          reg_tipo_espaco_id INTEGER NOT NULL,
+          reg_quantidade_esperada INTEGER NOT NULL,
+          reg_quantidade_registrada INTEGER NOT NULL,
+          reg_foto_url TEXT,
+          reg_observacao TEXT,
+          reg_data_registro TEXT NOT NULL,
+          reg_criado_em TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (reg_tipo_espaco_id) REFERENCES cc_tipos_espaco(esp_id)
+        )
+      `,
+      args: []
+    });
+
+    // Índices
+    try {
+      await client.execute({ sql: 'CREATE INDEX IF NOT EXISTS idx_ces_cliente ON cc_clientes_espacos(ces_cliente_id)', args: [] });
+      await client.execute({ sql: 'CREATE INDEX IF NOT EXISTS idx_ces_cidade ON cc_clientes_espacos(ces_cidade)', args: [] });
+      await client.execute({ sql: 'CREATE INDEX IF NOT EXISTS idx_reg_cliente ON cc_registro_espacos(reg_cliente_id)', args: [] });
+      await client.execute({ sql: 'CREATE INDEX IF NOT EXISTS idx_reg_data ON cc_registro_espacos(reg_data_registro)', args: [] });
+    } catch (error) {
+      console.warn('⚠️ Erro ao criar índices de espaços:', error.message || error);
+    }
+
+    console.log('✅ Schema de espaços verificado');
+  }
+
+  // Tipos de Espaço
+  async listarTiposEspaco(apenasAtivos = true) {
+    await this.ensureSchemaEspacos();
+    let sql = 'SELECT * FROM cc_tipos_espaco';
+    if (apenasAtivos) sql += ' WHERE esp_ativo = 1';
+    sql += ' ORDER BY esp_nome';
+    const result = await this.execute(sql);
+    return result?.rows || result || [];
+  }
+
+  async criarTipoEspaco(nome, descricao = null) {
+    await this.ensureSchemaEspacos();
+    const result = await this.execute(
+      'INSERT INTO cc_tipos_espaco (esp_nome, esp_descricao) VALUES (?, ?)',
+      [nome, descricao]
+    );
+    return { id: Number(result.lastInsertRowid), nome, descricao };
+  }
+
+  async atualizarTipoEspaco(id, nome, descricao, ativo) {
+    await this.execute(
+      'UPDATE cc_tipos_espaco SET esp_nome = ?, esp_descricao = ?, esp_ativo = ?, esp_atualizado_em = datetime(\'now\') WHERE esp_id = ?',
+      [nome, descricao, ativo ? 1 : 0, id]
+    );
+  }
+
+  async excluirTipoEspaco(id) {
+    // Soft delete - apenas desativa
+    await this.execute('UPDATE cc_tipos_espaco SET esp_ativo = 0, esp_atualizado_em = datetime(\'now\') WHERE esp_id = ?', [id]);
+  }
+
+  // Clientes com Espaço
+  async listarClientesEspacos(filtros = {}) {
+    await this.ensureSchemaEspacos();
+    let sql = `
+      SELECT ces.*, te.esp_nome as tipo_nome
+      FROM cc_clientes_espacos ces
+      JOIN cc_tipos_espaco te ON te.esp_id = ces.ces_tipo_espaco_id
+      WHERE ces.ces_ativo = 1
+    `;
+    const args = [];
+
+    if (filtros.cidade) {
+      sql += ' AND ces.ces_cidade = ?';
+      args.push(filtros.cidade);
+    }
+    if (filtros.clienteId) {
+      sql += ' AND ces.ces_cliente_id = ?';
+      args.push(String(filtros.clienteId).trim());
+    }
+    if (filtros.tipoEspacoId) {
+      sql += ' AND ces.ces_tipo_espaco_id = ?';
+      args.push(filtros.tipoEspacoId);
+    }
+
+    sql += ' ORDER BY ces.ces_cidade, ces.ces_cliente_id';
+    const result = await this.execute(sql, args);
+    return result?.rows || result || [];
+  }
+
+  async buscarEspacosCliente(clienteId) {
+    await this.ensureSchemaEspacos();
+    const clienteNorm = String(clienteId).trim().replace(/\.0$/, '');
+    const sql = `
+      SELECT ces.*, te.esp_nome as tipo_nome
+      FROM cc_clientes_espacos ces
+      JOIN cc_tipos_espaco te ON te.esp_id = ces.ces_tipo_espaco_id
+      WHERE ces.ces_cliente_id = ? AND ces.ces_ativo = 1
+    `;
+    const result = await this.execute(sql, [clienteNorm]);
+    return result?.rows || result || [];
+  }
+
+  async adicionarClienteEspaco(clienteId, cidade, tipoEspacoId, quantidade) {
+    await this.ensureSchemaEspacos();
+    const clienteNorm = String(clienteId).trim().replace(/\.0$/, '');
+
+    // Verificar se já existe
+    const existente = await this.execute(
+      'SELECT ces_id FROM cc_clientes_espacos WHERE ces_cliente_id = ? AND ces_tipo_espaco_id = ? AND ces_ativo = 1',
+      [clienteNorm, tipoEspacoId]
+    );
+
+    if ((existente?.rows || existente || []).length > 0) {
+      // Atualizar quantidade
+      const id = (existente?.rows || existente)[0].ces_id;
+      await this.execute(
+        'UPDATE cc_clientes_espacos SET ces_quantidade = ?, ces_cidade = ?, ces_atualizado_em = datetime(\'now\') WHERE ces_id = ?',
+        [quantidade, cidade, id]
+      );
+      return { id, atualizado: true };
+    }
+
+    const result = await this.execute(
+      'INSERT INTO cc_clientes_espacos (ces_cliente_id, ces_cidade, ces_tipo_espaco_id, ces_quantidade) VALUES (?, ?, ?, ?)',
+      [clienteNorm, cidade, tipoEspacoId, quantidade]
+    );
+    return { id: Number(result.lastInsertRowid), inserido: true };
+  }
+
+  async removerClienteEspaco(id) {
+    await this.execute('UPDATE cc_clientes_espacos SET ces_ativo = 0, ces_atualizado_em = datetime(\'now\') WHERE ces_id = ?', [id]);
+  }
+
+  // Registro de Espaços
+  async registrarEspaco(dados) {
+    await this.ensureSchemaEspacos();
+    const { visitaId, repositorId, clienteId, tipoEspacoId, quantidadeEsperada, quantidadeRegistrada, fotoUrl, observacao, dataRegistro } = dados;
+    const clienteNorm = String(clienteId).trim().replace(/\.0$/, '');
+
+    const result = await this.execute(
+      `INSERT INTO cc_registro_espacos (reg_visita_id, reg_repositor_id, reg_cliente_id, reg_tipo_espaco_id, reg_quantidade_esperada, reg_quantidade_registrada, reg_foto_url, reg_observacao, reg_data_registro)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [visitaId || null, repositorId, clienteNorm, tipoEspacoId, quantidadeEsperada, quantidadeRegistrada, fotoUrl || null, observacao || null, dataRegistro]
+    );
+    return { id: Number(result.lastInsertRowid) };
+  }
+
+  async listarRegistrosEspacos(filtros = {}) {
+    await this.ensureSchemaEspacos();
+    let sql = `
+      SELECT reg.*, te.esp_nome as tipo_nome, rep.repo_nome
+      FROM cc_registro_espacos reg
+      JOIN cc_tipos_espaco te ON te.esp_id = reg.reg_tipo_espaco_id
+      LEFT JOIN cad_repositor rep ON rep.repo_cod = reg.reg_repositor_id
+      WHERE 1=1
+    `;
+    const args = [];
+
+    if (filtros.clienteId) {
+      sql += ' AND reg.reg_cliente_id = ?';
+      args.push(String(filtros.clienteId).trim());
+    }
+    if (filtros.repositorId) {
+      sql += ' AND reg.reg_repositor_id = ?';
+      args.push(filtros.repositorId);
+    }
+    if (filtros.dataInicio) {
+      sql += ' AND reg.reg_data_registro >= ?';
+      args.push(filtros.dataInicio);
+    }
+    if (filtros.dataFim) {
+      sql += ' AND reg.reg_data_registro <= ?';
+      args.push(filtros.dataFim);
+    }
+    if (filtros.tipoEspacoId) {
+      sql += ' AND reg.reg_tipo_espaco_id = ?';
+      args.push(filtros.tipoEspacoId);
+    }
+
+    sql += ' ORDER BY reg.reg_data_registro DESC, reg.reg_criado_em DESC';
+
+    if (filtros.limite) {
+      sql += ' LIMIT ?';
+      args.push(filtros.limite);
+    }
+
+    const result = await this.execute(sql, args);
+    return result?.rows || result || [];
+  }
+
+  async verificarEspacosPendentes(repositorId, clienteId, dataRegistro) {
+    await this.ensureSchemaEspacos();
+    const clienteNorm = String(clienteId).trim().replace(/\.0$/, '');
+
+    // Buscar espaços configurados para o cliente
+    const espacosCliente = await this.buscarEspacosCliente(clienteNorm);
+    if (espacosCliente.length === 0) return { temPendente: false, espacos: [] };
+
+    // Verificar quais já foram registrados hoje
+    const registrados = await this.execute(
+      `SELECT reg_tipo_espaco_id FROM cc_registro_espacos
+       WHERE reg_repositor_id = ? AND reg_cliente_id = ? AND reg_data_registro = ?`,
+      [repositorId, clienteNorm, dataRegistro]
+    );
+    const tiposRegistrados = new Set((registrados?.rows || registrados || []).map(r => r.reg_tipo_espaco_id));
+
+    // Filtrar espaços pendentes
+    const pendentes = espacosCliente.filter(e => !tiposRegistrados.has(e.ces_tipo_espaco_id));
+
+    return {
+      temPendente: pendentes.length > 0,
+      espacos: pendentes.map(e => ({
+        tipoEspacoId: e.ces_tipo_espaco_id,
+        tipoNome: e.tipo_nome,
+        quantidadeEsperada: e.ces_quantidade
+      }))
+    };
+  }
 }
 
 export const tursoService = new TursoService();

@@ -4933,11 +4933,14 @@ class TursoDatabase {
     async salvarRespostaPesquisa(dados) {
         try {
             const { pesId, repId, clienteCodigo, visitaId, respostas, fotoUrl } = dados;
-            const dataHoje = new Date().toISOString().split('T')[0];
+            // Usar data local (não UTC) para evitar problemas de timezone
+            const agora = new Date();
+            const dataHoje = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-${String(agora.getDate()).padStart(2, '0')}`;
+            const horaLocal = agora.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
             // Normalizar cliente: remover .0 do final e garantir string
             const clienteCodigoNorm = clienteCodigo ? String(clienteCodigo).trim().replace(/\.0$/, '') : null;
 
-            console.log('📝 Salvando resposta pesquisa:', { pesId, repId, clienteCodigoNorm, dataHoje });
+            console.log('📝 Salvando resposta pesquisa:', { pesId, repId, clienteCodigoNorm, dataHoje, horaLocal });
 
             // Verificar se já existe uma resposta para esta combinação
             const existente = await this.mainClient.execute({
@@ -4961,13 +4964,15 @@ class TursoDatabase {
                 });
                 return { success: true, id: resId, updated: true };
             } else {
-                // Inserir novo registro
+                // Inserir novo registro - usar timestamp local em vez de datetime('now') que é UTC
+                const pad = (n) => String(n).padStart(2, '0');
+                const timestampLocal = `${agora.getFullYear()}-${pad(agora.getMonth() + 1)}-${pad(agora.getDate())} ${pad(agora.getHours())}:${pad(agora.getMinutes())}:${pad(agora.getSeconds())}`;
                 const result = await this.mainClient.execute({
                     sql: `
-                        INSERT INTO cc_pesquisa_respostas (res_pes_id, res_rep_id, res_cliente_codigo, res_visita_id, res_data, res_respostas, res_foto_url)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO cc_pesquisa_respostas (res_pes_id, res_rep_id, res_cliente_codigo, res_visita_id, res_data, res_respostas, res_foto_url, res_criado_em)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     `,
-                    args: [pesId, repId, clienteCodigoNorm, visitaId || null, dataHoje, JSON.stringify(respostas), fotoUrl || null]
+                    args: [pesId, repId, clienteCodigoNorm, visitaId || null, dataHoje, JSON.stringify(respostas), fotoUrl || null, timestampLocal]
                 });
                 return { success: true, id: Number(result.lastInsertRowid), inserted: true };
             }
