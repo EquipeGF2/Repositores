@@ -2976,7 +2976,6 @@ export const pages = {
                                 <textarea id="tipoEspacoDescricaoConfig" rows="3" placeholder="Descrição opcional do tipo de espaço"></textarea>
                             </div>
                             <div class="form-group">
-                                <label style="display: block; margin-bottom: 8px;">Status</label>
                                 <label class="switch-label" style="display: flex; align-items: center; gap: 8px;">
                                     <input type="checkbox" id="tipoEspacoAtivoConfig" checked>
                                     <span>Ativo</span>
@@ -6188,9 +6187,6 @@ export const pages = {
     'cadastro-espacos': async () => {
         return `
             <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Compra de Espaço</h3>
-                </div>
                 <div class="card-body">
                     <p class="text-muted" style="margin-bottom: 16px;">
                         Cadastre aqui os clientes que possuem espaços contratados.
