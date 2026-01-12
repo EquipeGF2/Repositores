@@ -6331,7 +6331,9 @@ export const pages = {
                         </div>
                         <div class="filter-group">
                             <label for="filtro_cliente_espaco">Cliente</label>
-                            <input type="text" id="filtro_cliente_espaco" placeholder="Código ou nome...">
+                            <select id="filtro_cliente_espaco">
+                                <option value="">Todos</option>
+                            </select>
                         </div>
                         <div class="filter-group">
                             <label for="filtro_tipo_espaco_consulta">Tipo de Espaço</label>
