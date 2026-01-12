@@ -96,7 +96,7 @@ router.get('/clientes/:clienteId', async (req, res) => {
 // POST /api/espacos/clientes - Adicionar espaço a cliente
 router.post('/clientes', async (req, res) => {
   try {
-    const { cliente_id, cidade, tipo_espaco_id, quantidade } = req.body;
+    const { cliente_id, cidade, tipo_espaco_id, quantidade, vigencia_inicio } = req.body;
     if (!cliente_id || !cidade || !tipo_espaco_id || !quantidade) {
       return res.status(400).json({ ok: false, message: 'Todos os campos são obrigatórios' });
     }
@@ -104,7 +104,8 @@ router.post('/clientes', async (req, res) => {
       cliente_id,
       cidade,
       parseInt(tipo_espaco_id),
-      parseInt(quantidade)
+      parseInt(quantidade),
+      vigencia_inicio
     );
     res.json({ ok: true, data: resultado });
   } catch (error) {

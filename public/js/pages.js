@@ -6249,9 +6249,15 @@ export const pages = {
                                     <option value="">Selecione</option>
                                 </select>
                             </div>
-                            <div class="form-group">
-                                <label for="clienteEspacoQuantidade">Quantidade *</label>
-                                <input type="number" id="clienteEspacoQuantidade" required min="1" value="1" placeholder="Quantidade de espaços">
+                            <div class="form-row" style="display: flex; gap: 16px;">
+                                <div class="form-group" style="flex: 1;">
+                                    <label for="clienteEspacoQuantidade">Quantidade *</label>
+                                    <input type="number" id="clienteEspacoQuantidade" required min="1" value="1" placeholder="Qtd">
+                                </div>
+                                <div class="form-group" style="flex: 1;">
+                                    <label for="clienteEspacoVigencia">Vigência a partir de *</label>
+                                    <input type="date" id="clienteEspacoVigencia" required>
+                                </div>
                             </div>
                             <div class="modal-footer">
                                 <button type="button" class="btn btn-secondary" onclick="window.app.fecharModalClienteEspaco()">Cancelar</button>

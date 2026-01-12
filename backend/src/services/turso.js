@@ -2148,6 +2148,14 @@ class TursoService {
       console.warn('⚠️ Erro ao criar índices de espaços:', error.message || error);
     }
 
+    // Adicionar coluna de vigência se não existir
+    try {
+      await client.execute({ sql: 'ALTER TABLE cc_clientes_espacos ADD COLUMN ces_vigencia_inicio TEXT', args: [] });
+      console.log('✅ Coluna ces_vigencia_inicio adicionada');
+    } catch (error) {
+      // Coluna já existe
+    }
+
     console.log('✅ Schema de espaços verificado');
   }
 
@@ -2208,7 +2216,30 @@ class TursoService {
 
     sql += ' ORDER BY ces.ces_cidade, ces.ces_cliente_id';
     const result = await this.execute(sql, args);
-    return result?.rows || result || [];
+    const rows = result?.rows || result || [];
+
+    // Enriquecer com nomes dos clientes do banco comercial
+    if (rows.length > 0 && this.comercialClient) {
+      const clienteIds = [...new Set(rows.map(r => r.ces_cliente_id))];
+      const placeholders = clienteIds.map(() => '?').join(',');
+      try {
+        const clientes = await this.comercialClient.execute({
+          sql: `SELECT cod_cliente, nome, fantasia FROM tab_cliente WHERE cod_cliente IN (${placeholders})`,
+          args: clienteIds
+        });
+        const clientesMap = new Map();
+        (clientes?.rows || clientes || []).forEach(c => {
+          clientesMap.set(String(c.cod_cliente).trim(), c.fantasia || c.nome);
+        });
+        rows.forEach(r => {
+          r.cliente_nome = clientesMap.get(String(r.ces_cliente_id).trim()) || '';
+        });
+      } catch (error) {
+        console.warn('Não foi possível buscar nomes dos clientes:', error.message);
+      }
+    }
+
+    return rows;
   }
 
   async buscarEspacosCliente(clienteId) {
@@ -2224,9 +2255,10 @@ class TursoService {
     return result?.rows || result || [];
   }
 
-  async adicionarClienteEspaco(clienteId, cidade, tipoEspacoId, quantidade) {
+  async adicionarClienteEspaco(clienteId, cidade, tipoEspacoId, quantidade, vigenciaInicio = null) {
     await this.ensureSchemaEspacos();
     const clienteNorm = String(clienteId).trim().replace(/\.0$/, '');
+    const vigencia = vigenciaInicio || new Date().toISOString().split('T')[0];
 
     // Verificar se já existe
     const existente = await this.execute(
@@ -2235,18 +2267,18 @@ class TursoService {
     );
 
     if ((existente?.rows || existente || []).length > 0) {
-      // Atualizar quantidade
+      // Atualizar quantidade e vigência
       const id = (existente?.rows || existente)[0].ces_id;
       await this.execute(
-        'UPDATE cc_clientes_espacos SET ces_quantidade = ?, ces_cidade = ?, ces_atualizado_em = datetime(\'now\') WHERE ces_id = ?',
-        [quantidade, cidade, id]
+        'UPDATE cc_clientes_espacos SET ces_quantidade = ?, ces_cidade = ?, ces_vigencia_inicio = ?, ces_atualizado_em = datetime(\'now\') WHERE ces_id = ?',
+        [quantidade, cidade, vigencia, id]
       );
       return { id, atualizado: true };
     }
 
     const result = await this.execute(
-      'INSERT INTO cc_clientes_espacos (ces_cliente_id, ces_cidade, ces_tipo_espaco_id, ces_quantidade) VALUES (?, ?, ?, ?)',
-      [clienteNorm, cidade, tipoEspacoId, quantidade]
+      'INSERT INTO cc_clientes_espacos (ces_cliente_id, ces_cidade, ces_tipo_espaco_id, ces_quantidade, ces_vigencia_inicio) VALUES (?, ?, ?, ?, ?)',
+      [clienteNorm, cidade, tipoEspacoId, quantidade, vigencia]
     );
     return { id: Number(result.lastInsertRowid), inserido: true };
   }
