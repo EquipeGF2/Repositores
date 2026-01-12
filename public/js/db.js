@@ -4979,18 +4979,16 @@ class TursoDatabase {
 
     async listarRespostasPesquisa(filtros = {}) {
         try {
+            // Query principal - sem join com tab_cliente (está em outro banco)
             let sql = `
                 SELECT r.*,
                        r.res_rep_id as res_repo_cod,
                        r.res_data as res_data_resposta,
                        p.pes_titulo, p.pes_obrigatorio,
-                       rep.repo_nome,
-                       c.nome as cliente_nome,
-                       c.fantasia as cliente_fantasia
+                       rep.repo_nome
                 FROM cc_pesquisa_respostas r
                 JOIN cc_pesquisas p ON p.pes_id = r.res_pes_id
                 JOIN cad_repositor rep ON rep.repo_cod = r.res_rep_id
-                LEFT JOIN cliente c ON c.cliente = r.res_cliente_codigo
                 WHERE 1=1
             `;
             const args = [];
@@ -5046,10 +5044,41 @@ class TursoDatabase {
             }
 
             const result = await this.mainClient.execute({ sql, args });
-            return result.rows.map(r => ({
+            const respostas = result.rows.map(r => ({
                 ...r,
-                res_respostas: r.res_respostas ? JSON.parse(r.res_respostas) : {}
+                res_respostas: r.res_respostas ? JSON.parse(r.res_respostas) : {},
+                cliente_nome: null,
+                cliente_fantasia: null
             }));
+
+            // Buscar dados dos clientes do banco comercial (se houver)
+            if (respostas.length > 0 && this.comercialClient) {
+                const clienteCodigos = [...new Set(respostas.map(r => r.res_cliente_codigo).filter(Boolean))];
+                if (clienteCodigos.length > 0) {
+                    try {
+                        const placeholders = clienteCodigos.map(() => '?').join(',');
+                        const clientesResult = await this.comercialClient.execute({
+                            sql: `SELECT cliente, nome, fantasia FROM tab_cliente WHERE cliente IN (${placeholders})`,
+                            args: clienteCodigos
+                        });
+                        const clientesMap = new Map();
+                        clientesResult.rows.forEach(c => clientesMap.set(String(c.cliente).trim(), c));
+
+                        // Associar dados do cliente às respostas
+                        respostas.forEach(r => {
+                            const cli = clientesMap.get(String(r.res_cliente_codigo).trim());
+                            if (cli) {
+                                r.cliente_nome = cli.nome;
+                                r.cliente_fantasia = cli.fantasia;
+                            }
+                        });
+                    } catch (clienteError) {
+                        console.warn('Não foi possível buscar dados dos clientes:', clienteError.message);
+                    }
+                }
+            }
+
+            return respostas;
         } catch (error) {
             console.error('Erro ao listar respostas:', error);
             throw error;

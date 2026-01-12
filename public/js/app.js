@@ -12028,8 +12028,31 @@ class App {
         const normalizeClienteId = (v) => String(v ?? '').trim().replace(/\.0$/, '');
         const clienteIdNorm = normalizeClienteId(clienteId);
 
-        // Buscar sessão ativa
-        const sessaoAberta = await this.buscarSessaoAberta(repId, dataPlanejada);
+        // Buscar sessão ativa - primeiro tenta pela data, depois qualquer sessão aberta
+        let sessaoAberta = await this.buscarSessaoAberta(repId, dataPlanejada);
+
+        // Se não encontrou pela data, buscar qualquer atendimento aberto (pode ser de outro dia)
+        if (!sessaoAberta || normalizeClienteId(sessaoAberta.cliente_id) !== clienteIdNorm) {
+            const atendimentoAberto = await this.buscarAtendimentoAberto(repId);
+            if (atendimentoAberto?.existe && atendimentoAberto?.rv_id &&
+                normalizeClienteId(atendimentoAberto.cliente_id) === clienteIdNorm) {
+                // Encontrou sessão aberta para o mesmo cliente (de outro dia)
+                sessaoAberta = {
+                    sessao_id: atendimentoAberto.rv_id,
+                    rv_sessao_id: atendimentoAberto.rv_id,
+                    cliente_id: atendimentoAberto.cliente_id,
+                    cliente_nome: atendimentoAberto.cliente_nome,
+                    qtd_frentes: atendimentoAberto.qtd_frentes,
+                    usou_merchandising: atendimentoAberto.usou_merchandising,
+                    serv_abastecimento: atendimentoAberto.serv_abastecimento,
+                    serv_espaco_loja: atendimentoAberto.serv_espaco_loja,
+                    serv_ruptura_loja: atendimentoAberto.serv_ruptura_loja,
+                    serv_pontos_extras: atendimentoAberto.serv_pontos_extras,
+                    qtd_pontos_extras: atendimentoAberto.qtd_pontos_extras
+                };
+            }
+        }
+
         if (!sessaoAberta || normalizeClienteId(sessaoAberta.cliente_id) !== clienteIdNorm) {
             this.atualizarStatusClienteLocal(clienteIdNorm, {
                 status: 'sem_checkin',
@@ -18252,14 +18275,19 @@ class App {
     }
 
     confirmarFotoPesquisa() {
-        const blob = this.pesquisaVisitaState.fotoPesquisaBlob;
+        const blob = this.pesquisaVisitaState?.fotoPesquisaBlob;
         if (!blob) {
             this.showNotification('Nenhuma foto capturada', 'warning');
             return;
         }
 
+        // Garantir que o array de fotos existe
+        if (!this.pesquisaVisitaState.fotosPesquisa) {
+            this.pesquisaVisitaState.fotosPesquisa = [];
+        }
+
         // Verificar limite de fotos
-        const maxFotos = this.pesquisaVisitaState.maxFotosPesquisa;
+        const maxFotos = this.pesquisaVisitaState.maxFotosPesquisa || 10;
         if (this.pesquisaVisitaState.fotosPesquisa.length >= maxFotos) {
             this.showNotification(`Limite de ${maxFotos} fotos atingido`, 'warning');
             this.fecharCameraPesquisa();
@@ -18285,8 +18313,8 @@ class App {
         const grid = document.getElementById('pesquisaFotosGrid');
         const contador = document.getElementById('pesquisaFotoContador');
         const btnAdicionar = document.getElementById('btnAdicionarFotoPesquisa');
-        const fotos = this.pesquisaVisitaState.fotosPesquisa;
-        const maxFotos = this.pesquisaVisitaState.maxFotosPesquisa;
+        const fotos = this.pesquisaVisitaState?.fotosPesquisa || [];
+        const maxFotos = this.pesquisaVisitaState?.maxFotosPesquisa || 10;
 
         if (contador) {
             contador.textContent = `${fotos.length}/${maxFotos} fotos`;
@@ -18415,7 +18443,8 @@ class App {
         }
 
         // Verificar foto obrigatória (ao menos uma foto)
-        if (pesquisa.pes_foto_obrigatoria && this.pesquisaVisitaState.fotosPesquisa.length === 0) {
+        const fotos = this.pesquisaVisitaState?.fotosPesquisa || [];
+        if (pesquisa.pes_foto_obrigatoria && fotos.length === 0) {
             this.showNotification('Ao menos uma foto é obrigatória para esta pesquisa', 'warning');
             return;
         }
