@@ -18798,7 +18798,7 @@ class App {
                 const selectTipo = document.getElementById('filtro_tipo_espaco_consulta');
                 if (selectTipo) {
                     selectTipo.innerHTML = '<option value="">Todos</option>' +
-                        tiposResp.data.map(t => `<option value="${t.te_id}">${t.te_nome}</option>`).join('');
+                        tiposResp.data.map(t => `<option value="${t.esp_id}">${t.esp_nome}</option>`).join('');
                 }
             }
 
@@ -18869,16 +18869,16 @@ class App {
             container.innerHTML = `
                 <div class="espacos-grid">
                     ${response.data.map(tipo => `
-                        <div class="espaco-card ${tipo.te_ativo ? '' : 'inactive'}">
+                        <div class="espaco-card ${tipo.esp_ativo ? '' : 'inactive'}">
                             <div class="espaco-card-header">
-                                <span class="espaco-card-title">${tipo.te_nome}</span>
+                                <span class="espaco-card-title">${tipo.esp_nome}</span>
                                 <div class="espaco-card-actions">
-                                    <button class="btn btn-sm btn-secondary" onclick="window.app.editarTipoEspaco(${tipo.te_id})">Editar</button>
-                                    <button class="btn btn-sm btn-danger" onclick="window.app.excluirTipoEspaco(${tipo.te_id})" ${tipo.te_ativo ? '' : 'disabled'}>Excluir</button>
+                                    <button class="btn btn-sm btn-secondary" onclick="window.app.editarTipoEspaco(${tipo.esp_id})">Editar</button>
+                                    <button class="btn btn-sm btn-danger" onclick="window.app.excluirTipoEspaco(${tipo.esp_id})" ${tipo.esp_ativo ? '' : 'disabled'}>Excluir</button>
                                 </div>
                             </div>
-                            ${tipo.te_descricao ? `<p class="text-muted" style="font-size: 13px; margin: 0;">${tipo.te_descricao}</p>` : ''}
-                            ${!tipo.te_ativo ? '<span class="badge badge-warning" style="margin-top: 8px; display: inline-block;">Inativo</span>' : ''}
+                            ${tipo.esp_descricao ? `<p class="text-muted" style="font-size: 13px; margin: 0;">${tipo.esp_descricao}</p>` : ''}
+                            ${!tipo.esp_ativo ? '<span class="badge badge-warning" style="margin-top: 8px; display: inline-block;">Inativo</span>' : ''}
                         </div>
                     `).join('')}
                 </div>
@@ -18909,12 +18909,12 @@ class App {
     async editarTipoEspaco(id) {
         try {
             const response = await fetchJson(`${API_BASE_URL}/api/espacos/tipos?ativos=false`);
-            const tipo = response?.data?.find(t => t.te_id === id);
+            const tipo = response?.data?.find(t => t.esp_id === id);
 
             if (tipo) {
                 this.abrirModalTipoEspaco(id);
-                document.getElementById('tipoEspacoNome').value = tipo.te_nome || '';
-                document.getElementById('tipoEspacoDescricao').value = tipo.te_descricao || '';
+                document.getElementById('tipoEspacoNome').value = tipo.esp_nome || '';
+                document.getElementById('tipoEspacoDescricao').value = tipo.esp_descricao || '';
             }
         } catch (error) {
             console.error('Erro ao buscar tipo de espaço:', error);
@@ -19111,7 +19111,7 @@ class App {
                 const selectTipo = document.getElementById('filtro_tipo_espaco');
                 if (selectTipo) {
                     selectTipo.innerHTML = '<option value="">Todos</option>' +
-                        tiposResp.data.map(t => `<option value="${t.te_id}">${t.te_nome}</option>`).join('');
+                        tiposResp.data.map(t => `<option value="${t.esp_id}">${t.esp_nome}</option>`).join('');
                 }
             }
 
@@ -19193,7 +19193,7 @@ class App {
                 const selectTipo = document.getElementById('clienteEspacoTipo');
                 if (selectTipo) {
                     selectTipo.innerHTML = '<option value="">Selecione</option>' +
-                        tiposResp.data.map(t => `<option value="${t.te_id}">${t.te_nome}</option>`).join('');
+                        tiposResp.data.map(t => `<option value="${t.esp_id}">${t.esp_nome}</option>`).join('');
                 }
             }
         } catch (error) {
