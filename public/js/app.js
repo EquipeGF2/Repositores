@@ -9587,6 +9587,9 @@ class App {
 
         if (!selectRepositor || !inputData) return;
 
+        // CRÍTICO: Limpar cache ao entrar na página para garantir dados frescos
+        this._sessaoCache = {};
+
         // Sempre usar data atual
         const hoje = new Date().toISOString().split('T')[0];
         inputData.value = hoje;
@@ -10786,9 +10789,10 @@ class App {
         }
     }
 
-    async syncAtendimentoAberto(repId) {
+    async syncAtendimentoAberto(repId, forceRefresh = false) {
         const normalizeClienteId = (v) => String(v ?? '').trim().replace(/\.0$/, '');
-        const atendimento = await this.buscarAtendimentoAberto(repId);
+        // Usar forceRefresh para garantir dados frescos após cancelamento
+        const atendimento = await this.buscarAtendimentoAberto(repId, forceRefresh);
         const existeBackend = atendimento?.existe && atendimento?.rv_id;
 
         const locais = this.listarAtendimentosLocais(repId);
