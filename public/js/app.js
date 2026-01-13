@@ -9960,8 +9960,9 @@ class App {
             })
             .catch(err => console.warn('Erro ao verificar clientes com espaço:', err));
 
-        // Buscar não atendimentos do dia
-        fetchJson(`${API_BASE_URL}/api/registro-rota/nao-atendimentos?repositor_id=${repId}&data=${dataVisita}`)
+        // Buscar não atendimentos do dia (silencioso se falhar)
+        fetch(`${API_BASE_URL}/api/registro-rota/nao-atendimentos?repositor_id=${repId}&data=${dataVisita}`)
+            .then(r => r.ok ? r.json() : null)
             .then(resp => {
                 if (resp?.ok && resp.data) {
                     resp.data.forEach(na => {
@@ -9980,7 +9981,7 @@ class App {
                     this.atualizarStatusVisuaisRoteiro();
                 }
             })
-            .catch(err => console.warn('Erro ao verificar não atendimentos:', err));
+            .catch(() => { /* silencioso */ });
 
         // Preservar dados locais atualizados antes de sobrescrever com dados do backend
         const resumoLocalAnterior = this.registroRotaState.resumoVisitas || new Map();
@@ -19457,6 +19458,30 @@ class App {
                 return;
             }
 
+            // Enriquecer com nomes dos clientes do IndexedDB local
+            const clientesSemNome = response.data.filter(ce => !ce.cliente_nome && !ce.ces_cliente_nome);
+            if (clientesSemNome.length > 0) {
+                const cidadesUnicas = [...new Set(clientesSemNome.map(ce => ce.ces_cidade))];
+                const clientesLocais = new Map();
+
+                for (const cidadeItem of cidadesUnicas) {
+                    try {
+                        const clientes = await db.getClientesPorCidade(cidadeItem);
+                        clientes.forEach(c => {
+                            const cod = String(c.cliente).trim().replace(/\.0$/, '');
+                            clientesLocais.set(cod, c.nome || c.fantasia || '');
+                        });
+                    } catch (e) { /* ignorar */ }
+                }
+
+                response.data.forEach(ce => {
+                    if (!ce.cliente_nome && !ce.ces_cliente_nome) {
+                        const cod = String(ce.ces_cliente_id).trim().replace(/\.0$/, '');
+                        ce.cliente_nome = clientesLocais.get(cod) || '';
+                    }
+                });
+            }
+
             // Agrupar por cidade
             const porCidade = {};
             response.data.forEach(ce => {
@@ -19501,25 +19526,25 @@ class App {
                 // Layout desktop em tabela
                 container.innerHTML = `
                     <div class="table-responsive">
-                        <table class="clientes-espaco-table" style="table-layout: fixed; width: 100%;">
+                        <table class="clientes-espaco-table" style="width: 100%;">
                             <thead>
                                 <tr>
-                                    <th style="width: 140px; white-space: nowrap;">Cidade</th>
-                                    <th style="width: auto;">Cliente</th>
-                                    <th style="width: 150px; white-space: nowrap;">Tipo</th>
+                                    <th style="min-width: 160px; white-space: nowrap;">Cidade</th>
+                                    <th style="min-width: 250px;">Cliente</th>
+                                    <th style="min-width: 160px; white-space: nowrap;">Tipo</th>
                                     <th style="width: 50px; text-align: center;">Qtd</th>
-                                    <th style="width: 90px; white-space: nowrap;">Vigência</th>
+                                    <th style="width: 100px; white-space: nowrap;">Vigência</th>
                                     <th style="width: 90px; text-align: center;">Ações</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 ${response.data.map(ce => `
                                     <tr>
-                                        <td style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${ce.ces_cidade}">${ce.ces_cidade}</td>
-                                        <td style="overflow: hidden; text-overflow: ellipsis;" title="${ce.ces_cliente_id} - ${ce.cliente_nome || ce.ces_cliente_nome || ''}">
+                                        <td style="white-space: nowrap;">${ce.ces_cidade}</td>
+                                        <td>
                                             <strong>${ce.ces_cliente_id}</strong> - ${ce.cliente_nome || ce.ces_cliente_nome || ''}
                                         </td>
-                                        <td style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${ce.tipo_nome || '-'}">${ce.tipo_nome || '-'}</td>
+                                        <td style="white-space: nowrap;">${ce.tipo_nome || '-'}</td>
                                         <td style="text-align: center;">${ce.ces_quantidade}</td>
                                         <td style="white-space: nowrap;">${ce.ces_vigencia_inicio ? ce.ces_vigencia_inicio.split('-').reverse().join('/') : '-'}</td>
                                         <td style="text-align: center; white-space: nowrap;">
