@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import { tursoService } from '../services/turso.js';
-import googleDriveService from '../services/googleDrive.js';
+import { googleDriveService } from '../services/googleDrive.js';
 
 const router = express.Router();
 
