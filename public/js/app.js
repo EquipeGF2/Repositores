@@ -19500,28 +19500,28 @@ class App {
                 // Layout desktop em tabela
                 container.innerHTML = `
                     <div class="table-responsive">
-                        <table class="clientes-espaco-table">
+                        <table class="clientes-espaco-table" style="table-layout: fixed; width: 100%;">
                             <thead>
                                 <tr>
-                                    <th style="width: 100px;">Cidade</th>
-                                    <th style="min-width: 280px;">Cliente</th>
-                                    <th style="width: 120px;">Tipo</th>
-                                    <th style="width: 60px; text-align: center;">Qtd</th>
-                                    <th style="width: 90px;">Vigência</th>
-                                    <th style="width: 100px; text-align: center;">Ações</th>
+                                    <th style="width: 120px; white-space: nowrap;">Cidade</th>
+                                    <th style="width: auto;">Cliente</th>
+                                    <th style="width: 130px; white-space: nowrap;">Tipo</th>
+                                    <th style="width: 50px; text-align: center;">Qtd</th>
+                                    <th style="width: 90px; white-space: nowrap;">Vigência</th>
+                                    <th style="width: 90px; text-align: center;">Ações</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 ${response.data.map(ce => `
                                     <tr>
-                                        <td style="width: 100px;">${ce.ces_cidade}</td>
-                                        <td style="min-width: 280px;">
+                                        <td style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${ce.ces_cidade}</td>
+                                        <td style="overflow: hidden; text-overflow: ellipsis;">
                                             <strong>${ce.ces_cliente_id}</strong> - ${ce.cliente_nome || ''}
                                         </td>
-                                        <td style="width: 120px;">${ce.tipo_nome || '-'}</td>
-                                        <td style="width: 60px; text-align: center;">${ce.ces_quantidade}</td>
-                                        <td style="width: 90px;">${ce.ces_vigencia_inicio ? ce.ces_vigencia_inicio.split('-').reverse().join('/') : '-'}</td>
-                                        <td style="width: 100px; text-align: center;">
+                                        <td style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${ce.tipo_nome || '-'}</td>
+                                        <td style="text-align: center;">${ce.ces_quantidade}</td>
+                                        <td style="white-space: nowrap;">${ce.ces_vigencia_inicio ? ce.ces_vigencia_inicio.split('-').reverse().join('/') : '-'}</td>
+                                        <td style="text-align: center; white-space: nowrap;">
                                             <button class="btn btn-sm" style="background:#f59e0b;color:white;padding:4px 6px;" onclick="window.app.editarClienteEspaco(${ce.ces_id}, ${ce.ces_quantidade})" title="Editar quantidade">✏️</button>
                                             <button class="btn btn-sm btn-danger" style="padding:4px 6px;" onclick="window.app.inativarClienteEspaco(${ce.ces_id})" title="Inativar espaço">🚫</button>
                                         </td>
@@ -19632,6 +19632,7 @@ class App {
 
         const cidade = document.getElementById('clienteEspacoCidade').value.trim();
         const clienteCodigo = document.getElementById('clienteEspacoClienteCodigo').value;
+        const clienteNomeInput = document.getElementById('clienteEspacoCliente').value.trim();
         const tipoEspacoId = document.getElementById('clienteEspacoTipo').value;
         const quantidade = parseInt(document.getElementById('clienteEspacoQuantidade').value) || 1;
         const vigenciaInicio = document.getElementById('clienteEspacoVigencia').value;
@@ -19641,6 +19642,12 @@ class App {
             return;
         }
 
+        // Extrair nome do cliente do input (formato: "123 - Nome do Cliente")
+        let clienteNome = '';
+        if (clienteNomeInput.includes(' - ')) {
+            clienteNome = clienteNomeInput.split(' - ').slice(1).join(' - ');
+        }
+
         try {
             const response = await fetchJson(`${API_BASE_URL}/api/espacos/clientes`, {
                 method: 'POST',
@@ -19648,6 +19655,7 @@ class App {
                 body: JSON.stringify({
                     cidade,
                     cliente_id: clienteCodigo,
+                    cliente_nome: clienteNome,
                     tipo_espaco_id: tipoEspacoId,
                     quantidade,
                     vigencia_inicio: vigenciaInicio

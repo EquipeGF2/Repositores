@@ -1295,27 +1295,19 @@ class TursoService {
   }
 
   async cancelarAtendimento(sessaoId, motivo) {
-    const agora = new Date().toISOString();
-
+    // Excluir completamente os registros de visita associados à sessão
     await this.execute(
-      `
-        UPDATE cc_visita_sessao
-        SET cancelado_em = ?, cancelado_motivo = ?, status = 'CANCELADO'
-        WHERE sessao_id = ?
-      `,
-      [agora, motivo || null, sessaoId]
+      `DELETE FROM cc_registro_visita WHERE COALESCE(rv_sessao_id, sessao_id) = ?`,
+      [sessaoId]
     );
 
+    // Excluir a sessão completamente
     await this.execute(
-      `
-        UPDATE cc_registro_visita
-        SET rv_status = 'CANCELADO', rv_cancelado_em = ?, rv_cancelado_motivo = ?
-        WHERE COALESCE(rv_sessao_id, sessao_id) = ?
-      `,
-      [agora, motivo || null, sessaoId]
+      `DELETE FROM cc_visita_sessao WHERE sessao_id = ?`,
+      [sessaoId]
     );
 
-    return this.obterSessaoPorId(sessaoId);
+    return null; // Sessão foi excluída
   }
 
   async sessaoPossuiCheckinComFoto(sessaoId) {
@@ -2156,6 +2148,14 @@ class TursoService {
       // Coluna já existe
     }
 
+    // Adicionar coluna de nome do cliente se não existir
+    try {
+      await client.execute({ sql: 'ALTER TABLE cc_clientes_espacos ADD COLUMN ces_cliente_nome TEXT', args: [] });
+      console.log('✅ Coluna ces_cliente_nome adicionada');
+    } catch (error) {
+      // Coluna já existe
+    }
+
     console.log('✅ Schema de espaços verificado');
   }
 
@@ -2218,9 +2218,10 @@ class TursoService {
     const result = await this.execute(sql, args);
     const rows = result?.rows || result || [];
 
-    // Enriquecer com nomes dos clientes do banco comercial
-    if (rows.length > 0) {
-      const clienteIds = [...new Set(rows.map(r => String(r.ces_cliente_id).trim()))];
+    // Usar nome salvo na tabela, ou buscar do banco comercial como fallback
+    const clientesSemNome = rows.filter(r => !r.ces_cliente_nome);
+    if (clientesSemNome.length > 0) {
+      const clienteIds = [...new Set(clientesSemNome.map(r => String(r.ces_cliente_id).trim()))];
       try {
         const comercialClient = this.getComercialClient();
         if (comercialClient) {
@@ -2236,12 +2237,25 @@ class TursoService {
           });
           rows.forEach(r => {
             const idNorm = String(r.ces_cliente_id).trim().replace(/\.0$/, '');
-            r.cliente_nome = clientesMap.get(idNorm) || '';
+            if (!r.ces_cliente_nome) {
+              r.cliente_nome = clientesMap.get(idNorm) || '';
+            } else {
+              r.cliente_nome = r.ces_cliente_nome;
+            }
           });
         }
       } catch (error) {
         console.warn('Não foi possível buscar nomes dos clientes:', error.message);
+        // Usar nome salvo se disponível
+        rows.forEach(r => {
+          r.cliente_nome = r.ces_cliente_nome || '';
+        });
       }
+    } else {
+      // Todos já têm nome salvo
+      rows.forEach(r => {
+        r.cliente_nome = r.ces_cliente_nome || '';
+      });
     }
 
     return rows;
@@ -2260,7 +2274,7 @@ class TursoService {
     return result?.rows || result || [];
   }
 
-  async adicionarClienteEspaco(clienteId, cidade, tipoEspacoId, quantidade, vigenciaInicio = null) {
+  async adicionarClienteEspaco(clienteId, cidade, tipoEspacoId, quantidade, vigenciaInicio = null, clienteNome = null) {
     await this.ensureSchemaEspacos();
     const clienteNorm = String(clienteId).trim().replace(/\.0$/, '');
     const vigencia = vigenciaInicio || new Date().toISOString().split('T')[0];
@@ -2272,18 +2286,18 @@ class TursoService {
     );
 
     if ((existente?.rows || existente || []).length > 0) {
-      // Atualizar quantidade e vigência
+      // Atualizar quantidade, vigência e nome
       const id = (existente?.rows || existente)[0].ces_id;
       await this.execute(
-        'UPDATE cc_clientes_espacos SET ces_quantidade = ?, ces_cidade = ?, ces_vigencia_inicio = ?, ces_atualizado_em = datetime(\'now\') WHERE ces_id = ?',
-        [quantidade, cidade, vigencia, id]
+        'UPDATE cc_clientes_espacos SET ces_quantidade = ?, ces_cidade = ?, ces_vigencia_inicio = ?, ces_cliente_nome = COALESCE(?, ces_cliente_nome), ces_atualizado_em = datetime(\'now\') WHERE ces_id = ?',
+        [quantidade, cidade, vigencia, clienteNome, id]
       );
       return { id, atualizado: true };
     }
 
     const result = await this.execute(
-      'INSERT INTO cc_clientes_espacos (ces_cliente_id, ces_cidade, ces_tipo_espaco_id, ces_quantidade, ces_vigencia_inicio) VALUES (?, ?, ?, ?, ?)',
-      [clienteNorm, cidade, tipoEspacoId, quantidade, vigencia]
+      'INSERT INTO cc_clientes_espacos (ces_cliente_id, ces_cidade, ces_tipo_espaco_id, ces_quantidade, ces_vigencia_inicio, ces_cliente_nome) VALUES (?, ?, ?, ?, ?, ?)',
+      [clienteNorm, cidade, tipoEspacoId, quantidade, vigencia, clienteNome]
     );
     return { id: Number(result.lastInsertRowid), inserido: true };
   }
