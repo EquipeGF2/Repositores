@@ -133,6 +133,24 @@ router.delete('/clientes/:id', async (req, res) => {
   }
 });
 
+// PATCH /api/espacos/clientes/:id - Atualizar quantidade do espaço
+router.patch('/clientes/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { quantidade } = req.body;
+
+    if (!quantidade || quantidade < 1) {
+      return res.status(400).json({ ok: false, message: 'Quantidade deve ser maior que zero' });
+    }
+
+    await tursoService.atualizarQuantidadeEspaco(parseInt(id), parseInt(quantidade));
+    res.json({ ok: true, message: 'Quantidade atualizada com sucesso' });
+  } catch (error) {
+    console.error('Erro ao atualizar quantidade do espaço:', error);
+    res.status(500).json({ ok: false, message: 'Erro ao atualizar quantidade do espaço' });
+  }
+});
+
 // ==================== REGISTRO DE ESPAÇOS ====================
 
 // GET /api/espacos/registros - Listar registros de espaços

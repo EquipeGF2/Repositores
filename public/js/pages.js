@@ -6236,7 +6236,7 @@ export const pages = {
                         <small>(Para cadastrar tipos de espaço, acesse Configurações do Sistema → Tipos de Espaço)</small>
                     </p>
 
-                    <div class="filter-bar filter-bar-wide" style="margin-bottom: 16px;">
+                    <div class="filter-bar filter-bar-wide" style="margin-bottom: 16px; align-items: flex-end;">
                         <div class="filter-group">
                             <label for="filtro_cidade_espaco">Cidade</label>
                             <input type="text" id="filtro_cidade_espaco" placeholder="Buscar cidade...">
@@ -6247,7 +6247,8 @@ export const pages = {
                                 <option value="">Todos</option>
                             </select>
                         </div>
-                        <div class="filter-group" style="align-self: flex-end;">
+                        <div class="filter-group">
+                            <label>&nbsp;</label>
                             <button class="btn btn-primary btn-sm" onclick="window.app.abrirModalClienteEspaco()">
                                 + Adicionar Cliente
                             </button>
