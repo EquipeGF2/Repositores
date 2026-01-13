@@ -10428,7 +10428,8 @@ class App {
             motivo: (motivo || '').toString().trim() || undefined
         };
 
-        const data = await fetchJson(`${this.registroRotaState.backendUrl}/api/registro-rota/cancelar-atendimento`, {
+        const backendUrl = this.registroRotaState?.backendUrl || API_BASE_URL;
+        const data = await fetchJson(`${backendUrl}/api/registro-rota/cancelar-atendimento`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -19503,9 +19504,9 @@ class App {
                         <table class="clientes-espaco-table" style="table-layout: fixed; width: 100%;">
                             <thead>
                                 <tr>
-                                    <th style="width: 120px; white-space: nowrap;">Cidade</th>
+                                    <th style="width: 140px; white-space: nowrap;">Cidade</th>
                                     <th style="width: auto;">Cliente</th>
-                                    <th style="width: 130px; white-space: nowrap;">Tipo</th>
+                                    <th style="width: 150px; white-space: nowrap;">Tipo</th>
                                     <th style="width: 50px; text-align: center;">Qtd</th>
                                     <th style="width: 90px; white-space: nowrap;">Vigência</th>
                                     <th style="width: 90px; text-align: center;">Ações</th>
@@ -19514,11 +19515,11 @@ class App {
                             <tbody>
                                 ${response.data.map(ce => `
                                     <tr>
-                                        <td style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${ce.ces_cidade}</td>
-                                        <td style="overflow: hidden; text-overflow: ellipsis;">
-                                            <strong>${ce.ces_cliente_id}</strong> - ${ce.cliente_nome || ''}
+                                        <td style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${ce.ces_cidade}">${ce.ces_cidade}</td>
+                                        <td style="overflow: hidden; text-overflow: ellipsis;" title="${ce.ces_cliente_id} - ${ce.cliente_nome || ce.ces_cliente_nome || ''}">
+                                            <strong>${ce.ces_cliente_id}</strong> - ${ce.cliente_nome || ce.ces_cliente_nome || ''}
                                         </td>
-                                        <td style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${ce.tipo_nome || '-'}</td>
+                                        <td style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${ce.tipo_nome || '-'}">${ce.tipo_nome || '-'}</td>
                                         <td style="text-align: center;">${ce.ces_quantidade}</td>
                                         <td style="white-space: nowrap;">${ce.ces_vigencia_inicio ? ce.ces_vigencia_inicio.split('-').reverse().join('/') : '-'}</td>
                                         <td style="text-align: center; white-space: nowrap;">
