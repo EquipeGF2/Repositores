@@ -10518,7 +10518,8 @@ class App {
             setLoading(true);
 
             try {
-                const response = await fetchJson(`${this.registroRotaState.backendUrl}/api/registro-rota/nao-atendimento`, {
+                const backendUrl = this.registroRotaState?.backendUrl || API_BASE_URL;
+                const response = await fetchJson(`${backendUrl}/api/registro-rota/nao-atendimento`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -10687,12 +10688,17 @@ class App {
             ? `<button onclick="app.abrirModalCaptura(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${endEsc}', '${dataVisita}', 'checkin', '${cadastroEsc}', true)" class="btn-small">🆕 Nova visita</button>`
             : '';
 
-        // Botão de não atendimento - aparece se cliente está pendente (não atendido)
-        const btnNaoAtendimento = (statusBase === 'sem_checkin' && !checkinBloqueadoPorAtraso)
-            ? `<button onclick="app.abrirModalNaoAtendimento(${repId}, '${clienteIdNorm}', '${clienteNome.replace(/'/g, "\\'")}', '${dataVisita}')" class="btn-small" style="background:#1f2937;color:white;" title="Registrar não atendimento">⛔ Não atendimento</button>`
+        // Botão de cancelar - aparece quando em atendimento
+        const btnCancelar = statusBase === 'em_atendimento'
+            ? `<button onclick="app.confirmarCancelarAtendimento(${repId}, '${clienteIdNorm}', '${nomeEsc}')" class="btn-small btn-danger" title="Cancelar atendimento em aberto">🛑 Cancelar</button>`
             : '';
 
-        const botoes = `${btnNovaVisita}${btnCheckin}${btnAtividades}${btnPesquisa}${btnEspacos}${btnCampanha}${btnCheckout}${btnNaoAtendimento}`;
+        // Botão de não atendimento - aparece se cliente está pendente (não atendido)
+        const btnNaoAtendimento = (statusBase === 'sem_checkin' && !checkinBloqueadoPorAtraso)
+            ? `<button onclick="app.abrirModalNaoAtendimento(${repId}, '${clienteIdNorm}', '${nomeEsc}', '${dataVisita}')" class="btn-small" style="background:#1f2937;color:white;" title="Registrar não atendimento">⛔ Não atendimento</button>`
+            : '';
+
+        const botoes = `${btnNovaVisita}${btnCheckin}${btnAtividades}${btnPesquisa}${btnEspacos}${btnCampanha}${btnCheckout}${btnCancelar}${btnNaoAtendimento}`;
         const avisoAtraso = checkinBloqueadoPorAtraso
             ? '<span style="display:block;color:#b91c1c;font-size:12px;margin-top:6px;">Atraso superior a 7 dias. Check-in bloqueado.</span>'
             : '';
@@ -19481,7 +19487,8 @@ class App {
                                             ${ce.ces_vigencia_inicio ? `<div style="color: #6b7280; font-size: 12px;">Vigência: ${ce.ces_vigencia_inicio.split('-').reverse().join('/')}</div>` : ''}
                                         </div>
                                         <div style="display: flex; gap: 8px;">
-                                            <button class="btn btn-sm btn-danger" onclick="window.app.removerClienteEspaco(${ce.ces_id})" title="Remover">🗑️</button>
+                                            <button class="btn btn-sm" style="background:#f59e0b;color:white;" onclick="window.app.editarClienteEspaco(${ce.ces_id}, ${ce.ces_quantidade})" title="Editar">✏️</button>
+                                            <button class="btn btn-sm btn-danger" onclick="window.app.inativarClienteEspaco(${ce.ces_id})" title="Inativar">🚫</button>
                                         </div>
                                     </div>
                                 </div>
@@ -19496,26 +19503,27 @@ class App {
                         <table class="clientes-espaco-table">
                             <thead>
                                 <tr>
-                                    <th>Cidade</th>
-                                    <th>Cliente</th>
-                                    <th>Tipo de Espaço</th>
-                                    <th>Qtd</th>
-                                    <th>Vigência</th>
-                                    <th style="width: 80px;">Ações</th>
+                                    <th style="width: 100px;">Cidade</th>
+                                    <th style="min-width: 280px;">Cliente</th>
+                                    <th style="width: 120px;">Tipo</th>
+                                    <th style="width: 60px; text-align: center;">Qtd</th>
+                                    <th style="width: 90px;">Vigência</th>
+                                    <th style="width: 100px; text-align: center;">Ações</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 ${response.data.map(ce => `
                                     <tr>
-                                        <td>${ce.ces_cidade}</td>
-                                        <td>
+                                        <td style="width: 100px;">${ce.ces_cidade}</td>
+                                        <td style="min-width: 280px;">
                                             <strong>${ce.ces_cliente_id}</strong> - ${ce.cliente_nome || ''}
                                         </td>
-                                        <td>${ce.tipo_nome || '-'}</td>
-                                        <td style="text-align: center;">${ce.ces_quantidade}</td>
-                                        <td>${ce.ces_vigencia_inicio ? ce.ces_vigencia_inicio.split('-').reverse().join('/') : '-'}</td>
-                                        <td style="text-align: center;">
-                                            <button class="btn btn-sm btn-danger" onclick="window.app.removerClienteEspaco(${ce.ces_id})" title="Remover">🗑️</button>
+                                        <td style="width: 120px;">${ce.tipo_nome || '-'}</td>
+                                        <td style="width: 60px; text-align: center;">${ce.ces_quantidade}</td>
+                                        <td style="width: 90px;">${ce.ces_vigencia_inicio ? ce.ces_vigencia_inicio.split('-').reverse().join('/') : '-'}</td>
+                                        <td style="width: 100px; text-align: center;">
+                                            <button class="btn btn-sm" style="background:#f59e0b;color:white;padding:4px 6px;" onclick="window.app.editarClienteEspaco(${ce.ces_id}, ${ce.ces_quantidade})" title="Editar quantidade">✏️</button>
+                                            <button class="btn btn-sm btn-danger" style="padding:4px 6px;" onclick="window.app.inativarClienteEspaco(${ce.ces_id})" title="Inativar espaço">🚫</button>
                                         </td>
                                     </tr>
                                 `).join('')}
@@ -19672,6 +19680,52 @@ class App {
         } catch (error) {
             console.error('Erro ao remover espaço do cliente:', error);
             this.showNotification(error.message || 'Erro ao remover espaço do cliente', 'error');
+        }
+    }
+
+    async inativarClienteEspaco(id) {
+        if (!confirm('Deseja realmente inativar este espaço do cliente?')) return;
+
+        try {
+            const response = await fetchJson(`${API_BASE_URL}/api/espacos/clientes/${id}`, {
+                method: 'DELETE'
+            });
+
+            if (response?.ok) {
+                this.showNotification('Espaço inativado com sucesso', 'success');
+                await this.carregarClientesEspaco();
+            }
+        } catch (error) {
+            console.error('Erro ao inativar espaço do cliente:', error);
+            this.showNotification(error.message || 'Erro ao inativar espaço do cliente', 'error');
+        }
+    }
+
+    async editarClienteEspaco(id, quantidadeAtual) {
+        const novaQuantidade = prompt('Digite a nova quantidade de espaços:', quantidadeAtual);
+
+        if (novaQuantidade === null) return; // Usuário cancelou
+
+        const quantidade = parseInt(novaQuantidade);
+        if (isNaN(quantidade) || quantidade < 1) {
+            this.showNotification('Quantidade inválida. Informe um número maior que zero.', 'warning');
+            return;
+        }
+
+        try {
+            const response = await fetchJson(`${API_BASE_URL}/api/espacos/clientes/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ quantidade })
+            });
+
+            if (response?.ok) {
+                this.showNotification('Quantidade atualizada com sucesso', 'success');
+                await this.carregarClientesEspaco();
+            }
+        } catch (error) {
+            console.error('Erro ao atualizar quantidade do espaço:', error);
+            this.showNotification(error.message || 'Erro ao atualizar quantidade do espaço', 'error');
         }
     }
 

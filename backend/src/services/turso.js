@@ -2292,6 +2292,10 @@ class TursoService {
     await this.execute('UPDATE cc_clientes_espacos SET ces_ativo = 0, ces_atualizado_em = datetime(\'now\') WHERE ces_id = ?', [id]);
   }
 
+  async atualizarQuantidadeEspaco(id, quantidade) {
+    await this.execute('UPDATE cc_clientes_espacos SET ces_quantidade = ?, ces_atualizado_em = datetime(\'now\') WHERE ces_id = ?', [quantidade, id]);
+  }
+
   // Registro de Espaços
   async registrarEspaco(dados) {
     await this.ensureSchemaEspacos();
