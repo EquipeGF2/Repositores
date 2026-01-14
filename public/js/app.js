@@ -20089,11 +20089,8 @@ class App {
                                            style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;">
                                 </div>
 
-                                <input type="file" id="inputFoto${idx}" accept="image/*" capture="environment" style="display: none;"
-                                       onchange="window.app.onFotoEspacoSelecionada(${idx}, this)">
-
                                 <div style="display: flex; gap: 8px;">
-                                    <button class="btn btn-secondary btn-sm" id="btnFoto${idx}" onclick="document.getElementById('inputFoto${idx}').click()">
+                                    <button class="btn btn-secondary btn-sm" id="btnFoto${idx}" onclick="window.app.abrirCameraEspaco(${idx})">
                                         📷 Tirar Foto
                                     </button>
                                     <button class="btn btn-primary btn-sm" id="btnConfirmar${idx}"
@@ -20117,30 +20114,173 @@ class App {
         modal.classList.add('active');
     }
 
-    onFotoEspacoSelecionada(idx, input) {
-        const file = input.files?.[0];
-        if (!file) return;
+    async abrirCameraEspaco(idx) {
+        // Criar modal de câmera
+        let cameraModal = document.getElementById('modalCameraEspaco');
+        if (!cameraModal) {
+            cameraModal = document.createElement('div');
+            cameraModal.id = 'modalCameraEspaco';
+            cameraModal.className = 'modal';
+            cameraModal.style.zIndex = '10001';
+            document.body.appendChild(cameraModal);
+        }
 
-        const preview = document.getElementById(`fotoPreview${idx}`);
-        const img = document.getElementById(`fotoImg${idx}`);
-        const btnConfirmar = document.getElementById(`btnConfirmar${idx}`);
-        const btnFoto = document.getElementById(`btnFoto${idx}`);
-        const status = document.getElementById(`statusEspaco${idx}`);
+        const clienteNome = this.espacosRegistroState?.clienteNome || 'Cliente';
+        const clienteId = this.espacosRegistroState?.clienteId || '';
 
-        // Mostrar preview
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            img.src = e.target.result;
-            preview.style.display = 'block';
-            btnConfirmar.disabled = false;
-            btnFoto.textContent = '📷 Trocar Foto';
-            status.textContent = '📷 Foto pronta';
-            status.className = 'badge badge-info';
-        };
-        reader.readAsDataURL(file);
+        cameraModal.innerHTML = `
+            <div class="modal-content" style="max-width: 500px; padding: 0;">
+                <div class="modal-header" style="padding: 12px 16px;">
+                    <h4 style="margin: 0;">📷 Capturar Foto</h4>
+                    <button class="modal-close" onclick="window.app.fecharCameraEspaco()">&times;</button>
+                </div>
+                <div style="position: relative; background: #000;">
+                    <video id="cameraVideo" autoplay playsinline style="width: 100%; display: block;"></video>
+                    <canvas id="cameraCanvas" style="display: none;"></canvas>
+                    <div id="cameraOverlay" style="position: absolute; bottom: 10px; left: 10px; right: 10px; color: #fff; font-size: 12px; text-shadow: 1px 1px 2px #000; pointer-events: none;">
+                        <div style="background: rgba(0,0,0,0.6); padding: 8px; border-radius: 4px;">
+                            <div><strong>Cliente:</strong> ${clienteId} - ${clienteNome}</div>
+                            <div id="cameraDateTime"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer" style="padding: 12px 16px; display: flex; gap: 10px; justify-content: center;">
+                    <button class="btn btn-secondary" onclick="window.app.fecharCameraEspaco()">Cancelar</button>
+                    <button class="btn btn-primary" id="btnCapturarFoto" onclick="window.app.capturarFotoEspaco(${idx})">
+                        📸 Capturar
+                    </button>
+                </div>
+            </div>
+        `;
 
-        // Armazenar arquivo
-        this.espacosRegistroState.espacosPendentes[idx].fotoFile = file;
+        cameraModal.classList.add('active');
+
+        // Atualizar data/hora em tempo real
+        this.cameraDateTimeInterval = setInterval(() => {
+            const dtEl = document.getElementById('cameraDateTime');
+            if (dtEl) {
+                const now = new Date();
+                dtEl.innerHTML = `<strong>Data/Hora:</strong> ${now.toLocaleString('pt-BR')}`;
+            }
+        }, 1000);
+
+        // Iniciar câmera
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+                audio: false
+            });
+            this.cameraStream = stream;
+            const video = document.getElementById('cameraVideo');
+            if (video) {
+                video.srcObject = stream;
+            }
+        } catch (error) {
+            console.error('Erro ao acessar câmera:', error);
+            this.fecharCameraEspaco();
+            this.showNotification('Erro ao acessar câmera. Verifique as permissões.', 'error');
+        }
+    }
+
+    capturarFotoEspaco(idx) {
+        const video = document.getElementById('cameraVideo');
+        const canvas = document.getElementById('cameraCanvas');
+
+        if (!video || !canvas) {
+            this.showNotification('Erro ao capturar foto', 'error');
+            return;
+        }
+
+        // Configurar canvas com tamanho do vídeo
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+
+        // Desenhar frame do vídeo
+        ctx.drawImage(video, 0, 0);
+
+        // Adicionar marca d'água
+        const clienteNome = this.espacosRegistroState?.clienteNome || 'Cliente';
+        const clienteId = this.espacosRegistroState?.clienteId || '';
+        const now = new Date();
+        const dataHora = now.toLocaleString('pt-BR');
+
+        // Fundo semi-transparente para a marca d'água
+        const textoLinha1 = `Cliente: ${clienteId} - ${clienteNome}`;
+        const textoLinha2 = `Data/Hora: ${dataHora}`;
+
+        ctx.font = 'bold 16px Arial';
+        const padding = 10;
+        const lineHeight = 22;
+        const boxHeight = lineHeight * 2 + padding * 2;
+        const boxY = canvas.height - boxHeight - 10;
+
+        // Fundo da marca d'água
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        ctx.fillRect(10, boxY, canvas.width - 20, boxHeight);
+
+        // Texto da marca d'água
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(textoLinha1, 10 + padding, boxY + padding + 16);
+        ctx.fillText(textoLinha2, 10 + padding, boxY + padding + 16 + lineHeight);
+
+        // Converter canvas para blob
+        canvas.toBlob((blob) => {
+            if (!blob) {
+                this.showNotification('Erro ao processar foto', 'error');
+                return;
+            }
+
+            // Criar arquivo a partir do blob
+            const fileName = `foto_espaco_${Date.now()}.jpg`;
+            const file = new File([blob], fileName, { type: 'image/jpeg' });
+
+            // Armazenar arquivo
+            this.espacosRegistroState.espacosPendentes[idx].fotoFile = file;
+
+            // Atualizar preview no modal de espaços
+            const preview = document.getElementById(`fotoPreview${idx}`);
+            const img = document.getElementById(`fotoImg${idx}`);
+            const btnConfirmar = document.getElementById(`btnConfirmar${idx}`);
+            const btnFoto = document.getElementById(`btnFoto${idx}`);
+            const status = document.getElementById(`statusEspaco${idx}`);
+
+            if (img && preview) {
+                img.src = canvas.toDataURL('image/jpeg', 0.9);
+                preview.style.display = 'block';
+            }
+            if (btnConfirmar) btnConfirmar.disabled = false;
+            if (btnFoto) btnFoto.textContent = '📷 Trocar Foto';
+            if (status) {
+                status.textContent = '📷 Foto pronta';
+                status.className = 'badge badge-info';
+            }
+
+            // Fechar modal de câmera
+            this.fecharCameraEspaco();
+            this.showNotification('Foto capturada com sucesso!', 'success');
+
+        }, 'image/jpeg', 0.9);
+    }
+
+    fecharCameraEspaco() {
+        // Parar stream da câmera
+        if (this.cameraStream) {
+            this.cameraStream.getTracks().forEach(track => track.stop());
+            this.cameraStream = null;
+        }
+
+        // Parar intervalo de data/hora
+        if (this.cameraDateTimeInterval) {
+            clearInterval(this.cameraDateTimeInterval);
+            this.cameraDateTimeInterval = null;
+        }
+
+        // Fechar modal
+        const cameraModal = document.getElementById('modalCameraEspaco');
+        if (cameraModal) {
+            cameraModal.classList.remove('active');
+        }
     }
 
     async registrarEspacoItemComFoto(idx, tipoEspacoId) {
@@ -20243,6 +20383,9 @@ class App {
     }
 
     fecharModalRegistroEspacos() {
+        // Fechar câmera se estiver aberta
+        this.fecharCameraEspaco();
+
         const modal = document.getElementById('modalRegistroEspacos');
         if (modal) {
             modal.classList.remove('active');
