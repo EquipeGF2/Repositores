@@ -2961,12 +2961,19 @@ class App {
                 body: JSON.stringify(dados)
             });
 
-            console.log('Usuário criado automaticamente para repositor', repoCod);
-            this.showNotification(`Usuário criado! Username: ${repoCod}, Senha: ${senhaAleatoria}`, 'success', 8000);
+            // Verificar se foi reativação de usuário existente
+            if (result?.message?.includes('reativado')) {
+                console.log('Usuário reativado para repositor', repoCod);
+                this.showNotification(`Usuário reativado! Username: ${repoCod}, Nova senha: ${senhaAleatoria}`, 'success', 8000);
+            } else {
+                console.log('Usuário criado automaticamente para repositor', repoCod);
+                this.showNotification(`Usuário criado! Username: ${repoCod}, Senha: ${senhaAleatoria}`, 'success', 8000);
+            }
         } catch (error) {
-            // Se o usuário já existe, não é um erro crítico - apenas ignora
+            // Se o usuário já existe e está ativo
             if (error.body?.code === 'USERNAME_EXISTS' || error.status === 409) {
-                console.log('Usuário já existe para este repositor');
+                console.log('Usuário já existe para este repositor:', error.body?.message);
+                this.showNotification(`Usuário PWA já existe com username "${repoCod}". Verifique na tela de Gestão de Usuários.`, 'info', 6000);
                 return;
             }
 
@@ -7006,15 +7013,32 @@ class App {
             if (checkboxCriarUsuario) {
                 try {
                     const response = await fetchJson(`${API_BASE_URL}/api/usuarios/por-repositor/${repositor.repo_cod}`);
-                    checkboxCriarUsuario.checked = response?.temUsuario || false;
-                    checkboxCriarUsuario.disabled = response?.temUsuario || false;
-                    // Atualizar label se já tem usuário
                     const labelUsuario = checkboxCriarUsuario.closest('.criar-usuario-group')?.querySelector('small');
-                    if (labelUsuario) {
-                        if (response?.temUsuario) {
+
+                    if (response?.temUsuario) {
+                        // Já tem usuário vinculado a este repositor
+                        checkboxCriarUsuario.checked = true;
+                        checkboxCriarUsuario.disabled = true;
+                        if (labelUsuario) {
                             labelUsuario.textContent = `Usuário já criado: ${response.usuario?.username || repositor.repo_cod}`;
-                        } else {
+                            labelUsuario.style.color = '';
+                        }
+                    } else if (response?.conflitoUsername) {
+                        // Existe usuário com mesmo username mas não vinculado a este repositor
+                        const conflito = response.usuarioConflitante;
+                        checkboxCriarUsuario.checked = false;
+                        checkboxCriarUsuario.disabled = conflito.ativo === 1 && conflito.rep_id && conflito.rep_id !== repositor.repo_cod;
+                        if (labelUsuario) {
+                            labelUsuario.innerHTML = `<span style="color: #d97706; font-weight: 600;">⚠️ ${conflito.motivo}</span><br>` +
+                                `Usuário existente: ${conflito.username} (ID: ${conflito.usuario_id}, Status: ${conflito.ativo === 1 ? 'Ativo' : 'Inativo'})`;
+                        }
+                    } else {
+                        // Não existe usuário
+                        checkboxCriarUsuario.checked = false;
+                        checkboxCriarUsuario.disabled = false;
+                        if (labelUsuario) {
                             labelUsuario.textContent = 'Ao marcar esta opção, um usuário será criado automaticamente com base nos dados do repositor. O username será o código do repositor (repo_cod) e uma senha aleatória será gerada.';
+                            labelUsuario.style.color = '';
                         }
                     }
                 } catch (e) {
