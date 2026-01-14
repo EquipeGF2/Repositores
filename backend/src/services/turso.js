@@ -1752,7 +1752,8 @@ class TursoService {
     await this.execute(sqlRepositor, []);
     console.log('✅ Tabela cad_repositor garantida');
 
-    // Agora criar a tabela cc_usuarios com FK para cad_repositor
+    // Agora criar a tabela cc_usuarios (SEM FK pois causa problemas no Turso)
+    // A validação de rep_id é feita em código antes do INSERT
     const sqlUsuarios = `
       CREATE TABLE IF NOT EXISTS cc_usuarios (
         usuario_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1765,13 +1766,46 @@ class TursoService {
         ativo INTEGER DEFAULT 1,
         criado_em TEXT DEFAULT (datetime('now')),
         atualizado_em TEXT DEFAULT (datetime('now')),
-        ultimo_login TEXT,
-        FOREIGN KEY (rep_id) REFERENCES cad_repositor(repo_cod)
+        ultimo_login TEXT
       )
     `;
 
     await this.execute(sqlUsuarios, []);
     console.log('✅ Tabela cc_usuarios garantida');
+
+    // Verificar se a tabela tem FOREIGN KEY problemática e recriar se necessário
+    try {
+      // Tentar um INSERT de teste com rep_id válido para ver se FK está funcionando
+      // Se der erro de FK mesmo com rep_id válido, precisamos recriar a tabela
+      const testResult = await this.execute('SELECT sql FROM sqlite_master WHERE type="table" AND name="cc_usuarios"', []);
+      const tableSql = testResult.rows[0]?.sql || '';
+
+      if (tableSql.includes('FOREIGN KEY')) {
+        console.log('⚠️ Tabela cc_usuarios tem FOREIGN KEY - recriando sem FK...');
+
+        // Backup dos dados existentes
+        const backupData = await this.execute('SELECT * FROM cc_usuarios', []);
+        console.log(`📦 Backup de ${backupData.rows.length} usuários`);
+
+        // Dropar tabela antiga
+        await this.execute('DROP TABLE cc_usuarios', []);
+
+        // Recriar sem FK
+        await this.execute(sqlUsuarios, []);
+
+        // Restaurar dados
+        for (const row of backupData.rows) {
+          await this.execute(`
+            INSERT INTO cc_usuarios (usuario_id, username, password_hash, nome_completo, email, rep_id, perfil, ativo, criado_em, atualizado_em, ultimo_login)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `, [row.usuario_id, row.username, row.password_hash, row.nome_completo, row.email, row.rep_id, row.perfil, row.ativo, row.criado_em, row.atualizado_em, row.ultimo_login]);
+        }
+
+        console.log('✅ Tabela cc_usuarios recriada sem FOREIGN KEY');
+      }
+    } catch (migrationError) {
+      console.error('Erro na migração da tabela cc_usuarios:', migrationError);
+    }
 
     // Criar índices
     await this.execute('CREATE INDEX IF NOT EXISTS idx_usuarios_username ON cc_usuarios(username)', []);
