@@ -1842,11 +1842,22 @@ class TursoService {
   async criarUsuario({ username, passwordHash, nomeCompleto, email, repId, perfil = 'repositor' }) {
     // Validar se o repositor existe (se repId fornecido)
     if (repId !== null && repId !== undefined && repId !== '') {
+      // Garantir que repId seja número para a comparação
+      const repIdNumero = Number(repId);
+      console.log(`[criarUsuario] Verificando se repositor existe: repId=${repId} (${typeof repId}), repIdNumero=${repIdNumero}`);
+
       const sqlCheck = 'SELECT repo_cod FROM cad_repositor WHERE repo_cod = ?';
-      const checkResult = await this.execute(sqlCheck, [repId]);
+      const checkResult = await this.execute(sqlCheck, [repIdNumero]);
+
+      console.log(`[criarUsuario] Resultado da verificação:`, checkResult.rows);
 
       if (!checkResult.rows || checkResult.rows.length === 0) {
-        throw new Error(`Repositor com código ${repId} não encontrado`);
+        // Listar alguns repositores para diagnóstico
+        const sqlList = 'SELECT repo_cod, repo_nome FROM cad_repositor LIMIT 10';
+        const listResult = await this.execute(sqlList, []);
+        console.log(`[criarUsuario] Repositores no banco (primeiros 10):`, listResult.rows);
+
+        throw new Error(`Repositor com código ${repId} não encontrado na tabela cad_repositor`);
       }
     }
 
@@ -1855,7 +1866,9 @@ class TursoService {
       VALUES (?, ?, ?, ?, ?, ?)
     `;
 
-    const finalRepId = (repId === null || repId === undefined || repId === '') ? null : repId;
+    const finalRepId = (repId === null || repId === undefined || repId === '') ? null : Number(repId);
+    console.log(`[criarUsuario] Inserindo usuário com rep_id=${finalRepId} (${typeof finalRepId})`);
+
     const result = await this.execute(sql, [username, passwordHash, nomeCompleto, email, finalRepId, perfil]);
     return { usuario_id: Number(result.lastInsertRowid), username, perfil };
   }
