@@ -7057,8 +7057,15 @@ class App {
             // Verificar se repositor já tem usuário PWA
             const checkboxCriarUsuario = document.getElementById('repo_criar_usuario');
             if (checkboxCriarUsuario) {
+                // Adicionar listener para rastrear mudanças na checkbox
+                checkboxCriarUsuario.addEventListener('change', (e) => {
+                    console.log('[Checkbox PWA] Mudou para:', e.target.checked, 'disabled:', e.target.disabled);
+                });
+
                 try {
+                    console.log('[EditRepositor] Verificando usuário PWA para repo_cod:', repositor.repo_cod);
                     const response = await fetchJson(`${API_BASE_URL}/api/usuarios/por-repositor/${repositor.repo_cod}`);
+                    console.log('[EditRepositor] Resposta da verificação:', response);
                     const labelUsuario = checkboxCriarUsuario.closest('.criar-usuario-group')?.querySelector('small');
 
                     if (response?.temUsuario) {
@@ -7085,6 +7092,7 @@ class App {
                         }
                     } else {
                         // Não existe usuário
+                        console.log('[EditRepositor] Não existe usuário PWA - checkbox será desmarcada e habilitada');
                         checkboxCriarUsuario.checked = false;
                         checkboxCriarUsuario.disabled = false;
                         if (labelUsuario) {
@@ -7092,6 +7100,7 @@ class App {
                             labelUsuario.style.color = '';
                         }
                     }
+                    console.log('[EditRepositor] Estado final da checkbox:', { checked: checkboxCriarUsuario.checked, disabled: checkboxCriarUsuario.disabled });
                 } catch (e) {
                     console.warn('Erro ao verificar usuário PWA:', e);
                     checkboxCriarUsuario.checked = false;
