@@ -2963,16 +2963,28 @@ class App {
             let result;
             try {
                 console.log('[criarUsuarioParaRepositor] Fazendo fetch...');
-                result = await fetchJson(`${API_BASE_URL}/api/usuarios`, {
+                const startTime = Date.now();
+
+                // Criar uma promise com timeout de 30 segundos
+                const fetchPromise = fetchJson(`${API_BASE_URL}/api/usuarios`, {
                     method: 'POST',
                     headers,
                     body: JSON.stringify(dados)
                 });
-                console.log('[criarUsuarioParaRepositor] Fetch completado, result:', result);
+
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('Timeout: servidor demorou mais de 30 segundos para responder')), 30000);
+                });
+
+                result = await Promise.race([fetchPromise, timeoutPromise]);
+
+                const elapsed = Date.now() - startTime;
+                console.log(`[criarUsuarioParaRepositor] Fetch completado em ${elapsed}ms, result:`, result);
             } catch (fetchError) {
                 console.error('[criarUsuarioParaRepositor] Erro no fetchJson:', fetchError);
                 console.error('[criarUsuarioParaRepositor] fetchError.status:', fetchError.status);
                 console.error('[criarUsuarioParaRepositor] fetchError.body:', fetchError.body);
+                console.error('[criarUsuarioParaRepositor] fetchError.message:', fetchError.message);
                 throw fetchError;
             }
 
