@@ -189,11 +189,21 @@ router.get('/por-repositor/:repId', async (req, res) => {
   try {
     const { repId } = req.params;
 
-    // Buscar usuário ativo vinculado a este repositor
-    const usuarioPorRepId = await tursoService.buscarUsuarioPorRepId(repId);
+    // IMPORTANTE: Converter repId para Number para comparação correta com rep_id (INTEGER no banco)
+    // req.params sempre retorna strings, e SQLite pode não fazer match string vs integer
+    const repIdNumero = Number(repId);
+
+    console.log(`[Verificar usuário repositor] repId: ${repId} (tipo: ${typeof repId}), repIdNumero: ${repIdNumero}`);
+
+    // Buscar usuário ativo vinculado a este repositor (usando número para comparar com INTEGER)
+    const usuarioPorRepId = await tursoService.buscarUsuarioPorRepId(repIdNumero);
 
     // Buscar também por username (repo_cod) incluindo inativos, para detectar conflitos
+    // Username é TEXT no banco, então usamos string
     const usuarioPorUsername = await tursoService.buscarUsuarioPorUsernameIncluindoInativos(String(repId));
+
+    console.log(`[Verificar usuário repositor] Encontrado por rep_id: ${usuarioPorRepId ? `ID ${usuarioPorRepId.usuario_id}, username=${usuarioPorRepId.username}` : 'nenhum'}`);
+    console.log(`[Verificar usuário repositor] Encontrado por username: ${usuarioPorUsername ? `ID ${usuarioPorUsername.usuario_id}, rep_id=${usuarioPorUsername.rep_id}` : 'nenhum'}`);
 
     // Se tem usuário ativo vinculado ao repositor, retorna ele
     if (usuarioPorRepId) {
@@ -209,10 +219,34 @@ router.get('/por-repositor/:repId', async (req, res) => {
       });
     }
 
-    // Se existe usuário com mesmo username mas não vinculado a este repositor
+    // Se existe usuário com mesmo username
     if (usuarioPorUsername) {
       const estaInativo = usuarioPorUsername.ativo === 0;
-      const repIdDiferente = usuarioPorUsername.rep_id && usuarioPorUsername.rep_id !== Number(repId) && usuarioPorUsername.rep_id !== repId;
+      const repIdDoUsuario = usuarioPorUsername.rep_id;
+
+      // Se o usuário encontrado já pertence a este repositor (rep_id igual)
+      // então é o próprio usuário do repositor, não é conflito
+      if (repIdDoUsuario === repIdNumero) {
+        // Este usuário já é do repositor, mas pode estar inativo
+        return res.json({
+          ok: true,
+          temUsuario: !estaInativo,
+          usuario: {
+            usuario_id: usuarioPorUsername.usuario_id,
+            username: usuarioPorUsername.username,
+            nome_completo: usuarioPorUsername.nome_completo,
+            ativo: usuarioPorUsername.ativo
+          },
+          // Se está inativo, informar que será reativado ao criar
+          inativo: estaInativo,
+          mensagem: estaInativo
+            ? 'Usuário existente está inativo. Ao criar, ele será reativado.'
+            : undefined
+        });
+      }
+
+      // Se rep_id é diferente, é um conflito real
+      const repIdDiferente = repIdDoUsuario && repIdDoUsuario !== repIdNumero;
 
       return res.json({
         ok: true,
@@ -223,11 +257,11 @@ router.get('/por-repositor/:repId', async (req, res) => {
           username: usuarioPorUsername.username,
           nome_completo: usuarioPorUsername.nome_completo,
           ativo: usuarioPorUsername.ativo,
-          rep_id: usuarioPorUsername.rep_id,
+          rep_id: repIdDoUsuario,
           motivo: estaInativo
             ? 'Existe usuário inativo com este username. Ao criar, ele será reativado.'
             : repIdDiferente
-              ? `Existe usuário ativo com este username, vinculado a outro repositor (${usuarioPorUsername.rep_id}).`
+              ? `Existe usuário ativo com este username, vinculado a outro repositor (${repIdDoUsuario}).`
               : 'Existe usuário ativo com este username, mas sem vínculo com repositor.'
         }
       });
