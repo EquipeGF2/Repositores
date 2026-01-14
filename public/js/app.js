@@ -2961,15 +2961,14 @@ class App {
                 body: JSON.stringify(dados)
             });
 
-            // Se o usuário já existe, não é um erro crítico
-            if (result?.code === 'USERNAME_EXISTS') {
-                console.log('Usuário já existe para este repositor');
-                return;
-            }
-
             console.log('Usuário criado automaticamente para repositor', repoCod);
             this.showNotification(`Usuário criado! Username: ${repoCod}, Senha: ${senhaAleatoria}`, 'success', 8000);
         } catch (error) {
+            // Se o usuário já existe, não é um erro crítico - apenas ignora
+            if (error.body?.code === 'USERNAME_EXISTS' || error.status === 409) {
+                console.log('Usuário já existe para este repositor');
+                return;
+            }
             console.error('Erro ao criar usuário automaticamente:', error);
             throw error;
         }
