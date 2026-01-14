@@ -1683,7 +1683,7 @@ class App {
                 body: JSON.stringify(body)
             });
 
-            if (data.success || data.usuario) {
+            if (data.ok || data.success || data.usuario) {
                 this.showNotification(`Usuário ${id ? 'atualizado' : 'criado'} com sucesso!`, 'success');
                 this.fecharModalUsuarioConfig();
                 await this.carregarUsuariosConfig();
@@ -1710,7 +1710,7 @@ class App {
                 body: JSON.stringify({ ativo: ativoAtual ? 0 : 1 })
             });
 
-            if (data.success || data.usuario) {
+            if (data.ok || data.success || data.usuario) {
                 this.showNotification(`Usuário ${ativoAtual ? 'desativado' : 'ativado'} com sucesso!`, 'success');
                 await this.carregarUsuariosConfig();
             } else {
