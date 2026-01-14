@@ -188,16 +188,56 @@ router.put('/:id', async (req, res) => {
 router.get('/por-repositor/:repId', async (req, res) => {
   try {
     const { repId } = req.params;
-    const usuario = await tursoService.buscarUsuarioPorRepId(repId);
 
+    // Buscar usuário ativo vinculado a este repositor
+    const usuarioPorRepId = await tursoService.buscarUsuarioPorRepId(repId);
+
+    // Buscar também por username (repo_cod) incluindo inativos, para detectar conflitos
+    const usuarioPorUsername = await tursoService.buscarUsuarioPorUsernameIncluindoInativos(String(repId));
+
+    // Se tem usuário ativo vinculado ao repositor, retorna ele
+    if (usuarioPorRepId) {
+      return res.json({
+        ok: true,
+        temUsuario: true,
+        usuario: {
+          usuario_id: usuarioPorRepId.usuario_id,
+          username: usuarioPorRepId.username,
+          nome_completo: usuarioPorRepId.nome_completo,
+          ativo: usuarioPorRepId.ativo
+        }
+      });
+    }
+
+    // Se existe usuário com mesmo username mas não vinculado a este repositor
+    if (usuarioPorUsername) {
+      const estaInativo = usuarioPorUsername.ativo === 0;
+      const repIdDiferente = usuarioPorUsername.rep_id && usuarioPorUsername.rep_id !== Number(repId) && usuarioPorUsername.rep_id !== repId;
+
+      return res.json({
+        ok: true,
+        temUsuario: false, // Não tem usuário vinculado a ESTE repositor
+        conflitoUsername: true, // Mas existe usuário com esse username
+        usuarioConflitante: {
+          usuario_id: usuarioPorUsername.usuario_id,
+          username: usuarioPorUsername.username,
+          nome_completo: usuarioPorUsername.nome_completo,
+          ativo: usuarioPorUsername.ativo,
+          rep_id: usuarioPorUsername.rep_id,
+          motivo: estaInativo
+            ? 'Existe usuário inativo com este username. Ao criar, ele será reativado.'
+            : repIdDiferente
+              ? `Existe usuário ativo com este username, vinculado a outro repositor (${usuarioPorUsername.rep_id}).`
+              : 'Existe usuário ativo com este username, mas sem vínculo com repositor.'
+        }
+      });
+    }
+
+    // Não existe nenhum usuário
     return res.json({
       ok: true,
-      temUsuario: !!usuario,
-      usuario: usuario ? {
-        usuario_id: usuario.usuario_id,
-        username: usuario.username,
-        nome_completo: usuario.nome_completo
-      } : null
+      temUsuario: false,
+      usuario: null
     });
   } catch (error) {
     console.error('Erro ao verificar usuário do repositor:', error);
