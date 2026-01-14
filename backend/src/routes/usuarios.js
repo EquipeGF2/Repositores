@@ -88,12 +88,13 @@ router.post('/', async (req, res) => {
 
       // Se o usuário está inativo, reativar com os novos dados
       const passwordHash = await authService.hashPassword(password);
+      const repIdNumeroReativar = rep_id ? Number(rep_id) : null;
       const usuarioReativado = await tursoService.reativarUsuario(
         usuarioExistente.usuario_id,
         passwordHash,
         nome_completo,
         email,
-        rep_id || null
+        repIdNumeroReativar
       );
 
       return res.status(200).json({
@@ -106,13 +107,16 @@ router.post('/', async (req, res) => {
     // Hash da senha
     const passwordHash = await authService.hashPassword(password);
 
-    // Criar usuário
+    // Criar usuário - garantir que rep_id seja número ou null
+    const repIdNumero = rep_id ? Number(rep_id) : null;
+    console.log(`[Criar usuário] rep_id convertido: ${rep_id} (${typeof rep_id}) -> ${repIdNumero} (${typeof repIdNumero})`);
+
     const novoUsuario = await tursoService.criarUsuario({
       username,
       passwordHash,
       nomeCompleto: nome_completo,
       email,
-      repId: rep_id || null,
+      repId: repIdNumero,
       perfil: perfil || 'repositor'
     });
 
@@ -133,15 +137,26 @@ router.post('/', async (req, res) => {
       });
     }
 
+    // Verificar se é erro de FOREIGN KEY (rep_id inválido)
+    if (error.message && error.message.includes('FOREIGN KEY')) {
+      console.error(`[Criar usuário] FOREIGN KEY ERROR - rep_id não existe na tabela cad_repositor`);
+      return res.status(400).json({
+        ok: false,
+        code: 'INVALID_REP_ID',
+        message: `O repositor informado (rep_id: ${req.body?.rep_id}) não existe no cadastro`
+      });
+    }
+
     // Verificar se é erro de constraint (username duplicado, etc)
     if (error.message && (error.message.includes('UNIQUE') || error.message.includes('constraint'))) {
       // Tentar buscar o usuário que está causando o conflito para dar mais informações
-      console.error(`[Criar usuário] CONSTRAINT ERROR - buscando usuário conflitante para username: "${rawUsername}"`);
+      const usernameParaBusca = req.body?.username || '';
+      console.error(`[Criar usuário] CONSTRAINT ERROR - buscando usuário conflitante para username: "${usernameParaBusca}"`);
 
       try {
         // Buscar todos os usuários para diagnóstico
         const todosUsuarios = await tursoService.listarUsuarios();
-        const usernameNormalizado = rawUsername ? String(rawUsername).trim() : '';
+        const usernameNormalizado = usernameParaBusca ? String(usernameParaBusca).trim() : '';
 
         // Buscar por diferentes variações do username
         const conflitante = todosUsuarios.find(u => {
@@ -166,10 +181,10 @@ router.post('/', async (req, res) => {
               ativo: conflitante.ativo
             },
             debug: {
-              usernameRecebido: rawUsername,
+              usernameRecebido: usernameParaBusca,
               usernameNormalizado: usernameNormalizado,
               usernameConflitante: conflitante.username,
-              tipoRecebido: typeof rawUsername,
+              tipoRecebido: typeof usernameParaBusca,
               tipoConflitante: typeof conflitante.username
             }
           });
@@ -181,7 +196,7 @@ router.post('/', async (req, res) => {
       return res.status(409).json({
         ok: false,
         code: 'USERNAME_EXISTS',
-        message: `Nome de usuário "${rawUsername}" já está em uso (erro de constraint, usuário não encontrado na busca prévia)`
+        message: `Nome de usuário "${usernameParaBusca}" já está em uso (erro de constraint, usuário não encontrado na busca prévia)`
       });
     }
 

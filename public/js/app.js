@@ -2965,7 +2965,7 @@ class App {
                 console.log('[criarUsuarioParaRepositor] Fazendo fetch...');
                 const startTime = Date.now();
 
-                // Criar uma promise com timeout de 30 segundos
+                // Criar uma promise com timeout de 60 segundos (Render pode demorar no cold start)
                 const fetchPromise = fetchJson(`${API_BASE_URL}/api/usuarios`, {
                     method: 'POST',
                     headers,
@@ -2973,7 +2973,7 @@ class App {
                 });
 
                 const timeoutPromise = new Promise((_, reject) => {
-                    setTimeout(() => reject(new Error('Timeout: servidor demorou mais de 30 segundos para responder')), 30000);
+                    setTimeout(() => reject(new Error('Timeout: servidor demorou mais de 60 segundos. Tente novamente.')), 60000);
                 });
 
                 result = await Promise.race([fetchPromise, timeoutPromise]);
