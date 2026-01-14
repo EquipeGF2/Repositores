@@ -6314,10 +6314,11 @@ export const pages = {
                     padding: 8px 16px;
                     border-radius: 6px;
                     cursor: pointer;
-                    transition: all 0.2s;
+                    transition: all 0.2s ease;
                 }
                 .tabs-espacos .btn-tab-espaco:hover {
                     background: #e5e7eb;
+                    transform: translateY(-1px);
                 }
                 .tabs-espacos .btn-tab-espaco.active {
                     background: #4f46e5;
@@ -6326,32 +6327,138 @@ export const pages = {
                 }
                 .espacos-grid {
                     display: grid;
-                    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+                    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
                     gap: 16px;
+                }
+                @media (max-width: 640px) {
+                    .espacos-grid {
+                        grid-template-columns: 1fr;
+                        gap: 12px;
+                    }
                 }
                 .espaco-card {
                     background: white;
                     border: 1px solid #e5e7eb;
-                    border-radius: 8px;
+                    border-radius: 10px;
                     padding: 16px;
+                    transition: all 0.2s ease;
+                    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+                }
+                .espaco-card:hover {
+                    border-color: #c7d2fe;
+                    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.08);
+                    transform: translateY(-2px);
+                }
+                .espaco-card.inactive {
+                    background: #f9fafb;
+                    border-color: #d1d5db;
+                    opacity: 0.75;
+                }
+                .espaco-card.inactive:hover {
+                    opacity: 0.85;
+                    transform: none;
+                    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+                }
+                .espaco-card.inactive .espaco-card-title {
+                    color: #6b7280;
                 }
                 .espaco-card-header {
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
                     margin-bottom: 8px;
+                    gap: 12px;
                 }
                 .espaco-card-title {
                     font-weight: 600;
                     color: #111827;
+                    font-size: 15px;
+                    word-break: break-word;
                 }
                 .espaco-card-actions {
                     display: flex;
-                    gap: 4px;
+                    gap: 6px;
+                    flex-shrink: 0;
                 }
                 .espaco-card-actions button {
-                    padding: 4px 8px;
+                    padding: 6px 10px;
                     font-size: 12px;
+                    border-radius: 5px;
+                    transition: all 0.15s ease;
+                }
+                .espaco-card-actions button:hover:not(:disabled) {
+                    transform: scale(1.05);
+                }
+                .espaco-card-actions button:disabled {
+                    opacity: 0.5;
+                    cursor: not-allowed;
+                }
+                .espaco-card p.text-muted {
+                    color: #6b7280;
+                    font-size: 13px;
+                    margin: 0;
+                    line-height: 1.4;
+                }
+                .cidade-grupo {
+                    margin-bottom: 24px;
+                }
+                .cidade-grupo h4 {
+                    color: var(--text-primary, #111827);
+                    margin: 0 0 12px;
+                    padding: 10px 14px;
+                    background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+                    border-radius: 8px;
+                    font-size: 14px;
+                    font-weight: 600;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+                .cards-clientes {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 12px;
+                }
+                .cliente-espaco-card {
+                    background: white;
+                    border: 1px solid #e5e7eb;
+                    border-radius: 10px;
+                    padding: 14px;
+                    transition: all 0.2s ease;
+                    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+                }
+                .cliente-espaco-card:hover {
+                    border-color: #c7d2fe;
+                    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.08);
+                }
+                .cliente-espaco-card .cliente-nome {
+                    font-weight: 600;
+                    color: #111827;
+                    margin-bottom: 10px;
+                    font-size: 14px;
+                }
+                .cliente-espaco-card .tipo-espaco {
+                    color: #4f46e5;
+                    font-weight: 500;
+                    font-size: 14px;
+                }
+                .cliente-espaco-card .info-qtd {
+                    color: #6b7280;
+                    font-size: 13px;
+                }
+                .cliente-espaco-card .info-vigencia {
+                    color: #6b7280;
+                    font-size: 12px;
+                }
+                .cliente-espaco-card .card-actions {
+                    display: flex;
+                    gap: 8px;
+                }
+                .cliente-espaco-card .card-actions button {
+                    transition: all 0.15s ease;
+                }
+                .cliente-espaco-card .card-actions button:hover {
+                    transform: scale(1.1);
                 }
                 .clientes-espaco-table {
                     width: 100%;
@@ -6359,17 +6466,26 @@ export const pages = {
                 }
                 .clientes-espaco-table th,
                 .clientes-espaco-table td {
-                    padding: 12px;
+                    padding: 12px 14px;
                     text-align: left;
                     border-bottom: 1px solid #e5e7eb;
                 }
                 .clientes-espaco-table th {
-                    background: #f9fafb;
+                    background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
                     font-weight: 600;
                     color: #374151;
+                    font-size: 13px;
+                    text-transform: uppercase;
+                    letter-spacing: 0.3px;
+                }
+                .clientes-espaco-table tbody tr {
+                    transition: background 0.15s ease;
                 }
                 .clientes-espaco-table tbody tr:hover {
-                    background: #f9fafb;
+                    background: #f8fafc;
+                }
+                .clientes-espaco-table tbody tr:last-child td {
+                    border-bottom: none;
                 }
             </style>
         `;

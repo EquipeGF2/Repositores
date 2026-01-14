@@ -19778,23 +19778,21 @@ class App {
             if (isMobile) {
                 // Layout mobile em cards agrupados por cidade
                 container.innerHTML = Object.entries(porCidade).map(([cidade, clientes]) => `
-                    <div class="cidade-grupo" style="margin-bottom: 24px;">
-                        <h4 style="color: var(--text-primary); margin: 0 0 12px; padding: 8px 12px; background: #f3f4f6; border-radius: 6px;">
-                            📍 ${cidade}
-                        </h4>
-                        <div class="cards-clientes" style="display: flex; flex-direction: column; gap: 12px;">
+                    <div class="cidade-grupo">
+                        <h4>📍 ${cidade}</h4>
+                        <div class="cards-clientes">
                             ${clientes.map(ce => `
-                                <div class="cliente-espaco-card" style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px;">
-                                    <div style="font-weight: 600; color: #111827; margin-bottom: 8px;">
+                                <div class="cliente-espaco-card">
+                                    <div class="cliente-nome">
                                         ${ce.ces_cliente_id} - ${ce.cliente_nome || ''}
                                     </div>
                                     <div style="display: flex; justify-content: space-between; align-items: center;">
                                         <div>
-                                            <div style="color: #4f46e5; font-weight: 500;">${ce.tipo_nome || '-'}</div>
-                                            <div style="color: #6b7280; font-size: 13px;">Qtd: ${ce.ces_quantidade}</div>
-                                            ${ce.ces_vigencia_inicio ? `<div style="color: #6b7280; font-size: 12px;">Vigência: ${ce.ces_vigencia_inicio.split('-').reverse().join('/')}</div>` : ''}
+                                            <div class="tipo-espaco">${ce.tipo_nome || '-'}</div>
+                                            <div class="info-qtd">Qtd: ${ce.ces_quantidade}</div>
+                                            ${ce.ces_vigencia_inicio ? `<div class="info-vigencia">Vigência: ${ce.ces_vigencia_inicio.split('-').reverse().join('/')}</div>` : ''}
                                         </div>
-                                        <div style="display: flex; gap: 8px;">
+                                        <div class="card-actions">
                                             <button class="btn btn-sm" style="background:#f59e0b;color:white;" onclick="window.app.editarClienteEspaco(${ce.ces_id}, ${ce.ces_quantidade})" title="Editar">✏️</button>
                                             <button class="btn btn-sm btn-danger" onclick="window.app.inativarClienteEspaco(${ce.ces_id})" title="Inativar">🚫</button>
                                         </div>
