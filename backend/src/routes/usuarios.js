@@ -15,6 +15,8 @@ router.get('/', async (req, res) => {
   try {
     const usuarios = await tursoService.listarUsuarios();
 
+    console.log(`[Listar usuários] Total: ${usuarios.length}, IDs: ${usuarios.map(u => u.usuario_id).join(', ')}`);
+
     // Remover password_hash da resposta
     const usuariosSafe = usuarios.map(u => {
       const { password_hash, ...rest } = u;
@@ -60,13 +62,22 @@ router.post('/', async (req, res) => {
     // Verificar se username já existe (incluindo inativos)
     const usuarioExistente = await tursoService.buscarUsuarioPorUsernameIncluindoInativos(username);
 
+    console.log(`[Criar usuário] username: ${username}, rep_id: ${rep_id}, existente:`, usuarioExistente ? { id: usuarioExistente.usuario_id, ativo: usuarioExistente.ativo, rep_id: usuarioExistente.rep_id } : 'nenhum');
+
     if (usuarioExistente) {
       // Se o usuário está ativo, retorna erro de duplicidade
       if (usuarioExistente.ativo === 1) {
+        console.log(`[Criar usuário] CONFLITO: Usuário ativo existente - ID: ${usuarioExistente.usuario_id}, rep_id: ${usuarioExistente.rep_id}`);
         return res.status(409).json({
           ok: false,
           code: 'USERNAME_EXISTS',
-          message: 'Nome de usuário já está em uso'
+          message: `Nome de usuário já está em uso (ID: ${usuarioExistente.usuario_id}, vinculado ao repositor: ${usuarioExistente.rep_id || 'nenhum'})`,
+          usuarioExistente: {
+            usuario_id: usuarioExistente.usuario_id,
+            username: usuarioExistente.username,
+            rep_id: usuarioExistente.rep_id,
+            ativo: usuarioExistente.ativo
+          }
         });
       }
 
