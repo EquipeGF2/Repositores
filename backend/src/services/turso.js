@@ -1869,7 +1869,9 @@ class TursoService {
   // Busca usuário por username incluindo inativos (para validação de duplicidade)
   async buscarUsuarioPorUsernameIncluindoInativos(username) {
     const sql = 'SELECT * FROM cc_usuarios WHERE username = ?';
+    console.log(`[buscarUsuarioPorUsername] Buscando username='${username}' na tabela cc_usuarios`);
     const result = await this.execute(sql, [username]);
+    console.log(`[buscarUsuarioPorUsername] Resultado: ${result.rows.length} registros encontrados`, result.rows[0] ? { id: result.rows[0].usuario_id, username: result.rows[0].username, rep_id: result.rows[0].rep_id } : 'nenhum');
     return result.rows[0] || null;
   }
 
@@ -1903,6 +1905,7 @@ class TursoService {
       ORDER BY u.nome_completo
     `;
     const result = await this.execute(sql, []);
+    console.log(`[listarUsuarios] Total na tabela cc_usuarios: ${result.rows.length}, dados:`, result.rows.map(u => ({ id: u.usuario_id, username: u.username, rep_id: u.rep_id })));
     return result.rows;
   }
 
@@ -1956,7 +1959,9 @@ class TursoService {
       FROM cc_usuarios
       WHERE rep_id = ? AND ativo = 1
     `;
+    console.log(`[buscarUsuarioPorRepId] Buscando rep_id=${repId} (tipo: ${typeof repId}) na tabela cc_usuarios`);
     const result = await this.execute(sql, [repId]);
+    console.log(`[buscarUsuarioPorRepId] Resultado: ${result.rows.length} registros encontrados`, result.rows[0] ? { id: result.rows[0].usuario_id, username: result.rows[0].username } : 'nenhum');
     return result.rows[0] || null;
   }
 

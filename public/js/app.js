@@ -2972,8 +2972,12 @@ class App {
         } catch (error) {
             // Se o usuário já existe e está ativo
             if (error.body?.code === 'USERNAME_EXISTS' || error.status === 409) {
-                console.log('Usuário já existe para este repositor:', error.body?.message);
-                this.showNotification(`Usuário PWA já existe com username "${repoCod}". Verifique na tela de Gestão de Usuários.`, 'info', 6000);
+                const usuarioExistente = error.body?.usuarioExistente;
+                console.log('Usuário já existe para este repositor:', error.body?.message, usuarioExistente);
+                const msgDetalhada = usuarioExistente
+                    ? `Usuário PWA já existe: ID ${usuarioExistente.usuario_id}, username "${usuarioExistente.username}", rep_id: ${usuarioExistente.rep_id || 'nenhum'}`
+                    : `Usuário PWA já existe com username "${repoCod}"`;
+                this.showNotification(`${msgDetalhada}. Verifique na tela de Gestão de Usuários.`, 'info', 8000);
                 return;
             }
 
@@ -7027,10 +7031,15 @@ class App {
                         // Existe usuário com mesmo username mas não vinculado a este repositor
                         const conflito = response.usuarioConflitante;
                         checkboxCriarUsuario.checked = false;
-                        checkboxCriarUsuario.disabled = conflito.ativo === 1 && conflito.rep_id && conflito.rep_id !== repositor.repo_cod;
+                        // Converter para Number para comparação correta de tipos
+                        const conflitoRepId = conflito.rep_id ? Number(conflito.rep_id) : null;
+                        const repoRepCod = repositor.repo_cod ? Number(repositor.repo_cod) : null;
+                        const repIdsDiferentes = conflitoRepId !== null && conflitoRepId !== repoRepCod;
+                        checkboxCriarUsuario.disabled = conflito.ativo === 1 && repIdsDiferentes;
+                        console.log('[Verificar usuário] Conflito detectado:', { conflitoRepId, repoRepCod, ativo: conflito.ativo, disabled: checkboxCriarUsuario.disabled });
                         if (labelUsuario) {
                             labelUsuario.innerHTML = `<span style="color: #d97706; font-weight: 600;">⚠️ ${conflito.motivo}</span><br>` +
-                                `Usuário existente: ${conflito.username} (ID: ${conflito.usuario_id}, Status: ${conflito.ativo === 1 ? 'Ativo' : 'Inativo'})`;
+                                `Usuário existente: ${conflito.username} (ID: ${conflito.usuario_id}, Status: ${conflito.ativo === 1 ? 'Ativo' : 'Inativo'}, rep_id: ${conflito.rep_id || 'N/A'})`;
                         }
                     } else {
                         // Não existe usuário
