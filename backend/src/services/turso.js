@@ -1868,11 +1868,40 @@ class TursoService {
 
   // Busca usuário por username incluindo inativos (para validação de duplicidade)
   async buscarUsuarioPorUsernameIncluindoInativos(username) {
-    const sql = 'SELECT * FROM cc_usuarios WHERE username = ?';
-    console.log(`[buscarUsuarioPorUsername] Buscando username='${username}' na tabela cc_usuarios`);
-    const result = await this.execute(sql, [username]);
-    console.log(`[buscarUsuarioPorUsername] Resultado: ${result.rows.length} registros encontrados`, result.rows[0] ? { id: result.rows[0].usuario_id, username: result.rows[0].username, rep_id: result.rows[0].rep_id } : 'nenhum');
-    return result.rows[0] || null;
+    // Normalizar o username para garantir comparação correta
+    const usernameNormalizado = username ? String(username).trim() : '';
+
+    // Busca exata primeiro
+    const sqlExato = 'SELECT * FROM cc_usuarios WHERE username = ?';
+    console.log(`[buscarUsuarioPorUsername] Buscando username='${usernameNormalizado}' (original: '${username}') na tabela cc_usuarios`);
+
+    const resultExato = await this.execute(sqlExato, [usernameNormalizado]);
+
+    if (resultExato.rows.length > 0) {
+      console.log(`[buscarUsuarioPorUsername] Encontrado por busca exata:`, {
+        id: resultExato.rows[0].usuario_id,
+        username: resultExato.rows[0].username,
+        rep_id: resultExato.rows[0].rep_id
+      });
+      return resultExato.rows[0];
+    }
+
+    // Se não encontrou, fazer busca case-insensitive como fallback
+    const sqlCaseInsensitive = 'SELECT * FROM cc_usuarios WHERE LOWER(TRIM(username)) = LOWER(?)';
+    const resultCI = await this.execute(sqlCaseInsensitive, [usernameNormalizado]);
+
+    if (resultCI.rows.length > 0) {
+      console.log(`[buscarUsuarioPorUsername] Encontrado por busca case-insensitive:`, {
+        id: resultCI.rows[0].usuario_id,
+        username: resultCI.rows[0].username,
+        usernameRecebido: usernameNormalizado,
+        rep_id: resultCI.rows[0].rep_id
+      });
+      return resultCI.rows[0];
+    }
+
+    console.log(`[buscarUsuarioPorUsername] Nenhum usuário encontrado para username='${usernameNormalizado}'`);
+    return null;
   }
 
   // Reativar usuário existente com nova senha

@@ -2973,10 +2973,21 @@ class App {
             // Se o usuário já existe e está ativo
             if (error.body?.code === 'USERNAME_EXISTS' || error.status === 409) {
                 const usuarioExistente = error.body?.usuarioExistente;
-                console.log('Usuário já existe para este repositor:', error.body?.message, usuarioExistente);
-                const msgDetalhada = usuarioExistente
-                    ? `Usuário PWA já existe: ID ${usuarioExistente.usuario_id}, username "${usuarioExistente.username}", rep_id: ${usuarioExistente.rep_id || 'nenhum'}`
-                    : `Usuário PWA já existe com username "${repoCod}"`;
+                const debugInfo = error.body?.debug;
+                console.log('Usuário já existe para este repositor:', {
+                    message: error.body?.message,
+                    usuarioExistente,
+                    debug: debugInfo,
+                    repoCodEnviado: repoCod,
+                    tipoRepoCod: typeof repoCod
+                });
+
+                let msgDetalhada;
+                if (usuarioExistente) {
+                    msgDetalhada = `Usuário PWA já existe: ID ${usuarioExistente.usuario_id}, username "${usuarioExistente.username}", rep_id: ${usuarioExistente.rep_id || 'nenhum'}`;
+                } else {
+                    msgDetalhada = `Conflito de username "${repoCod}" - ${error.body?.message || 'verifique os usuários cadastrados'}`;
+                }
                 this.showNotification(`${msgDetalhada}. Verifique na tela de Gestão de Usuários.`, 'info', 8000);
                 return;
             }

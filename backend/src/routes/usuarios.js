@@ -40,7 +40,10 @@ router.get('/', async (req, res) => {
 // POST /api/usuarios - Criar novo usuário
 router.post('/', async (req, res) => {
   try {
-    const { username, password, nome_completo, email, rep_id, perfil } = req.body;
+    const { username: rawUsername, password, nome_completo, email, rep_id, perfil } = req.body;
+
+    // Normalizar username: remover espaços e converter para string
+    const username = rawUsername ? String(rawUsername).trim() : '';
 
     // Validações
     if (!username || !password || !nome_completo) {
@@ -58,6 +61,8 @@ router.post('/', async (req, res) => {
         message: 'Senha deve ter no mínimo 6 caracteres'
       });
     }
+
+    console.log(`[Criar usuário] Iniciando criação - username: "${username}", rep_id: ${rep_id}, tipo username: ${typeof username}`);
 
     // Verificar se username já existe (incluindo inativos)
     const usuarioExistente = await tursoService.buscarUsuarioPorUsernameIncluindoInativos(username);
@@ -130,10 +135,53 @@ router.post('/', async (req, res) => {
 
     // Verificar se é erro de constraint (username duplicado, etc)
     if (error.message && (error.message.includes('UNIQUE') || error.message.includes('constraint'))) {
+      // Tentar buscar o usuário que está causando o conflito para dar mais informações
+      console.error(`[Criar usuário] CONSTRAINT ERROR - buscando usuário conflitante para username: "${rawUsername}"`);
+
+      try {
+        // Buscar todos os usuários para diagnóstico
+        const todosUsuarios = await tursoService.listarUsuarios();
+        const usernameNormalizado = rawUsername ? String(rawUsername).trim() : '';
+
+        // Buscar por diferentes variações do username
+        const conflitante = todosUsuarios.find(u => {
+          const uUsername = u.username ? String(u.username).trim() : '';
+          return uUsername === usernameNormalizado ||
+                 uUsername.toLowerCase() === usernameNormalizado.toLowerCase();
+        });
+
+        console.log(`[Criar usuário] Usuários no banco: ${todosUsuarios.length}`,
+          todosUsuarios.map(u => ({ id: u.usuario_id, username: u.username, rep_id: u.rep_id })));
+        console.log(`[Criar usuário] Usuário conflitante encontrado:`, conflitante || 'nenhum');
+
+        if (conflitante) {
+          return res.status(409).json({
+            ok: false,
+            code: 'USERNAME_EXISTS',
+            message: `Nome de usuário já está em uso (ID: ${conflitante.usuario_id}, username: "${conflitante.username}", rep_id: ${conflitante.rep_id || 'nenhum'})`,
+            usuarioExistente: {
+              usuario_id: conflitante.usuario_id,
+              username: conflitante.username,
+              rep_id: conflitante.rep_id,
+              ativo: conflitante.ativo
+            },
+            debug: {
+              usernameRecebido: rawUsername,
+              usernameNormalizado: usernameNormalizado,
+              usernameConflitante: conflitante.username,
+              tipoRecebido: typeof rawUsername,
+              tipoConflitante: typeof conflitante.username
+            }
+          });
+        }
+      } catch (buscarError) {
+        console.error('[Criar usuário] Erro ao buscar usuário conflitante:', buscarError);
+      }
+
       return res.status(409).json({
         ok: false,
         code: 'USERNAME_EXISTS',
-        message: 'Nome de usuário já está em uso'
+        message: `Nome de usuário "${rawUsername}" já está em uso (erro de constraint, usuário não encontrado na busca prévia)`
       });
     }
 
