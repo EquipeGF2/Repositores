@@ -860,6 +860,8 @@ class TursoService {
       FROM cc_visita_sessao s
       WHERE s.rep_id = ?
         AND ${filtroData}
+        AND (s.cancelado_em IS NULL)
+        AND (COALESCE(UPPER(s.status), '') != 'CANCELADO')
       ORDER BY (${dataAtendimentoExpr}) ASC, COALESCE(s.checkin_at, s.criado_em) ASC
     `;
 
