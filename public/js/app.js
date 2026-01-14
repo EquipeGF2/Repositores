@@ -2933,6 +2933,8 @@ class App {
 
     // Criar usuário automaticamente para um repositor
     async criarUsuarioParaRepositor(repoCod, nomeRepositor, emailRepositor) {
+        console.log('[criarUsuarioParaRepositor] Iniciando com:', { repoCod, nomeRepositor, emailRepositor });
+
         try {
             const senhaAleatoria = this.gerarSenhaAleatoria();
             const token = localStorage.getItem('auth_token');
@@ -2945,6 +2947,8 @@ class App {
                 rep_id: repoCod,
                 perfil: 'repositor'
             };
+
+            console.log('[criarUsuarioParaRepositor] Enviando dados:', dados);
 
             const headers = {
                 'Content-Type': 'application/json'
@@ -2960,6 +2964,8 @@ class App {
                 headers,
                 body: JSON.stringify(dados)
             });
+
+            console.log('[criarUsuarioParaRepositor] Resposta da API:', result);
 
             // Verificar se foi reativação de usuário existente
             if (result?.message?.includes('reativado')) {
@@ -3261,14 +3267,28 @@ class App {
             // Criar usuário automaticamente se checkbox estiver marcado e não desabilitado
             const checkboxCriarUsuario = document.getElementById('repo_criar_usuario');
             const criarUsuario = checkboxCriarUsuario?.checked && !checkboxCriarUsuario?.disabled;
+
+            console.log('[SaveRepositor] Verificando criação de usuário PWA:', {
+                checkboxExiste: !!checkboxCriarUsuario,
+                checked: checkboxCriarUsuario?.checked,
+                disabled: checkboxCriarUsuario?.disabled,
+                criarUsuario,
+                repoCodCriado,
+                tipoRepoCod: typeof repoCodCriado
+            });
+
             if (criarUsuario && repoCodCriado) {
+                console.log('[SaveRepositor] Iniciando criação de usuário PWA para repoCod:', repoCodCriado);
                 try {
                     await this.criarUsuarioParaRepositor(repoCodCriado, nome, email);
+                    console.log('[SaveRepositor] Criação de usuário PWA concluída');
                 } catch (userError) {
                     console.warn('Erro ao criar usuário para repositor:', userError);
                     const msgErro = userError?.body?.message || userError?.message || 'Erro desconhecido';
                     this.showNotification(`Repositor salvo, mas houve erro ao criar o usuário: ${msgErro}`, 'warning');
                 }
+            } else {
+                console.log('[SaveRepositor] Criação de usuário PWA NÃO foi solicitada ou repoCod inválido');
             }
 
             this.closeModalRepositor();
