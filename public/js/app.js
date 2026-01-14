@@ -2949,6 +2949,7 @@ class App {
             };
 
             console.log('[criarUsuarioParaRepositor] Enviando dados:', dados);
+            console.log('[criarUsuarioParaRepositor] URL:', `${API_BASE_URL}/api/usuarios`);
 
             const headers = {
                 'Content-Type': 'application/json'
@@ -2959,11 +2960,21 @@ class App {
                 headers['Authorization'] = `Bearer ${token}`;
             }
 
-            const result = await fetchJson(`${API_BASE_URL}/api/usuarios`, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify(dados)
-            });
+            let result;
+            try {
+                console.log('[criarUsuarioParaRepositor] Fazendo fetch...');
+                result = await fetchJson(`${API_BASE_URL}/api/usuarios`, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify(dados)
+                });
+                console.log('[criarUsuarioParaRepositor] Fetch completado, result:', result);
+            } catch (fetchError) {
+                console.error('[criarUsuarioParaRepositor] Erro no fetchJson:', fetchError);
+                console.error('[criarUsuarioParaRepositor] fetchError.status:', fetchError.status);
+                console.error('[criarUsuarioParaRepositor] fetchError.body:', fetchError.body);
+                throw fetchError;
+            }
 
             console.log('[criarUsuarioParaRepositor] Resposta da API:', result);
 
