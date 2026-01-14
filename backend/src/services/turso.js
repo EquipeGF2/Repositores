@@ -1872,6 +1872,16 @@ class TursoService {
     await this.execute(sql, [usuarioId]);
   }
 
+  async buscarUsuarioPorRepId(repId) {
+    const sql = `
+      SELECT usuario_id, username, nome_completo, email, rep_id, perfil, ativo
+      FROM cc_usuarios
+      WHERE rep_id = ? AND ativo = 1
+    `;
+    const result = await this.execute(sql, [repId]);
+    return result.rows[0] || null;
+  }
+
   async ensureSchemaRegistroRota() {
     await this.ensureRegistroVisitaSchema();
   }

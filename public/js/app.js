@@ -3027,6 +3027,17 @@ class App {
             document.getElementById('repo_cod').value = '';
             document.getElementById('repo_vinculo_agencia').checked = false;
 
+            // Resetar checkbox de criar usuário PWA
+            const checkboxCriarUsuario = document.getElementById('repo_criar_usuario');
+            if (checkboxCriarUsuario) {
+                checkboxCriarUsuario.checked = false;
+                checkboxCriarUsuario.disabled = false;
+                const labelUsuario = checkboxCriarUsuario.closest('.criar-usuario-group')?.querySelector('small');
+                if (labelUsuario) {
+                    labelUsuario.textContent = 'Ao marcar esta opção, um usuário será criado automaticamente com base nos dados do repositor. O username será o código do repositor (repo_cod) e uma senha aleatória será gerada.';
+                }
+            }
+
             const telefoneCampo = document.getElementById('repo_telefone');
             if (telefoneCampo) telefoneCampo.value = '';
 
@@ -3105,14 +3116,15 @@ class App {
                 this.showNotification(`${vinculo === 'agencia' ? 'Agência' : 'Repositor'} cadastrado com sucesso!`, 'success');
             }
 
-            // Criar usuário automaticamente se checkbox estiver marcado
-            const criarUsuario = document.getElementById('repo_criar_usuario')?.checked;
-            if (criarUsuario && repoCodCriado && !cod) { // Apenas para novos repositores
+            // Criar usuário automaticamente se checkbox estiver marcado e não desabilitado
+            const checkboxCriarUsuario = document.getElementById('repo_criar_usuario');
+            const criarUsuario = checkboxCriarUsuario?.checked && !checkboxCriarUsuario?.disabled;
+            if (criarUsuario && repoCodCriado) {
                 try {
                     await this.criarUsuarioParaRepositor(repoCodCriado, nome, email);
                 } catch (userError) {
                     console.warn('Erro ao criar usuário para repositor:', userError);
-                    this.showNotification('Repositor criado, mas houve erro ao criar o usuário. Crie manualmente na tela de Gestão de Usuários.', 'warning');
+                    this.showNotification('Repositor salvo, mas houve erro ao criar o usuário. Crie manualmente na tela de Gestão de Usuários.', 'warning');
                 }
             }
 
@@ -6867,6 +6879,29 @@ class App {
             const jornada = repositor.repo_vinculo === 'agencia' ? null : (repositor.rep_jornada_tipo || repositor.jornada?.toUpperCase() || 'INTEGRAL');
             const campoJornada = jornada ? (document.querySelector(`input[name="rep_jornada_tipo"][value="${jornada}"]`) || document.querySelector('input[name="rep_jornada_tipo"][value="INTEGRAL"]')) : null;
             if (campoJornada) campoJornada.checked = true;
+
+            // Verificar se repositor já tem usuário PWA
+            const checkboxCriarUsuario = document.getElementById('repo_criar_usuario');
+            if (checkboxCriarUsuario) {
+                try {
+                    const response = await fetchJson(`${API_BASE_URL}/api/usuarios/por-repositor/${repositor.repo_cod}`);
+                    checkboxCriarUsuario.checked = response?.temUsuario || false;
+                    checkboxCriarUsuario.disabled = response?.temUsuario || false;
+                    // Atualizar label se já tem usuário
+                    const labelUsuario = checkboxCriarUsuario.closest('.criar-usuario-group')?.querySelector('small');
+                    if (labelUsuario) {
+                        if (response?.temUsuario) {
+                            labelUsuario.textContent = `Usuário já criado: ${response.usuario?.username || repositor.repo_cod}`;
+                        } else {
+                            labelUsuario.textContent = 'Ao marcar esta opção, um usuário será criado automaticamente com base nos dados do repositor. O username será o código do repositor (repo_cod) e uma senha aleatória será gerada.';
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Erro ao verificar usuário PWA:', e);
+                    checkboxCriarUsuario.checked = false;
+                    checkboxCriarUsuario.disabled = false;
+                }
+            }
 
             this.configurarEventosRepositor();
             this.atualizarDadosRepresentante();

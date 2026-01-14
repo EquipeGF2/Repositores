@@ -145,6 +145,31 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// GET /api/usuarios/por-repositor/:repId - Verificar se repositor tem usuário
+router.get('/por-repositor/:repId', async (req, res) => {
+  try {
+    const { repId } = req.params;
+    const usuario = await tursoService.buscarUsuarioPorRepId(repId);
+
+    return res.json({
+      ok: true,
+      temUsuario: !!usuario,
+      usuario: usuario ? {
+        usuario_id: usuario.usuario_id,
+        username: usuario.username,
+        nome_completo: usuario.nome_completo
+      } : null
+    });
+  } catch (error) {
+    console.error('Erro ao verificar usuário do repositor:', error);
+    return res.status(500).json({
+      ok: false,
+      code: 'CHECK_USER_ERROR',
+      message: 'Erro ao verificar usuário do repositor'
+    });
+  }
+});
+
 // DELETE /api/usuarios/:id - Desativar usuário
 router.delete('/:id', async (req, res) => {
   try {
