@@ -1122,34 +1122,55 @@ class App {
     async inicializarConfiguracoesSistema() {
         // ==================== LÓGICA DE TABS ====================
         const configTabs = document.querySelectorAll('.config-tab');
+        const configTabSelect = document.getElementById('configTabSelect');
+
+        // Função para ativar uma aba específica
+        const ativarAba = (tabName) => {
+            // Remover active de todos
+            configTabs.forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.config-tab-content').forEach(c => c.classList.remove('active'));
+
+            // Ativar a aba correta nos botões desktop
+            const tabBtn = document.querySelector(`.config-tab[data-config-tab="${tabName}"]`);
+            if (tabBtn) tabBtn.classList.add('active');
+
+            // Ativar o conteúdo
+            const content = document.getElementById(`config-tab-${tabName}`);
+            if (content) content.classList.add('active');
+
+            // Sincronizar o dropdown mobile
+            if (configTabSelect) configTabSelect.value = tabName;
+
+            // Carregar dados específicos da aba
+            if (tabName === 'documentos') {
+                this.carregarTiposDocumentos();
+            } else if (tabName === 'rubricas') {
+                this.carregarTiposGasto();
+            } else if (tabName === 'coordenadas') {
+                this.inicializarAbaCoordenadasConfig();
+            } else if (tabName === 'usuarios') {
+                this.inicializarAbaUsuariosConfig();
+            } else if (tabName === 'acessos') {
+                this.inicializarAbaAcessosConfig();
+            } else if (tabName === 'espacos') {
+                this.carregarTiposEspacoConfig();
+            }
+        };
+
+        // Event listener para tabs desktop
         configTabs.forEach(tab => {
             tab.addEventListener('click', () => {
-                // Remover active de todos
-                configTabs.forEach(t => t.classList.remove('active'));
-                document.querySelectorAll('.config-tab-content').forEach(c => c.classList.remove('active'));
-
-                // Ativar a aba clicada
-                tab.classList.add('active');
                 const tabName = tab.dataset.configTab;
-                const content = document.getElementById(`config-tab-${tabName}`);
-                if (content) content.classList.add('active');
-
-                // Carregar dados específicos da aba
-                if (tabName === 'documentos') {
-                    this.carregarTiposDocumentos();
-                } else if (tabName === 'rubricas') {
-                    this.carregarTiposGasto();
-                } else if (tabName === 'coordenadas') {
-                    this.inicializarAbaCoordenadasConfig();
-                } else if (tabName === 'usuarios') {
-                    this.inicializarAbaUsuariosConfig();
-                } else if (tabName === 'acessos') {
-                    this.inicializarAbaAcessosConfig();
-                } else if (tabName === 'espacos') {
-                    this.carregarTiposEspacoConfig();
-                }
+                ativarAba(tabName);
             });
         });
+
+        // Event listener para dropdown mobile
+        if (configTabSelect) {
+            configTabSelect.addEventListener('change', (e) => {
+                ativarAba(e.target.value);
+            });
+        }
 
         const btnSalvar = document.getElementById('btnSalvarConfigSistema');
         const inputDistancia = document.getElementById('configDistanciaMaxima');
@@ -1517,7 +1538,25 @@ class App {
             }
 
             const data = await fetchJson(url, { headers });
-            this.usuariosFiltradosConfig = data.usuarios || [];
+            let usuarios = data.usuarios || [];
+
+            // Verificar se é PWA e repositor - filtrar para mostrar apenas seu próprio usuário
+            const deveAplicarFiltro = window.authManager?.deveAplicarFiltroRepositor?.();
+            const repIdLogado = window.authManager?.getRepId?.();
+
+            if (deveAplicarFiltro && repIdLogado) {
+                // Filtrar apenas o usuário do repositor logado
+                usuarios = usuarios.filter(u => u.rep_id === repIdLogado || u.rep_id === String(repIdLogado));
+
+                // Ocultar filtros e botão novo usuário no PWA para repositor
+                const filtrosContainer = document.querySelector('.filtros-usuarios-config');
+                const btnNovoUsuario = document.getElementById('btnNovoUsuarioConfig');
+
+                if (filtrosContainer) filtrosContainer.style.display = 'none';
+                if (btnNovoUsuario) btnNovoUsuario.style.display = 'none';
+            }
+
+            this.usuariosFiltradosConfig = usuarios;
             this.renderizarTabelaUsuariosConfig();
         } catch (error) {
             console.error('Erro ao carregar usuários:', error);
@@ -1535,7 +1574,7 @@ class App {
 
     renderizarTabelaUsuariosConfig(filtroNome = '', filtroPerfil = '', filtroStatus = '') {
         const tbody = document.getElementById('usuariosTableBodyConfig');
-        if (!tbody) return;
+        const cardsContainer = document.getElementById('usuariosCardsConfig');
 
         let usuarios = [...(this.usuariosFiltradosConfig || [])];
 
@@ -1552,53 +1591,122 @@ class App {
             usuarios = usuarios.filter(u => u.ativo === Number(filtroStatus));
         }
 
-        if (usuarios.length === 0) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="9" style="text-align: center; padding: 20px; color: #6b7280;">
-                        Nenhum usuário encontrado
-                    </td>
-                </tr>
-            `;
-            return;
+        // Renderizar tabela desktop
+        if (tbody) {
+            if (usuarios.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="9" style="text-align: center; padding: 20px; color: #6b7280;">
+                            Nenhum usuário encontrado
+                        </td>
+                    </tr>
+                `;
+            } else {
+                tbody.innerHTML = usuarios.map(usuario => {
+                    const statusBadge = usuario.ativo
+                        ? '<span class="badge badge-success">Ativo</span>'
+                        : '<span class="badge badge-danger">Inativo</span>';
+
+                    const perfilBadge = usuario.perfil === 'admin'
+                        ? '<span class="badge badge-primary">Admin</span>'
+                        : '<span class="badge badge-secondary">Repositor</span>';
+
+                    const ultimoLogin = usuario.ultimo_login
+                        ? new Date(usuario.ultimo_login).toLocaleString('pt-BR')
+                        : '-';
+
+                    return `
+                        <tr>
+                            <td>${usuario.usuario_id}</td>
+                            <td><strong>${usuario.username}</strong></td>
+                            <td>${usuario.nome_completo || '-'}</td>
+                            <td>${usuario.email || '-'}</td>
+                            <td>${usuario.rep_id ? `${usuario.rep_id} - ${usuario.repo_nome || ''}` : '-'}</td>
+                            <td>${perfilBadge}</td>
+                            <td>${statusBadge}</td>
+                            <td style="font-size: 13px;">${ultimoLogin}</td>
+                            <td style="white-space: nowrap;">
+                                <button class="btn btn-sm btn-primary" onclick="app.editarUsuarioConfig(${usuario.usuario_id})" title="Editar" style="margin-right: 4px;">
+                                    ✏️
+                                </button>
+                                <button class="btn btn-sm ${usuario.ativo ? 'btn-danger' : 'btn-success'}"
+                                        onclick="app.toggleStatusUsuarioConfig(${usuario.usuario_id}, ${usuario.ativo})"
+                                        title="${usuario.ativo ? 'Desativar' : 'Ativar'}">
+                                    ${usuario.ativo ? '🚫' : '✅'}
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
         }
 
-        tbody.innerHTML = usuarios.map(usuario => {
-            const statusBadge = usuario.ativo
-                ? '<span class="badge badge-success">Ativo</span>'
-                : '<span class="badge badge-danger">Inativo</span>';
+        // Renderizar cards mobile
+        if (cardsContainer) {
+            if (usuarios.length === 0) {
+                cardsContainer.innerHTML = `
+                    <div style="text-align: center; padding: 20px; color: #6b7280;">
+                        Nenhum usuário encontrado
+                    </div>
+                `;
+            } else {
+                cardsContainer.innerHTML = usuarios.map(usuario => {
+                    const statusBadge = usuario.ativo
+                        ? '<span class="badge badge-success">Ativo</span>'
+                        : '<span class="badge badge-danger">Inativo</span>';
 
-            const perfilBadge = usuario.perfil === 'admin'
-                ? '<span class="badge badge-primary">Admin</span>'
-                : '<span class="badge badge-secondary">Repositor</span>';
+                    const perfilBadge = usuario.perfil === 'admin'
+                        ? '<span class="badge badge-primary">Admin</span>'
+                        : '<span class="badge badge-secondary">Repositor</span>';
 
-            const ultimoLogin = usuario.ultimo_login
-                ? new Date(usuario.ultimo_login).toLocaleString('pt-BR')
-                : '-';
+                    const ultimoLogin = usuario.ultimo_login
+                        ? new Date(usuario.ultimo_login).toLocaleString('pt-BR')
+                        : '-';
 
-            return `
-                <tr>
-                    <td>${usuario.usuario_id}</td>
-                    <td><strong>${usuario.username}</strong></td>
-                    <td>${usuario.nome_completo || '-'}</td>
-                    <td>${usuario.email || '-'}</td>
-                    <td>${usuario.rep_id ? `${usuario.rep_id} - ${usuario.repo_nome || ''}` : '-'}</td>
-                    <td>${perfilBadge}</td>
-                    <td>${statusBadge}</td>
-                    <td style="font-size: 13px;">${ultimoLogin}</td>
-                    <td style="white-space: nowrap;">
-                        <button class="btn btn-sm btn-primary" onclick="app.editarUsuarioConfig(${usuario.usuario_id})" title="Editar" style="margin-right: 4px;">
-                            ✏️
-                        </button>
-                        <button class="btn btn-sm ${usuario.ativo ? 'btn-danger' : 'btn-success'}"
-                                onclick="app.toggleStatusUsuarioConfig(${usuario.usuario_id}, ${usuario.ativo})"
-                                title="${usuario.ativo ? 'Desativar' : 'Ativar'}">
-                            ${usuario.ativo ? '🚫' : '✅'}
-                        </button>
-                    </td>
-                </tr>
-            `;
-        }).join('');
+                    return `
+                        <div class="usuario-card">
+                            <div class="usuario-card-header">
+                                <div class="usuario-card-info">
+                                    <h5>${usuario.nome_completo || '-'}</h5>
+                                    <span class="username">@${usuario.username}</span>
+                                </div>
+                                <div class="usuario-card-badges">
+                                    ${perfilBadge}
+                                    ${statusBadge}
+                                </div>
+                            </div>
+                            <div class="usuario-card-body">
+                                <div class="campo">
+                                    <label>ID</label>
+                                    <span>${usuario.usuario_id}</span>
+                                </div>
+                                <div class="campo">
+                                    <label>Email</label>
+                                    <span>${usuario.email || '-'}</span>
+                                </div>
+                                <div class="campo">
+                                    <label>Repositor</label>
+                                    <span>${usuario.rep_id ? `${usuario.rep_id} - ${usuario.repo_nome || ''}` : '-'}</span>
+                                </div>
+                                <div class="campo">
+                                    <label>Último Login</label>
+                                    <span>${ultimoLogin}</span>
+                                </div>
+                            </div>
+                            <div class="usuario-card-footer">
+                                <button class="btn btn-primary" onclick="app.editarUsuarioConfig(${usuario.usuario_id})">
+                                    ✏️ Editar
+                                </button>
+                                <button class="btn ${usuario.ativo ? 'btn-danger' : 'btn-success'}"
+                                        onclick="app.toggleStatusUsuarioConfig(${usuario.usuario_id}, ${usuario.ativo})">
+                                    ${usuario.ativo ? '🚫 Desativar' : '✅ Ativar'}
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
     }
 
     abrirModalUsuarioConfig(usuario = null) {
@@ -1683,7 +1791,7 @@ class App {
                 body: JSON.stringify(body)
             });
 
-            if (data.success || data.usuario) {
+            if (data.ok || data.success || data.usuario) {
                 this.showNotification(`Usuário ${id ? 'atualizado' : 'criado'} com sucesso!`, 'success');
                 this.fecharModalUsuarioConfig();
                 await this.carregarUsuariosConfig();
@@ -1710,7 +1818,7 @@ class App {
                 body: JSON.stringify({ ativo: ativoAtual ? 0 : 1 })
             });
 
-            if (data.success || data.usuario) {
+            if (data.ok || data.success || data.usuario) {
                 this.showNotification(`Usuário ${ativoAtual ? 'desativado' : 'ativado'} com sucesso!`, 'success');
                 await this.carregarUsuariosConfig();
             } else {

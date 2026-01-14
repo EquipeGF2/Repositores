@@ -2714,8 +2714,8 @@ export const pages = {
         return `
             <div class="card">
                 <div class="card-body" style="padding-top: 0;">
-                    <!-- Tabs de Configuração -->
-                    <div class="config-tabs" style="margin-top: 0;">
+                    <!-- Tabs de Configuração - Desktop -->
+                    <div class="config-tabs config-tabs-desktop" style="margin-top: 0;">
                         <button class="config-tab active" data-config-tab="geral">⚙️ Geral</button>
                         <button class="config-tab" data-config-tab="sessoes">📋 Sessões</button>
                         <button class="config-tab" data-config-tab="documentos">📄 Documentos</button>
@@ -2724,6 +2724,21 @@ export const pages = {
                         <button class="config-tab" data-config-tab="usuarios">👤 Usuários</button>
                         <button class="config-tab" data-config-tab="acessos">🔐 Acessos</button>
                         <button class="config-tab" data-config-tab="espacos">📦 Tipos de Espaço</button>
+                    </div>
+
+                    <!-- Tabs de Configuração - Mobile (Dropdown) -->
+                    <div class="config-tabs-mobile" style="margin-top: 0; margin-bottom: 16px;">
+                        <label for="configTabSelect" style="display: block; font-size: 13px; color: #6b7280; margin-bottom: 4px;">Seção</label>
+                        <select id="configTabSelect" class="config-tab-select">
+                            <option value="geral">⚙️ Geral</option>
+                            <option value="sessoes">📋 Sessões</option>
+                            <option value="documentos">📄 Documentos</option>
+                            <option value="rubricas">💰 Rubricas</option>
+                            <option value="coordenadas">📍 Coordenadas</option>
+                            <option value="usuarios">👤 Usuários</option>
+                            <option value="acessos">🔐 Acessos</option>
+                            <option value="espacos">📦 Tipos de Espaço</option>
+                        </select>
                     </div>
 
                     <!-- Aba Geral -->
@@ -2879,19 +2894,19 @@ export const pages = {
 
                     <!-- Aba Usuários -->
                     <div class="config-tab-content" id="config-tab-usuarios">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <div class="usuarios-header-config">
                             <div>
                                 <h4 style="color: var(--text-primary); margin: 0;">Gestão de Usuários</h4>
                                 <p class="text-muted" style="margin: 4px 0 0; font-size: 13px;">
                                     Gerencie os usuários que têm acesso ao sistema PWA.
                                 </p>
                             </div>
-                            <button class="btn btn-primary btn-sm" id="btnNovoUsuarioConfig">
+                            <button class="btn btn-primary btn-sm btn-novo-usuario-config" id="btnNovoUsuarioConfig">
                                 + Novo Usuário
                             </button>
                         </div>
 
-                        <div class="filtros-usuarios" style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; background: #f9fafb; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb;">
+                        <div class="filtros-usuarios filtros-usuarios-config" style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; background: #f9fafb; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb;">
                             <div class="filter-group" style="flex: 1; min-width: 200px;">
                                 <label for="configFiltroUsuarioNome">Buscar por nome ou username</label>
                                 <input type="text" id="configFiltroUsuarioNome" placeholder="Digite para filtrar...">
@@ -2914,7 +2929,8 @@ export const pages = {
                             </div>
                         </div>
 
-                        <div class="table-responsive">
+                        <!-- Tabela Desktop -->
+                        <div class="table-responsive usuarios-table-desktop">
                             <table class="data-table" id="tabelaUsuariosConfig">
                                 <thead>
                                     <tr>
@@ -2937,6 +2953,13 @@ export const pages = {
                                     </tr>
                                 </tbody>
                             </table>
+                        </div>
+
+                        <!-- Cards Mobile -->
+                        <div class="usuarios-cards-mobile" id="usuariosCardsConfig">
+                            <div style="text-align: center; padding: 20px; color: #6b7280;">
+                                Carregando usuários...
+                            </div>
                         </div>
                     </div>
 
@@ -3191,6 +3214,7 @@ export const pages = {
             </div>
 
             <style>
+                /* === TABS DESKTOP === */
                 .config-tabs {
                     display: flex;
                     gap: 4px;
@@ -3234,6 +3258,157 @@ export const pages = {
                 @keyframes fadeIn {
                     from { opacity: 0; }
                     to { opacity: 1; }
+                }
+
+                /* === TABS MOBILE (DROPDOWN) === */
+                .config-tabs-mobile {
+                    display: none;
+                }
+
+                .config-tab-select {
+                    width: 100%;
+                    padding: 12px 16px;
+                    font-size: 15px;
+                    font-weight: 600;
+                    border: 2px solid #e5e7eb;
+                    border-radius: 8px;
+                    background: white;
+                    color: #374151;
+                    cursor: pointer;
+                }
+
+                .config-tab-select:focus {
+                    outline: none;
+                    border-color: #dc2626;
+                }
+
+                /* === HEADER USUARIOS === */
+                .usuarios-header-config {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 16px;
+                }
+
+                /* === CARDS MOBILE (ocultos por padrao) === */
+                .usuarios-cards-mobile {
+                    display: none;
+                }
+
+                .usuario-card {
+                    background: white;
+                    border: 1px solid #e5e7eb;
+                    border-radius: 12px;
+                    padding: 16px;
+                    margin-bottom: 12px;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                }
+
+                .usuario-card-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: flex-start;
+                    margin-bottom: 12px;
+                    padding-bottom: 12px;
+                    border-bottom: 1px solid #f3f4f6;
+                }
+
+                .usuario-card-info h5 {
+                    margin: 0 0 4px 0;
+                    font-size: 16px;
+                    color: #111827;
+                    font-weight: 600;
+                }
+
+                .usuario-card-info .username {
+                    color: #6b7280;
+                    font-size: 13px;
+                }
+
+                .usuario-card-badges {
+                    display: flex;
+                    gap: 6px;
+                }
+
+                .usuario-card-body {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 8px 16px;
+                    font-size: 13px;
+                }
+
+                .usuario-card-body .campo {
+                    display: flex;
+                    flex-direction: column;
+                }
+
+                .usuario-card-body .campo label {
+                    color: #9ca3af;
+                    font-size: 11px;
+                    text-transform: uppercase;
+                    margin-bottom: 2px;
+                }
+
+                .usuario-card-body .campo span {
+                    color: #374151;
+                }
+
+                .usuario-card-footer {
+                    display: flex;
+                    gap: 8px;
+                    margin-top: 12px;
+                    padding-top: 12px;
+                    border-top: 1px solid #f3f4f6;
+                }
+
+                .usuario-card-footer .btn {
+                    flex: 1;
+                    padding: 10px;
+                    font-size: 14px;
+                }
+
+                /* === RESPONSIVO MOBILE === */
+                @media (max-width: 768px) {
+                    /* Esconder tabs desktop, mostrar dropdown */
+                    .config-tabs-desktop {
+                        display: none !important;
+                    }
+
+                    .config-tabs-mobile {
+                        display: block !important;
+                    }
+
+                    /* Header usuarios em coluna */
+                    .usuarios-header-config {
+                        flex-direction: column;
+                        align-items: stretch;
+                        gap: 12px;
+                    }
+
+                    .btn-novo-usuario-config {
+                        width: 100%;
+                        padding: 12px;
+                        font-size: 15px;
+                    }
+
+                    /* Filtros em coluna */
+                    .filtros-usuarios-config {
+                        flex-direction: column !important;
+                    }
+
+                    .filtros-usuarios-config .filter-group {
+                        width: 100% !important;
+                        min-width: unset !important;
+                    }
+
+                    /* Esconder tabela, mostrar cards */
+                    .usuarios-table-desktop {
+                        display: none !important;
+                    }
+
+                    .usuarios-cards-mobile {
+                        display: block !important;
+                    }
                 }
             </style>
         `;
