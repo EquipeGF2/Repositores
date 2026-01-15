@@ -12868,6 +12868,17 @@ class App {
         const normalizeClienteId = (v) => String(v ?? '').trim().replace(/\.0$/, '');
         const clienteIdNorm = normalizeClienteId(clienteId);
 
+        // Mostrar modal com loading
+        document.getElementById('modalAtividadesTitulo').textContent = clienteNome || 'Atividades';
+        document.getElementById('atividadesClienteInfo').textContent = `${clienteIdNorm} • ${clienteNome}`;
+        document.getElementById('modalAtividadesBody').innerHTML = `
+            <div style="text-align: center; padding: 40px;">
+                <div class="spinner"></div>
+                <p style="margin-top: 12px; color: #6b7280;">Carregando atividades...</p>
+            </div>
+        `;
+        document.getElementById('modalAtividades').classList.add('active');
+
         // Buscar sessão ativa - forçar refresh para evitar problemas de cache
         let sessaoAberta = await this.buscarSessaoAberta(repId, dataPlanejada, true);
 
@@ -12888,7 +12899,8 @@ class App {
                     serv_espaco_loja: atendimentoAberto.serv_espaco_loja,
                     serv_ruptura_loja: atendimentoAberto.serv_ruptura_loja,
                     serv_pontos_extras: atendimentoAberto.serv_pontos_extras,
-                    qtd_pontos_extras: atendimentoAberto.qtd_pontos_extras
+                    qtd_pontos_extras: atendimentoAberto.qtd_pontos_extras,
+                    atividades_json: atendimentoAberto.atividades_json
                 };
             }
         }
@@ -12901,6 +12913,7 @@ class App {
                 rep_id: Number(repId)
             });
             this.showNotification('Sessão não encontrada. Realize o check-in primeiro.', 'warning');
+            this.fecharModalAtividades();
             return;
         }
 
@@ -12911,60 +12924,225 @@ class App {
             repId: Number(repId),
             clienteId: clienteIdNorm,
             clienteNome,
-            dataPlanejada
+            dataPlanejada,
+            dadosSessao: sessaoAberta
         };
 
-        // Preencher modal com dados existentes (se houver)
-        document.getElementById('atv_qtd_frentes').value = sessaoAberta.qtd_frentes || '';
+        // Carregar atividades dinâmicas da API
+        await this.renderizarFormularioAtividades(sessaoAberta);
+    }
 
-        // Merchandising - radio buttons
-        const usouMerchandising = Boolean(sessaoAberta.usou_merchandising);
-        const mercSim = document.getElementById('atv_merchandising_sim');
-        const mercNao = document.getElementById('atv_merchandising_nao');
-        if (sessaoAberta.usou_merchandising === 1 || sessaoAberta.usou_merchandising === true) {
-            if (mercSim) mercSim.checked = true;
-        } else if (sessaoAberta.usou_merchandising === 0 || sessaoAberta.usou_merchandising === false) {
-            if (mercNao) mercNao.checked = true;
-        }
-        // Se não tem valor ainda, deixa ambos desmarcados para forçar seleção
+    async renderizarFormularioAtividades(sessaoAberta) {
+        const container = document.getElementById('modalAtividadesBody');
 
-        document.getElementById('atv_abastecimento').checked = Boolean(sessaoAberta.serv_abastecimento);
-        document.getElementById('atv_espaco_loja').checked = Boolean(sessaoAberta.serv_espaco_loja);
-        document.getElementById('atv_ruptura_loja').checked = Boolean(sessaoAberta.serv_ruptura_loja);
-        document.getElementById('atv_pontos_extras').checked = Boolean(sessaoAberta.serv_pontos_extras);
-        document.getElementById('atv_qtd_pontos_extras').value = sessaoAberta.qtd_pontos_extras || '';
+        try {
+            // Buscar atividades configuradas
+            const token = localStorage.getItem('auth_token');
+            let atividades = [];
 
-        document.getElementById('modalAtividadesTitulo').textContent = clienteNome || 'Atividades';
-        document.getElementById('atividadesClienteInfo').textContent = `${clienteIdNorm} • ${clienteNome}`;
-
-        // Configurar evento para mostrar/esconder campo de quantidade de pontos extras
-        const checkboxPontosExtras = document.getElementById('atv_pontos_extras');
-        const grupoPontosExtras = document.getElementById('grupo_qtd_pontos_extras');
-
-        const togglePontosExtras = () => {
-            if (checkboxPontosExtras.checked) {
-                grupoPontosExtras.style.display = 'block';
-            } else {
-                grupoPontosExtras.style.display = 'none';
-                document.getElementById('atv_qtd_pontos_extras').value = '';
+            if (token) {
+                try {
+                    const response = await fetch(`${this.registroRotaState.backendUrl}/api/atividades?ativas=true`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (response.ok) {
+                        const data = await response.json();
+                        atividades = data.data || [];
+                    }
+                } catch (e) {
+                    console.warn('Não foi possível carregar atividades da API, usando padrão');
+                }
             }
+
+            // Se não tem atividades configuradas, usar padrão
+            if (atividades.length === 0) {
+                atividades = this.getAtividadesPadrao();
+            }
+
+            // Armazenar atividades no state para usar no save
+            this.registroRotaState.atividadesConfiguradas = atividades;
+
+            // Separar atividades por grupo
+            const campos = atividades.filter(a => a.atv_grupo === 'campos');
+            const checklist = atividades.filter(a => a.atv_grupo === 'checklist');
+
+            // Mapear valores existentes da sessão para campos legado
+            const valoresExistentes = this.mapearValoresLegado(sessaoAberta);
+
+            // Gerar HTML do formulário
+            let html = `<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">`;
+
+            // Coluna 1 - Campos
+            html += `<div style="display: flex; flex-direction: column; gap: 20px;">`;
+            for (const atv of campos) {
+                html += this.renderizarCampoAtividade(atv, valoresExistentes);
+            }
+
+            // Campos condicionais para atividades que requerem valor adicional (exibido abaixo dos campos)
+            for (const atv of checklist.filter(a => a.atv_requer_valor)) {
+                const fieldId = this.gerarIdCampo(atv);
+                const valorAtual = valoresExistentes[`${fieldId}_valor`] || '';
+                html += `
+                    <div class="form-group atv-valor-adicional" id="grupo_${fieldId}_valor" style="display: none;">
+                        <label for="${fieldId}_valor">${atv.atv_valor_label || 'Quantidade'} *</label>
+                        <input type="${atv.atv_valor_tipo || 'number'}" id="${fieldId}_valor" min="1" placeholder="Ex: 5" value="${valorAtual}">
+                    </div>
+                `;
+            }
+            html += `</div>`;
+
+            // Coluna 2 - Checklist
+            html += `<div style="display: flex; flex-direction: column; gap: 20px;">`;
+            if (checklist.length > 0) {
+                html += `
+                    <div class="form-group">
+                        <label style="margin-bottom: 12px; display: block; font-weight: 600;">Atividades Realizadas * (marque ao menos uma)</label>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                `;
+                for (const atv of checklist) {
+                    html += this.renderizarCampoAtividade(atv, valoresExistentes);
+                }
+                html += `</div></div>`;
+            }
+            html += `</div>`;
+
+            html += `</div>`;
+
+            // Adicionar estilos para responsividade
+            html += `
+                <style>
+                    @media (max-width: 768px) {
+                        #modalAtividadesBody > div {
+                            grid-template-columns: 1fr !important;
+                        }
+                    }
+                </style>
+            `;
+
+            container.innerHTML = html;
+
+            // Configurar event listeners para campos condicionais
+            this.configurarEventListenersAtividades(checklist);
+
+        } catch (error) {
+            console.error('Erro ao renderizar formulário de atividades:', error);
+            container.innerHTML = `
+                <div style="text-align: center; padding: 40px; color: #dc2626;">
+                    <p>Erro ao carregar atividades</p>
+                    <button class="btn btn-secondary" onclick="window.app.fecharModalAtividades()">Fechar</button>
+                </div>
+            `;
+        }
+    }
+
+    getAtividadesPadrao() {
+        return [
+            { atv_id: 1, atv_nome: 'Quantidade de Frentes', atv_tipo: 'number', atv_obrigatorio: 1, atv_grupo: 'campos', atv_ordem: 1, atv_valor_label: 'Qtd. Frentes' },
+            { atv_id: 2, atv_nome: 'Usou Merchandising', atv_tipo: 'boolean', atv_obrigatorio: 1, atv_grupo: 'campos', atv_ordem: 2 },
+            { atv_id: 3, atv_nome: 'Abastecimento', atv_tipo: 'checkbox', atv_obrigatorio: 0, atv_grupo: 'checklist', atv_ordem: 1 },
+            { atv_id: 4, atv_nome: 'Espaço Loja', atv_tipo: 'checkbox', atv_obrigatorio: 0, atv_grupo: 'checklist', atv_ordem: 2 },
+            { atv_id: 5, atv_nome: 'Ruptura Loja', atv_tipo: 'checkbox', atv_obrigatorio: 0, atv_grupo: 'checklist', atv_ordem: 3 },
+            { atv_id: 6, atv_nome: 'Pontos Extras', atv_tipo: 'checkbox', atv_obrigatorio: 0, atv_grupo: 'checklist', atv_ordem: 4, atv_requer_valor: 1, atv_valor_label: 'Quantidade de Pontos Extras', atv_valor_tipo: 'number' }
+        ];
+    }
+
+    mapearValoresLegado(sessao) {
+        // Mapear campos legado para o novo formato
+        return {
+            'atv_quantidade_de_frentes': sessao.qtd_frentes || '',
+            'atv_usou_merchandising': sessao.usou_merchandising,
+            'atv_abastecimento': Boolean(sessao.serv_abastecimento),
+            'atv_espaco_loja': Boolean(sessao.serv_espaco_loja),
+            'atv_ruptura_loja': Boolean(sessao.serv_ruptura_loja),
+            'atv_pontos_extras': Boolean(sessao.serv_pontos_extras),
+            'atv_pontos_extras_valor': sessao.qtd_pontos_extras || ''
         };
+    }
 
-        // Remover listener anterior se existir
-        checkboxPontosExtras.removeEventListener('change', checkboxPontosExtras._toggleHandler);
-        // Adicionar novo listener
-        checkboxPontosExtras._toggleHandler = togglePontosExtras;
-        checkboxPontosExtras.addEventListener('change', togglePontosExtras);
+    gerarIdCampo(atv) {
+        // Gerar ID único para o campo baseado no nome
+        return 'atv_' + atv.atv_nome.toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9]+/g, '_')
+            .replace(/^_|_$/g, '');
+    }
 
-        // Inicializar estado correto do campo
-        togglePontosExtras();
+    renderizarCampoAtividade(atv, valoresExistentes) {
+        const fieldId = this.gerarIdCampo(atv);
+        const obrigatorio = atv.atv_obrigatorio ? '*' : '';
+        const valorAtual = valoresExistentes[fieldId];
 
-        document.getElementById('modalAtividades').classList.add('active');
+        switch (atv.atv_tipo) {
+            case 'number':
+                return `
+                    <div class="form-group">
+                        <label for="${fieldId}">${atv.atv_nome} ${obrigatorio}</label>
+                        <input type="number" id="${fieldId}" data-atv-id="${atv.atv_id}" data-atv-tipo="${atv.atv_tipo}"
+                               min="1" placeholder="Ex: 3" value="${valorAtual || ''}" ${atv.atv_obrigatorio ? 'required' : ''}>
+                    </div>
+                `;
+
+            case 'boolean':
+                const isSim = valorAtual === 1 || valorAtual === true;
+                const isNao = valorAtual === 0 || valorAtual === false;
+                return `
+                    <div class="form-group">
+                        <label style="margin-bottom: 12px; display: block; font-weight: 600;">${atv.atv_nome}? ${obrigatorio}</label>
+                        <div style="display: flex; gap: 16px;">
+                            <label class="checkbox-label" style="flex: 0;">
+                                <input type="radio" name="${fieldId}" id="${fieldId}_sim" value="1"
+                                       data-atv-id="${atv.atv_id}" data-atv-tipo="${atv.atv_tipo}" ${isSim ? 'checked' : ''} ${atv.atv_obrigatorio ? 'required' : ''}>
+                                <span>Sim</span>
+                            </label>
+                            <label class="checkbox-label" style="flex: 0;">
+                                <input type="radio" name="${fieldId}" id="${fieldId}_nao" value="0"
+                                       data-atv-id="${atv.atv_id}" data-atv-tipo="${atv.atv_tipo}" ${isNao ? 'checked' : ''}>
+                                <span>Não</span>
+                            </label>
+                        </div>
+                    </div>
+                `;
+
+            case 'checkbox':
+            default:
+                const isChecked = valorAtual === true;
+                return `
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="${fieldId}" data-atv-id="${atv.atv_id}" data-atv-tipo="${atv.atv_tipo}"
+                               data-requer-valor="${atv.atv_requer_valor || 0}" ${isChecked ? 'checked' : ''}>
+                        <span>${atv.atv_nome}</span>
+                    </label>
+                `;
+        }
+    }
+
+    configurarEventListenersAtividades(checklist) {
+        // Configurar toggle para campos que requerem valor adicional
+        for (const atv of checklist.filter(a => a.atv_requer_valor)) {
+            const fieldId = this.gerarIdCampo(atv);
+            const checkbox = document.getElementById(fieldId);
+            const grupoValor = document.getElementById(`grupo_${fieldId}_valor`);
+
+            if (checkbox && grupoValor) {
+                const toggleValor = () => {
+                    grupoValor.style.display = checkbox.checked ? 'block' : 'none';
+                    if (!checkbox.checked) {
+                        const inputValor = document.getElementById(`${fieldId}_valor`);
+                        if (inputValor) inputValor.value = '';
+                    }
+                };
+
+                checkbox.addEventListener('change', toggleValor);
+                // Inicializar estado correto
+                toggleValor();
+            }
+        }
     }
 
     fecharModalAtividades() {
         document.getElementById('modalAtividades').classList.remove('active');
         this.registroRotaState.sessaoAtividades = null;
+        this.registroRotaState.atividadesConfiguradas = null;
     }
 
     async salvarAtividades() {
@@ -12975,48 +13153,94 @@ class App {
                 return;
             }
 
-            const qtdFrentes = parseInt(document.getElementById('atv_qtd_frentes').value);
+            const atividades = this.registroRotaState.atividadesConfiguradas || this.getAtividadesPadrao();
+            const payload = {};
 
-            // Ler valor do merchandising (radio button)
-            const merchandisingRadio = document.querySelector('input[name="atv_merchandising"]:checked');
-            if (!merchandisingRadio) {
-                this.showNotification('Selecione se usou merchandising (Sim ou Não)', 'warning');
-                return;
+            // Coletar valores de todos os campos dinâmicos
+            for (const atv of atividades) {
+                const fieldId = this.gerarIdCampo(atv);
+                const element = document.getElementById(fieldId);
+
+                if (!element) continue;
+
+                let valor;
+                switch (atv.atv_tipo) {
+                    case 'number':
+                        valor = parseInt(element.value) || null;
+                        break;
+                    case 'boolean':
+                        const radioChecked = document.querySelector(`input[name="${fieldId}"]:checked`);
+                        valor = radioChecked ? parseInt(radioChecked.value) === 1 : null;
+                        break;
+                    case 'checkbox':
+                    default:
+                        valor = element.checked;
+                        break;
+                }
+
+                // Mapear para campos legado do banco
+                const nomeLimpo = atv.atv_nome.toLowerCase()
+                    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                    .replace(/[^a-z0-9]+/g, '_')
+                    .replace(/^_|_$/g, '');
+
+                // Mapeamento de nomes para campos do banco
+                if (nomeLimpo === 'quantidade_de_frentes') {
+                    payload.qtd_frentes = valor;
+                } else if (nomeLimpo === 'usou_merchandising') {
+                    payload.usou_merchandising = valor;
+                } else if (nomeLimpo === 'abastecimento') {
+                    payload.serv_abastecimento = valor;
+                } else if (nomeLimpo === 'espaco_loja') {
+                    payload.serv_espaco_loja = valor;
+                } else if (nomeLimpo === 'ruptura_loja') {
+                    payload.serv_ruptura_loja = valor;
+                } else if (nomeLimpo === 'pontos_extras') {
+                    payload.serv_pontos_extras = valor;
+                    // Se tem valor adicional, pegar
+                    if (atv.atv_requer_valor && valor) {
+                        const valorAdicional = document.getElementById(`${fieldId}_valor`);
+                        payload.qtd_pontos_extras = valorAdicional ? parseInt(valorAdicional.value) || null : null;
+                    } else {
+                        payload.qtd_pontos_extras = null;
+                    }
+                }
+
+                // Validação de campo obrigatório
+                if (atv.atv_obrigatorio) {
+                    if (atv.atv_tipo === 'number' && (!valor || valor < 1)) {
+                        this.showNotification(`Informe ${atv.atv_nome} (mínimo 1)`, 'warning');
+                        return;
+                    }
+                    if (atv.atv_tipo === 'boolean' && valor === null) {
+                        this.showNotification(`Selecione ${atv.atv_nome} (Sim ou Não)`, 'warning');
+                        return;
+                    }
+                }
+
+                // Validar valor adicional se requerido
+                if (atv.atv_requer_valor && valor === true) {
+                    const valorAdicional = document.getElementById(`${fieldId}_valor`);
+                    const qtdValor = valorAdicional ? parseInt(valorAdicional.value) : null;
+                    if (!qtdValor || qtdValor < 1) {
+                        this.showNotification(`Informe ${atv.atv_valor_label || 'a quantidade'}`, 'warning');
+                        return;
+                    }
+                }
             }
-            const usouMerchandising = parseInt(merchandisingRadio.value) === 1;
 
-            const servAbastecimento = document.getElementById('atv_abastecimento').checked;
-            const servEspacoLoja = document.getElementById('atv_espaco_loja').checked;
-            const servRupturaLoja = document.getElementById('atv_ruptura_loja').checked;
-            const servPontosExtras = document.getElementById('atv_pontos_extras').checked;
-            const qtdPontosExtras = parseInt(document.getElementById('atv_qtd_pontos_extras').value) || null;
+            // Validar que pelo menos uma atividade do checklist foi marcada
+            const checklist = atividades.filter(a => a.atv_grupo === 'checklist');
+            const temServico = checklist.some(atv => {
+                const fieldId = this.gerarIdCampo(atv);
+                const element = document.getElementById(fieldId);
+                return element && element.checked;
+            });
 
-            // Validações
-            if (!qtdFrentes || qtdFrentes < 1) {
-                this.showNotification('Informe a quantidade de frentes (mínimo 1)', 'warning');
-                return;
-            }
-
-            const temServico = servAbastecimento || servEspacoLoja || servRupturaLoja || servPontosExtras;
-            if (!temServico) {
+            if (checklist.length > 0 && !temServico) {
                 this.showNotification('Marque pelo menos uma atividade do checklist', 'warning');
                 return;
             }
-
-            if (servPontosExtras && (!qtdPontosExtras || qtdPontosExtras < 1)) {
-                this.showNotification('Informe a quantidade de pontos extras', 'warning');
-                return;
-            }
-
-            const payload = {
-                qtd_frentes: qtdFrentes,
-                usou_merchandising: usouMerchandising,
-                serv_abastecimento: servAbastecimento,
-                serv_espaco_loja: servEspacoLoja,
-                serv_ruptura_loja: servRupturaLoja,
-                serv_pontos_extras: servPontosExtras,
-                qtd_pontos_extras: servPontosExtras ? qtdPontosExtras : null
-            };
 
             const response = await fetch(`${this.registroRotaState.backendUrl}/api/registro-rota/sessoes/${sessao.sessaoId}/servicos`, {
                 method: 'PATCH',
