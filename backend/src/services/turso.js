@@ -2959,13 +2959,17 @@ class TursoService {
 
       return {
         horariosDownload: ['06:00', '12:00'],
-        enviarNoCheckout: true
+        enviarNoCheckout: true,
+        tempoMaximoCheckout: 30, // minutos - tempo máximo para completar checkout após foto
+        tempoMinimoEntreVisitas: 5 // minutos - tempo mínimo entre checkout e próximo checkin
       };
     } catch (error) {
       console.error('[TursoService] Erro ao obter config sync:', error);
       return {
         horariosDownload: ['06:00', '12:00'],
-        enviarNoCheckout: true
+        enviarNoCheckout: true,
+        tempoMaximoCheckout: 30,
+        tempoMinimoEntreVisitas: 5
       };
     }
   }
@@ -3061,6 +3065,201 @@ class TursoService {
     } catch (error) {
       console.error('[TursoService] Erro ao criar sessão:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Buscar última sessão do repositor (para validação de tempo)
+   */
+  async buscarUltimaSessaoRepositor(repId) {
+    try {
+      const result = await this.execute(`
+        SELECT sessao_id, cliente_id, checkin_at, checkout_at
+        FROM cc_visita_sessao
+        WHERE rep_id = ?
+        ORDER BY COALESCE(checkout_at, checkin_at) DESC
+        LIMIT 1
+      `, [repId]);
+
+      const rows = result?.rows || result || [];
+      return rows.length > 0 ? rows[0] : null;
+    } catch (error) {
+      console.error('[TursoService] Erro ao buscar última sessão:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Validar tempo entre operações
+   * Retorna { valido: boolean, erro?: string, alerta?: string }
+   */
+  async validarTempoOperacao(repId, tipoOperacao, timestamp) {
+    try {
+      const config = await this.getConfigSync();
+      const ultimaSessao = await this.buscarUltimaSessaoRepositor(repId);
+
+      if (!ultimaSessao) {
+        return { valido: true }; // Primeira sessão do repositor
+      }
+
+      const agora = new Date(timestamp);
+
+      if (tipoOperacao === 'checkin') {
+        // Validar tempo mínimo entre checkout anterior e novo checkin
+        if (ultimaSessao.checkout_at) {
+          const ultimoCheckout = new Date(ultimaSessao.checkout_at);
+          const diffMinutos = (agora - ultimoCheckout) / (1000 * 60);
+          const minimoMinutos = config.tempoMinimoEntreVisitas || 5;
+
+          if (diffMinutos < minimoMinutos) {
+            return {
+              valido: false,
+              erro: `Tempo mínimo entre visitas não respeitado. Aguarde ${Math.ceil(minimoMinutos - diffMinutos)} minutos.`,
+              tempoDecorrido: Math.round(diffMinutos),
+              tempoNecessario: minimoMinutos
+            };
+          }
+        } else {
+          // Sessão anterior ainda está aberta
+          return {
+            valido: false,
+            erro: 'Existe uma sessão de visita ainda aberta. Faça o checkout antes de iniciar nova visita.',
+            sessaoAberta: ultimaSessao.sessao_id
+          };
+        }
+      }
+
+      return { valido: true };
+    } catch (error) {
+      console.error('[TursoService] Erro ao validar tempo:', error);
+      // Em caso de erro na validação, permitir a operação (fail-safe)
+      return { valido: true, alerta: 'Validação de tempo não disponível' };
+    }
+  }
+
+  /**
+   * Criar ou atualizar tabela de força sync
+   */
+  async criarTabelaForcaSync() {
+    await this.execute(`
+      CREATE TABLE IF NOT EXISTS cc_forca_sync (
+        rep_id INTEGER PRIMARY KEY,
+        forcar_download INTEGER DEFAULT 0,
+        forcar_upload INTEGER DEFAULT 0,
+        mensagem TEXT,
+        criado_em TEXT DEFAULT (datetime('now')),
+        criado_por INTEGER
+      )
+    `, []);
+  }
+
+  /**
+   * Marcar repositor para forçar sincronização
+   */
+  async forcarSyncRepositor(repId, tipo, mensagem = null, adminId = null) {
+    try {
+      await this.criarTabelaForcaSync();
+
+      if (tipo === 'download' || tipo === 'ambos') {
+        await this.execute(`
+          INSERT INTO cc_forca_sync (rep_id, forcar_download, mensagem, criado_por)
+          VALUES (?, 1, ?, ?)
+          ON CONFLICT(rep_id) DO UPDATE SET
+            forcar_download = 1,
+            mensagem = COALESCE(?, mensagem),
+            criado_em = datetime('now'),
+            criado_por = ?
+        `, [repId, mensagem, adminId, mensagem, adminId]);
+      }
+
+      if (tipo === 'upload' || tipo === 'ambos') {
+        await this.execute(`
+          INSERT INTO cc_forca_sync (rep_id, forcar_upload, mensagem, criado_por)
+          VALUES (?, 1, ?, ?)
+          ON CONFLICT(rep_id) DO UPDATE SET
+            forcar_upload = 1,
+            mensagem = COALESCE(?, mensagem),
+            criado_em = datetime('now'),
+            criado_por = ?
+        `, [repId, mensagem, adminId, mensagem, adminId]);
+      }
+
+      console.log(`[TursoService] Forçando sync ${tipo} para rep_id ${repId}`);
+      return { ok: true };
+    } catch (error) {
+      console.error('[TursoService] Erro ao forçar sync:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Forçar sync para TODOS os repositores
+   */
+  async forcarSyncTodos(tipo, mensagem = null, adminId = null) {
+    try {
+      await this.criarTabelaForcaSync();
+
+      // Buscar todos os repositores
+      const result = await this.execute('SELECT repo_cod FROM cadRepositor WHERE repo_ativo = 1', []);
+      const repositores = result?.rows || result || [];
+
+      for (const repo of repositores) {
+        await this.forcarSyncRepositor(repo.repo_cod, tipo, mensagem, adminId);
+      }
+
+      return { ok: true, total: repositores.length };
+    } catch (error) {
+      console.error('[TursoService] Erro ao forçar sync todos:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Verificar se repositor precisa forçar sync
+   */
+  async verificarForcaSync(repId) {
+    try {
+      await this.criarTabelaForcaSync();
+
+      const result = await this.execute(`
+        SELECT forcar_download, forcar_upload, mensagem
+        FROM cc_forca_sync
+        WHERE rep_id = ?
+      `, [repId]);
+
+      const rows = result?.rows || result || [];
+
+      if (rows.length === 0) {
+        return { forcarDownload: false, forcarUpload: false };
+      }
+
+      return {
+        forcarDownload: !!rows[0].forcar_download,
+        forcarUpload: !!rows[0].forcar_upload,
+        mensagem: rows[0].mensagem
+      };
+    } catch (error) {
+      console.error('[TursoService] Erro ao verificar força sync:', error);
+      return { forcarDownload: false, forcarUpload: false };
+    }
+  }
+
+  /**
+   * Limpar flag de força sync após repositor sincronizar
+   */
+  async limparForcaSync(repId, tipo) {
+    try {
+      if (tipo === 'download') {
+        await this.execute(`
+          UPDATE cc_forca_sync SET forcar_download = 0 WHERE rep_id = ?
+        `, [repId]);
+      } else if (tipo === 'upload') {
+        await this.execute(`
+          UPDATE cc_forca_sync SET forcar_upload = 0 WHERE rep_id = ?
+        `, [repId]);
+      }
+    } catch (error) {
+      console.error('[TursoService] Erro ao limpar força sync:', error);
     }
   }
 }

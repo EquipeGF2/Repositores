@@ -36,6 +36,12 @@ class SyncService {
     // Verificar se precisa sincronizar
     await this.verificarSyncInicial();
 
+    // Verificar força sync inicial e periodicamente (a cada 5 minutos)
+    if (this.isOnline) {
+      await this.verificarForcaSync();
+      setInterval(() => this.verificarForcaSync(), 5 * 60 * 1000);
+    }
+
     console.log('[SyncService] Inicializado. Online:', this.isOnline);
   }
 
@@ -45,6 +51,9 @@ class SyncService {
     console.log('[SyncService] Conexão restaurada');
     this.isOnline = true;
     this.notificar('online');
+
+    // Verificar se admin forçou sync
+    this.verificarForcaSync();
 
     // Tentar enviar pendentes
     this.enviarPendentes();
@@ -436,7 +445,115 @@ class SyncService {
     // Depois baixar dados atualizados
     await this.sincronizarDownload();
 
+    // Limpar flags de força sync
+    await this.limparForcaSync();
+
     return { ok: true };
+  }
+
+  /**
+   * Verificar se precisa forçar sync (chamado pelo admin via web)
+   */
+  async verificarForcaSync() {
+    if (!this.isOnline) return { forcarDownload: false, forcarUpload: false };
+
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) return { forcarDownload: false, forcarUpload: false };
+
+      const response = await fetch(`${this.apiBaseUrl}/api/sync/verificar-forca`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      const data = await response.json();
+
+      if (data.ok) {
+        if (data.forcarDownload || data.forcarUpload) {
+          console.log('[SyncService] Força sync detectado:', data);
+          this.notificar('forcaSync', data);
+
+          // Se forçar, executar automaticamente
+          if (data.forcarUpload) {
+            await this.enviarPendentes();
+          }
+          if (data.forcarDownload) {
+            await this.sincronizarDownload();
+          }
+
+          // Limpar flags após executar
+          await this.limparForcaSync();
+        }
+      }
+
+      return data;
+    } catch (error) {
+      console.warn('[SyncService] Erro ao verificar força sync:', error);
+      return { forcarDownload: false, forcarUpload: false };
+    }
+  }
+
+  /**
+   * Limpar flags de força sync após sincronizar
+   */
+  async limparForcaSync() {
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) return;
+
+      await fetch(`${this.apiBaseUrl}/api/sync/limpar-forca`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ tipo: 'download' })
+      });
+
+      await fetch(`${this.apiBaseUrl}/api/sync/limpar-forca`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ tipo: 'upload' })
+      });
+    } catch (error) {
+      console.warn('[SyncService] Erro ao limpar força sync:', error);
+    }
+  }
+
+  /**
+   * Validar tempo antes de operação (checkin/checkout)
+   */
+  async validarTempo(tipoOperacao) {
+    if (!this.isOnline) {
+      // Offline - não pode validar, permitir operação
+      return { ok: true, valido: true };
+    }
+
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) return { ok: true, valido: true };
+
+      const response = await fetch(`${this.apiBaseUrl}/api/sync/validar-tempo`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          tipoOperacao,
+          timestamp: new Date().toISOString()
+        })
+      });
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.warn('[SyncService] Erro ao validar tempo:', error);
+      // Em caso de erro, permitir operação (fail-safe)
+      return { ok: true, valido: true };
+    }
   }
 
   /**

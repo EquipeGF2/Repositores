@@ -433,11 +433,13 @@ router.put('/config', async (req, res) => {
       });
     }
 
-    const { horariosDownload, enviarNoCheckout } = req.body;
+    const { horariosDownload, enviarNoCheckout, tempoMaximoCheckout, tempoMinimoEntreVisitas } = req.body;
 
     await tursoService.salvarConfigSync({
       horariosDownload,
-      enviarNoCheckout
+      enviarNoCheckout,
+      tempoMaximoCheckout: tempoMaximoCheckout || 30,
+      tempoMinimoEntreVisitas: tempoMinimoEntreVisitas || 5
     });
 
     return res.json({
@@ -451,6 +453,148 @@ router.put('/config', async (req, res) => {
       ok: false,
       message: 'Erro ao salvar configurações'
     });
+  }
+});
+
+// ==================== VALIDAÇÃO DE TEMPO ====================
+
+/**
+ * POST /api/sync/validar-tempo - Validar tempo entre operações
+ */
+router.post('/validar-tempo', async (req, res) => {
+  try {
+    const repId = req.user.rep_id;
+    const { tipoOperacao, timestamp } = req.body;
+
+    if (!tipoOperacao) {
+      return res.status(400).json({
+        ok: false,
+        message: 'Tipo de operação é obrigatório'
+      });
+    }
+
+    const resultado = await tursoService.validarTempoOperacao(
+      repId,
+      tipoOperacao,
+      timestamp || new Date().toISOString()
+    );
+
+    return res.json({
+      ok: resultado.valido,
+      ...resultado
+    });
+
+  } catch (error) {
+    console.error('[Sync] Erro ao validar tempo:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'Erro ao validar tempo'
+    });
+  }
+});
+
+// ==================== FORÇAR SINCRONIZAÇÃO ====================
+
+/**
+ * GET /api/sync/verificar-forca - Verificar se precisa forçar sync
+ */
+router.get('/verificar-forca', async (req, res) => {
+  try {
+    const repId = req.user.rep_id;
+
+    if (!repId) {
+      return res.json({
+        ok: true,
+        forcarDownload: false,
+        forcarUpload: false
+      });
+    }
+
+    const resultado = await tursoService.verificarForcaSync(repId);
+
+    return res.json({
+      ok: true,
+      ...resultado
+    });
+
+  } catch (error) {
+    console.error('[Sync] Erro ao verificar força sync:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'Erro ao verificar'
+    });
+  }
+});
+
+/**
+ * POST /api/sync/forcar - Forçar sync de repositor(es) (admin)
+ */
+router.post('/forcar', async (req, res) => {
+  try {
+    if (req.user.perfil !== 'admin') {
+      return res.status(403).json({
+        ok: false,
+        message: 'Apenas administradores podem forçar sincronização'
+      });
+    }
+
+    const { repId, tipo, mensagem, todos } = req.body;
+
+    if (!tipo || !['download', 'upload', 'ambos'].includes(tipo)) {
+      return res.status(400).json({
+        ok: false,
+        message: 'Tipo deve ser: download, upload ou ambos'
+      });
+    }
+
+    let resultado;
+
+    if (todos) {
+      // Forçar para todos os repositores
+      resultado = await tursoService.forcarSyncTodos(tipo, mensagem, req.user.usuario_id);
+      console.log(`[Sync] Admin ${req.user.username} forçou sync ${tipo} para TODOS (${resultado.total})`);
+    } else if (repId) {
+      // Forçar para repositor específico
+      resultado = await tursoService.forcarSyncRepositor(repId, tipo, mensagem, req.user.usuario_id);
+      console.log(`[Sync] Admin ${req.user.username} forçou sync ${tipo} para rep_id ${repId}`);
+    } else {
+      return res.status(400).json({
+        ok: false,
+        message: 'Informe repId ou todos=true'
+      });
+    }
+
+    return res.json({
+      ok: true,
+      message: todos ? `Sincronização forçada para ${resultado.total} repositores` : 'Sincronização forçada com sucesso'
+    });
+
+  } catch (error) {
+    console.error('[Sync] Erro ao forçar sync:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'Erro ao forçar sincronização'
+    });
+  }
+});
+
+/**
+ * POST /api/sync/limpar-forca - Limpar flag de força sync após sync
+ */
+router.post('/limpar-forca', async (req, res) => {
+  try {
+    const repId = req.user.rep_id;
+    const { tipo } = req.body;
+
+    if (repId && tipo) {
+      await tursoService.limparForcaSync(repId, tipo);
+    }
+
+    return res.json({ ok: true });
+
+  } catch (error) {
+    console.error('[Sync] Erro ao limpar força sync:', error);
+    return res.status(500).json({ ok: false });
   }
 });
 

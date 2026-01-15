@@ -3053,6 +3053,29 @@ export const pages = {
                                     </small>
                                 </div>
 
+                                <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 16px 0;">
+
+                                <h4 style="color: var(--text-primary); margin: 0 0 8px 0;">Validação de Tempo</h4>
+                                <p class="text-muted" style="margin: 0 0 16px; font-size: 13px;">
+                                    Previne manipulação de tempo de atendimento.
+                                </p>
+
+                                <div class="form-group" style="margin-bottom: 12px;">
+                                    <label for="syncTempoMaxCheckout">Tempo máximo para checkout (minutos)</label>
+                                    <input type="number" id="syncTempoMaxCheckout" value="30" min="5" max="120" style="width: 100%;">
+                                    <small class="text-muted" style="display: block; margin-top: 4px;">
+                                        Tempo máximo permitido após tirar foto para completar checkout.
+                                    </small>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 16px;">
+                                    <label for="syncTempoMinimoVisitas">Tempo mínimo entre visitas (minutos)</label>
+                                    <input type="number" id="syncTempoMinimoVisitas" value="5" min="1" max="60" style="width: 100%;">
+                                    <small class="text-muted" style="display: block; margin-top: 4px;">
+                                        Tempo mínimo obrigatório entre checkout e próximo checkin.
+                                    </small>
+                                </div>
+
                                 <button type="button" class="btn btn-primary" id="btnSalvarConfigSync">
                                     Salvar Configurações
                                 </button>
@@ -3072,10 +3095,39 @@ export const pages = {
                                     </button>
                                 </div>
 
-                                <div id="listaStatusSync" style="max-height: 400px; overflow-y: auto;">
+                                <div id="listaStatusSync" style="max-height: 300px; overflow-y: auto;">
                                     <p class="text-muted" style="text-align: center; padding: 20px;">
                                         Clique em "Atualizar" para carregar.
                                     </p>
+                                </div>
+
+                                <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 16px 0;">
+
+                                <!-- Ações de Forçar Sincronização -->
+                                <h4 style="color: var(--text-primary); margin: 0 0 8px 0;">Forçar Sincronização</h4>
+                                <p class="text-muted" style="margin: 0 0 12px; font-size: 13px;">
+                                    Force repositores a sincronizar na próxima conexão.
+                                </p>
+
+                                <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+                                    <button type="button" class="btn btn-warning btn-sm" id="btnForcarDownloadTodos" title="Forçar todos os repositores a baixar dados atualizados">
+                                        Forçar Download (Todos)
+                                    </button>
+                                    <button type="button" class="btn btn-warning btn-sm" id="btnForcarUploadTodos" title="Forçar todos os repositores a enviar dados pendentes">
+                                        Forçar Upload (Todos)
+                                    </button>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="selectForcarSyncRepositor" style="font-size: 13px;">Forçar repositor específico:</label>
+                                    <div style="display: flex; gap: 8px; margin-top: 4px;">
+                                        <select id="selectForcarSyncRepositor" style="flex: 1; min-width: 150px;">
+                                            <option value="">Selecione um repositor...</option>
+                                        </select>
+                                        <button type="button" class="btn btn-outline btn-sm" id="btnForcarSyncIndividual" disabled>
+                                            Forçar Sync
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>

@@ -19866,12 +19866,27 @@ class App {
         // Carregar configurações atuais
         await this.carregarConfigSync();
 
-        // Event listeners
+        // Event listeners básicos
         document.getElementById('btnSalvarConfigSync')?.addEventListener('click', () => this.salvarConfigSync());
         document.getElementById('btnAtualizarStatusSync')?.addEventListener('click', () => this.carregarStatusSync());
 
-        // Carregar status automaticamente
+        // Event listeners para forçar sync
+        document.getElementById('btnForcarDownloadTodos')?.addEventListener('click', () => this.forcarSyncTodos('download'));
+        document.getElementById('btnForcarUploadTodos')?.addEventListener('click', () => this.forcarSyncTodos('upload'));
+        document.getElementById('btnForcarSyncIndividual')?.addEventListener('click', () => this.forcarSyncIndividual());
+
+        // Habilitar/desabilitar botão individual baseado na seleção
+        const selectRepositor = document.getElementById('selectForcarSyncRepositor');
+        const btnForcarIndividual = document.getElementById('btnForcarSyncIndividual');
+        if (selectRepositor && btnForcarIndividual) {
+            selectRepositor.addEventListener('change', () => {
+                btnForcarIndividual.disabled = !selectRepositor.value;
+            });
+        }
+
+        // Carregar status e lista de repositores automaticamente
         await this.carregarStatusSync();
+        await this.carregarRepositoresParaForcarSync();
     }
 
     async carregarConfigSync() {
@@ -19891,6 +19906,12 @@ class App {
 
                 // Checkbox de envio no checkout
                 document.getElementById('syncEnviarCheckout').checked = config.enviarNoCheckout !== false;
+
+                // Campos de validação de tempo
+                const tempoMaxEl = document.getElementById('syncTempoMaxCheckout');
+                const tempoMinEl = document.getElementById('syncTempoMinimoVisitas');
+                if (tempoMaxEl) tempoMaxEl.value = config.tempoMaximoCheckout || 30;
+                if (tempoMinEl) tempoMinEl.value = config.tempoMinimoEntreVisitas || 5;
             }
         } catch (error) {
             console.error('Erro ao carregar config sync:', error);
@@ -19902,10 +19923,14 @@ class App {
             const horario1 = document.getElementById('syncHorario1').value;
             const horario2 = document.getElementById('syncHorario2').value;
             const enviarNoCheckout = document.getElementById('syncEnviarCheckout').checked;
+            const tempoMaximoCheckout = parseInt(document.getElementById('syncTempoMaxCheckout')?.value, 10) || 30;
+            const tempoMinimoEntreVisitas = parseInt(document.getElementById('syncTempoMinimoVisitas')?.value, 10) || 5;
 
             const config = {
                 horariosDownload: [horario1, horario2],
-                enviarNoCheckout
+                enviarNoCheckout,
+                tempoMaximoCheckout,
+                tempoMinimoEntreVisitas
             };
 
             const token = localStorage.getItem('auth_token');
@@ -20005,6 +20030,103 @@ class App {
         } catch (error) {
             console.error('Erro ao carregar status sync:', error);
             container.innerHTML = `<p style="color: #991b1b; text-align: center; padding: 20px;">Erro: ${error.message}</p>`;
+        }
+    }
+
+    async carregarRepositoresParaForcarSync() {
+        const select = document.getElementById('selectForcarSyncRepositor');
+        if (!select) return;
+
+        try {
+            const token = localStorage.getItem('auth_token');
+            const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+
+            const response = await fetchJson(`${API_BASE_URL}/api/sync/status`, { headers });
+
+            if (response?.ok && response.repositores) {
+                select.innerHTML = '<option value="">Selecione um repositor...</option>' +
+                    response.repositores.map(repo =>
+                        `<option value="${repo.rep_id}">${repo.repo_nome || `Repositor ${repo.rep_id}`}</option>`
+                    ).join('');
+            }
+        } catch (error) {
+            console.error('Erro ao carregar repositores para força sync:', error);
+        }
+    }
+
+    async forcarSyncTodos(tipo) {
+        const tipoTexto = tipo === 'download' ? 'Download' : 'Upload';
+
+        if (!confirm(`Tem certeza que deseja forçar ${tipoTexto} para TODOS os repositores?\n\nIsso fará com que todos os repositores sincronizem na próxima conexão.`)) {
+            return;
+        }
+
+        try {
+            const token = localStorage.getItem('auth_token');
+            const response = await fetchJson(`${API_BASE_URL}/api/sync/forcar`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': token ? `Bearer ${token}` : ''
+                },
+                body: JSON.stringify({
+                    todos: true,
+                    tipo,
+                    mensagem: `Forçado pelo admin via web em ${new Date().toLocaleString('pt-BR')}`
+                })
+            });
+
+            if (response?.ok) {
+                this.showNotification(response.message || `${tipoTexto} forçado para todos os repositores!`, 'success');
+            } else {
+                throw new Error(response?.message || 'Erro ao forçar sincronização');
+            }
+        } catch (error) {
+            console.error('Erro ao forçar sync todos:', error);
+            this.showNotification(error.message || 'Erro ao forçar sincronização', 'error');
+        }
+    }
+
+    async forcarSyncIndividual() {
+        const select = document.getElementById('selectForcarSyncRepositor');
+        const repId = select?.value;
+
+        if (!repId) {
+            this.showNotification('Selecione um repositor', 'warning');
+            return;
+        }
+
+        const repoNome = select.options[select.selectedIndex].text;
+
+        if (!confirm(`Forçar sincronização para ${repoNome}?\n\nIsso fará com que o repositor sincronize na próxima conexão.`)) {
+            return;
+        }
+
+        try {
+            const token = localStorage.getItem('auth_token');
+            const response = await fetchJson(`${API_BASE_URL}/api/sync/forcar`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': token ? `Bearer ${token}` : ''
+                },
+                body: JSON.stringify({
+                    repId: parseInt(repId, 10),
+                    tipo: 'ambos',
+                    mensagem: `Forçado pelo admin via web em ${new Date().toLocaleString('pt-BR')}`
+                })
+            });
+
+            if (response?.ok) {
+                this.showNotification(`Sincronização forçada para ${repoNome}!`, 'success');
+                select.value = '';
+                document.getElementById('btnForcarSyncIndividual').disabled = true;
+            } else {
+                throw new Error(response?.message || 'Erro ao forçar sincronização');
+            }
+        } catch (error) {
+            console.error('Erro ao forçar sync individual:', error);
+            this.showNotification(error.message || 'Erro ao forçar sincronização', 'error');
         }
     }
 
