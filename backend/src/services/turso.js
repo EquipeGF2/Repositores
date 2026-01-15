@@ -3453,6 +3453,287 @@ class TursoService {
       throw error;
     }
   }
+
+  // ==================== LOGIN WEB E CONTROLE DE ACESSOS ====================
+
+  async ensureWebLoginSchema() {
+    // Adicionar campos para login web na tabela cc_usuarios
+    try {
+      // Verificar se coluna deve_trocar_senha existe
+      const checkCol = await this.execute(`PRAGMA table_info(cc_usuarios)`, []);
+      const columns = checkCol.rows.map(r => r.name);
+
+      if (!columns.includes('deve_trocar_senha')) {
+        await this.execute(`ALTER TABLE cc_usuarios ADD COLUMN deve_trocar_senha INTEGER DEFAULT 0`, []);
+        console.log('✅ Coluna deve_trocar_senha adicionada');
+      }
+
+      if (!columns.includes('tipo_acesso')) {
+        await this.execute(`ALTER TABLE cc_usuarios ADD COLUMN tipo_acesso TEXT DEFAULT 'pwa'`, []);
+        console.log('✅ Coluna tipo_acesso adicionada');
+      }
+
+      if (!columns.includes('senha_resetada_em')) {
+        await this.execute(`ALTER TABLE cc_usuarios ADD COLUMN senha_resetada_em TEXT`, []);
+        console.log('✅ Coluna senha_resetada_em adicionada');
+      }
+    } catch (e) {
+      console.log('[ensureWebLoginSchema] Colunas já existem ou erro:', e.message);
+    }
+
+    // Criar tabela de telas web
+    const sqlWebTelas = `
+      CREATE TABLE IF NOT EXISTS cc_web_telas (
+        tela_id TEXT PRIMARY KEY,
+        tela_titulo TEXT NOT NULL,
+        tela_categoria TEXT NOT NULL DEFAULT 'geral',
+        tela_icone TEXT DEFAULT '📄',
+        ordem INTEGER DEFAULT 999,
+        ativo INTEGER DEFAULT 1,
+        criado_em TEXT DEFAULT (datetime('now'))
+      )
+    `;
+    await this.execute(sqlWebTelas, []);
+    console.log('✅ Tabela cc_web_telas garantida');
+
+    // Criar tabela de permissões por usuário
+    const sqlPermissoes = `
+      CREATE TABLE IF NOT EXISTS cc_usuario_telas_web (
+        usuario_id INTEGER NOT NULL,
+        tela_id TEXT NOT NULL,
+        pode_visualizar INTEGER DEFAULT 1,
+        pode_editar INTEGER DEFAULT 0,
+        criado_em TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (usuario_id, tela_id)
+      )
+    `;
+    await this.execute(sqlPermissoes, []);
+    console.log('✅ Tabela cc_usuario_telas_web garantida');
+
+    // Inserir telas web padrão se não existirem
+    const telasWeb = [
+      // Cadastros
+      { id: 'cadastro-repositor', titulo: 'Cadastro de Repositores', categoria: 'cadastros', icone: '👥', ordem: 1 },
+      { id: 'roteiro-repositor', titulo: 'Roteiro do Repositor', categoria: 'cadastros', icone: '🗺️', ordem: 2 },
+      { id: 'cadastro-rateio', titulo: 'Manutenção de Rateio', categoria: 'cadastros', icone: '📊', ordem: 3 },
+      { id: 'cadastro-pesquisa', titulo: 'Pesquisas', categoria: 'cadastros', icone: '📝', ordem: 5 },
+      { id: 'cadastro-espacos', titulo: 'Compra de Espaço', categoria: 'cadastros', icone: '📦', ordem: 6 },
+      // Registros
+      { id: 'registro-rota', titulo: 'Registro de Rota', categoria: 'registros', icone: '📍', ordem: 10 },
+      // Consultas
+      { id: 'consulta-visitas', titulo: 'Consulta de Visitas', categoria: 'consultas', icone: '🔍', ordem: 20 },
+      { id: 'consulta-roteiro', titulo: 'Consulta de Roteiro', categoria: 'consultas', icone: '📋', ordem: 21 },
+      { id: 'consulta-alteracoes', titulo: 'Consulta de Alterações', categoria: 'consultas', icone: '📝', ordem: 22 },
+      { id: 'consulta-documentos', titulo: 'Consulta de Documentos', categoria: 'consultas', icone: '📄', ordem: 23 },
+      { id: 'consulta-despesas', titulo: 'Consulta de Despesas', categoria: 'consultas', icone: '💰', ordem: 24 },
+      { id: 'consulta-campanha', titulo: 'Consulta de Campanha', categoria: 'consultas', icone: '📸', ordem: 25 },
+      { id: 'consulta-pesquisa', titulo: 'Consulta de Pesquisas', categoria: 'consultas', icone: '📊', ordem: 26 },
+      { id: 'consulta-espacos', titulo: 'Consulta de Espaços', categoria: 'consultas', icone: '📦', ordem: 27 },
+      // Configurações
+      { id: 'configuracoes-sistema', titulo: 'Configurações do Sistema', categoria: 'configuracoes', icone: '⚙️', ordem: 90 }
+    ];
+
+    for (const tela of telasWeb) {
+      try {
+        await this.execute(
+          `INSERT OR IGNORE INTO cc_web_telas (tela_id, tela_titulo, tela_categoria, tela_icone, ordem) VALUES (?, ?, ?, ?, ?)`,
+          [tela.id, tela.titulo, tela.categoria, tela.icone, tela.ordem]
+        );
+      } catch (e) {
+        // Ignora se já existe
+      }
+    }
+    console.log('✅ Telas web configuradas');
+  }
+
+  async criarUsuarioAdmin() {
+    const { authService } = await import('./auth.js');
+
+    // Verificar se admin já existe
+    const existing = await this.execute(
+      `SELECT usuario_id FROM cc_usuarios WHERE username = 'admin'`,
+      []
+    );
+
+    if (existing.rows.length > 0) {
+      console.log('[criarUsuarioAdmin] Usuário admin já existe');
+      return { existe: true, usuario_id: existing.rows[0].usuario_id };
+    }
+
+    // Criar hash da senha
+    const passwordHash = await authService.hashPassword('troca@admin');
+
+    // Inserir usuário admin
+    const result = await this.execute(`
+      INSERT INTO cc_usuarios (username, password_hash, nome_completo, email, perfil, tipo_acesso, deve_trocar_senha, ativo)
+      VALUES ('admin', ?, 'Administrador', 'admin@sistema.local', 'admin', 'web', 1, 1)
+    `, [passwordHash]);
+
+    const adminId = Number(result.lastInsertRowid);
+    console.log(`✅ Usuário admin criado com ID ${adminId}`);
+
+    // Dar acesso a todas as telas
+    const telas = await this.listarTelasWeb();
+    for (const tela of telas) {
+      await this.execute(`
+        INSERT OR REPLACE INTO cc_usuario_telas_web (usuario_id, tela_id, pode_visualizar, pode_editar)
+        VALUES (?, ?, 1, 1)
+      `, [adminId, tela.tela_id]);
+    }
+
+    return { criado: true, usuario_id: adminId };
+  }
+
+  // Listar todas as telas web
+  async listarTelasWeb() {
+    const sql = `SELECT * FROM cc_web_telas WHERE ativo = 1 ORDER BY ordem, tela_titulo`;
+    const result = await this.execute(sql, []);
+    return result.rows || [];
+  }
+
+  // Listar telas que um usuário pode acessar
+  async listarTelasUsuario(usuarioId) {
+    const sql = `
+      SELECT t.*, p.pode_visualizar, p.pode_editar
+      FROM cc_web_telas t
+      INNER JOIN cc_usuario_telas_web p ON t.tela_id = p.tela_id
+      WHERE p.usuario_id = ? AND p.pode_visualizar = 1 AND t.ativo = 1
+      ORDER BY t.ordem, t.tela_titulo
+    `;
+    const result = await this.execute(sql, [usuarioId]);
+    return result.rows || [];
+  }
+
+  // Verificar se usuário tem acesso a uma tela
+  async usuarioTemAcessoTela(usuarioId, telaId) {
+    // Admin tem acesso a tudo
+    const usuario = await this.buscarUsuarioPorId(usuarioId);
+    if (usuario?.perfil === 'admin') return true;
+
+    const sql = `
+      SELECT pode_visualizar FROM cc_usuario_telas_web
+      WHERE usuario_id = ? AND tela_id = ? AND pode_visualizar = 1
+    `;
+    const result = await this.execute(sql, [usuarioId, telaId]);
+    return result.rows.length > 0;
+  }
+
+  // Atualizar permissões de um usuário
+  async atualizarPermissoesUsuario(usuarioId, telas) {
+    // Remover permissões antigas
+    await this.execute(`DELETE FROM cc_usuario_telas_web WHERE usuario_id = ?`, [usuarioId]);
+
+    // Inserir novas permissões
+    for (const tela of telas) {
+      if (tela.pode_visualizar) {
+        await this.execute(`
+          INSERT INTO cc_usuario_telas_web (usuario_id, tela_id, pode_visualizar, pode_editar)
+          VALUES (?, ?, ?, ?)
+        `, [usuarioId, tela.tela_id, tela.pode_visualizar ? 1 : 0, tela.pode_editar ? 1 : 0]);
+      }
+    }
+  }
+
+  // Listar permissões de um usuário
+  async listarPermissoesUsuario(usuarioId) {
+    const sql = `
+      SELECT t.tela_id, t.tela_titulo, t.tela_categoria, t.tela_icone,
+             COALESCE(p.pode_visualizar, 0) as pode_visualizar,
+             COALESCE(p.pode_editar, 0) as pode_editar
+      FROM cc_web_telas t
+      LEFT JOIN cc_usuario_telas_web p ON t.tela_id = p.tela_id AND p.usuario_id = ?
+      WHERE t.ativo = 1
+      ORDER BY t.ordem, t.tela_titulo
+    `;
+    const result = await this.execute(sql, [usuarioId]);
+    return result.rows || [];
+  }
+
+  // Resetar senha do usuário (admin)
+  async resetarSenhaUsuario(usuarioId, novaSenha) {
+    const { authService } = await import('./auth.js');
+    const passwordHash = await authService.hashPassword(novaSenha);
+
+    await this.execute(`
+      UPDATE cc_usuarios
+      SET password_hash = ?, deve_trocar_senha = 1, senha_resetada_em = datetime('now'), atualizado_em = datetime('now')
+      WHERE usuario_id = ?
+    `, [passwordHash, usuarioId]);
+  }
+
+  // Marcar que usuário trocou a senha
+  async marcarSenhaTrocada(usuarioId) {
+    await this.execute(`
+      UPDATE cc_usuarios
+      SET deve_trocar_senha = 0, atualizado_em = datetime('now')
+      WHERE usuario_id = ?
+    `, [usuarioId]);
+  }
+
+  // Buscar usuário web (inclui campos adicionais)
+  async buscarUsuarioWebPorUsername(username) {
+    const sql = `
+      SELECT u.*, r.repo_nome
+      FROM cc_usuarios u
+      LEFT JOIN cad_repositor r ON u.rep_id = r.repo_cod
+      WHERE u.username = ? AND u.ativo = 1 AND (u.tipo_acesso = 'web' OR u.tipo_acesso = 'ambos' OR u.perfil = 'admin')
+    `;
+    const result = await this.execute(sql, [username]);
+    return result.rows[0] || null;
+  }
+
+  // Criar nova tela web
+  async criarTelaWeb(dados) {
+    const sql = `
+      INSERT INTO cc_web_telas (tela_id, tela_titulo, tela_categoria, tela_icone, ordem)
+      VALUES (?, ?, ?, ?, ?)
+    `;
+    await this.execute(sql, [
+      dados.tela_id,
+      dados.tela_titulo,
+      dados.tela_categoria || 'geral',
+      dados.tela_icone || '📄',
+      dados.ordem || 999
+    ]);
+  }
+
+  // Atualizar tela web
+  async atualizarTelaWeb(telaId, dados) {
+    const campos = [];
+    const valores = [];
+
+    if (dados.tela_titulo !== undefined) {
+      campos.push('tela_titulo = ?');
+      valores.push(dados.tela_titulo);
+    }
+    if (dados.tela_categoria !== undefined) {
+      campos.push('tela_categoria = ?');
+      valores.push(dados.tela_categoria);
+    }
+    if (dados.tela_icone !== undefined) {
+      campos.push('tela_icone = ?');
+      valores.push(dados.tela_icone);
+    }
+    if (dados.ordem !== undefined) {
+      campos.push('ordem = ?');
+      valores.push(dados.ordem);
+    }
+    if (dados.ativo !== undefined) {
+      campos.push('ativo = ?');
+      valores.push(dados.ativo ? 1 : 0);
+    }
+
+    if (campos.length === 0) return;
+
+    valores.push(telaId);
+    const sql = `UPDATE cc_web_telas SET ${campos.join(', ')} WHERE tela_id = ?`;
+    await this.execute(sql, valores);
+  }
+
+  // Excluir tela web (soft delete)
+  async excluirTelaWeb(telaId) {
+    await this.execute(`UPDATE cc_web_telas SET ativo = 0 WHERE tela_id = ?`, [telaId]);
+  }
 }
 
 export const tursoService = new TursoService();

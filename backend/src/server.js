@@ -166,26 +166,21 @@ async function inicializar() {
     await tursoService.ensureSchemaClientesCoordenadas();
     await tursoService.ensureSchemaEspacos();
 
-    // Criar usuário administrador inicial se não existir
+    // Inicializar sistema de login web e telas
     try {
-      const adminExistente = await tursoService.buscarUsuarioPorUsername('admin');
+      await tursoService.ensureWebLoginSchema();
+      console.log('✅ Schema de login web inicializado');
+    } catch (webError) {
+      console.warn('⚠️  Aviso ao inicializar schema web:', webError.message);
+    }
 
-      if (!adminExistente) {
-        console.log('🔐 Criando usuário administrador inicial...');
-
-        const passwordHash = await authService.hashPassword('admin123');
-        await tursoService.criarUsuario({
-          username: 'admin',
-          passwordHash,
-          nomeCompleto: 'Administrador',
-          email: 'admin@germani.com.br',
-          repId: null,
-          perfil: 'admin'
-        });
-
+    // Criar usuário administrador web se não existir
+    try {
+      const result = await tursoService.criarUsuarioAdmin();
+      if (result.criado) {
         console.log('✅ Usuário admin criado com sucesso!');
-        console.log('   Usuário: admin | Senha: admin123');
-        console.log('   ⚠️  IMPORTANTE: Altere a senha após o primeiro login!');
+        console.log('   Usuário: admin | Senha: troca@admin');
+        console.log('   ⚠️  IMPORTANTE: A senha deve ser alterada no primeiro login!');
       }
     } catch (adminError) {
       console.warn('⚠️  Aviso ao verificar/criar admin:', adminError.message);
