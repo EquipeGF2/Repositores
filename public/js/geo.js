@@ -43,21 +43,38 @@ class GeoService {
         });
     }
 
+    obterMensagemErro(erro) {
+        // Códigos de erro do Geolocation API
+        switch (erro?.code) {
+            case 1: // PERMISSION_DENIED
+                return 'Permissão de localização negada. Habilite nas configurações do navegador.';
+            case 2: // POSITION_UNAVAILABLE
+                return 'Localização indisponível. Verifique se o GPS está ativado no Windows/dispositivo.';
+            case 3: // TIMEOUT
+                return 'Tempo esgotado ao obter localização. Tente novamente em local com melhor sinal.';
+            default:
+                return erro?.message || 'Erro desconhecido ao obter localização.';
+        }
+    }
+
     async obterLocalizacao() {
         const erros = [];
 
         try {
+            console.log('[GeoService] Tentando obter localização (modo rápido)...');
             return await this.tentarCapturarLocalizacao(REQUEST_OPTIONS_FAST);
         } catch (erroRapido) {
             erros.push(erroRapido);
-            console.warn('Tentativa rápida de geolocalização falhou, tentando fallback...', erroRapido);
+            console.warn('[GeoService] Tentativa rápida falhou:', erroRapido?.code, erroRapido?.message);
         }
 
         try {
+            console.log('[GeoService] Tentando obter localização (modo fallback com alta precisão)...');
             return await this.tentarCapturarLocalizacao(REQUEST_OPTIONS_FALLBACK);
         } catch (erroFallback) {
             erros.push(erroFallback);
-            const mensagem = erroFallback?.message || 'Ative a localização do Windows e tente novamente.';
+            console.error('[GeoService] Todas as tentativas falharam:', erroFallback?.code, erroFallback?.message);
+            const mensagem = this.obterMensagemErro(erroFallback);
             throw { code: erroFallback?.code || 'GEO_FAILED', message: mensagem, erros };
         }
     }

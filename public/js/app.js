@@ -20067,21 +20067,30 @@ class App {
                 return;
             }
 
-            const response = await fetch(`${API_BASE_URL}/api/sync/status`, {
+            // Carregar usuários do PWA (repositores)
+            const response = await fetch(`${API_BASE_URL}/api/usuarios`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
 
             if (!response.ok) {
-                console.warn('Erro ao carregar repositores:', response.status);
+                console.warn('Erro ao carregar usuários:', response.status);
                 return;
             }
 
             const data = await response.json();
 
-            if (data?.ok && data.repositores) {
+            if (data?.ok && data.usuarios) {
+                // Filtrar apenas repositores (usuários PWA)
+                const repositores = data.usuarios.filter(u => u.perfil === 'repositor' && u.rep_id);
+
+                if (repositores.length === 0) {
+                    select.innerHTML = '<option value="">Nenhum repositor encontrado</option>';
+                    return;
+                }
+
                 select.innerHTML = '<option value="">Selecione um repositor...</option>' +
-                    data.repositores.map(repo =>
-                        `<option value="${repo.rep_id}">${repo.repo_nome || `Repositor ${repo.rep_id}`}</option>`
+                    repositores.map(repo =>
+                        `<option value="${repo.rep_id}">${repo.nome || repo.username || `Repositor ${repo.rep_id}`}</option>`
                     ).join('');
             }
         } catch (error) {

@@ -3046,9 +3046,9 @@ export const pages = {
                                 </div>
 
                                 <div class="form-group" style="margin-bottom: 16px;">
-                                    <label style="display: inline-flex; align-items: center; cursor: pointer;">
-                                        <input type="checkbox" id="syncEnviarCheckout" checked style="margin: 0 6px 0 0;">
-                                        <span>Enviar dados automaticamente no checkout</span>
+                                    <label style="display: inline-flex; align-items: flex-start; cursor: pointer;">
+                                        <input type="checkbox" id="syncEnviarCheckout" checked style="margin: 3px 6px 0 0; flex-shrink: 0;">
+                                        <span style="line-height: 1.4;">Enviar dados automaticamente no checkout</span>
                                     </label>
                                     <small class="text-muted" style="display: block; margin-top: 4px;">
                                         Se desmarcado, os dados ficam na fila até o próximo horário de sync.
@@ -3085,8 +3085,8 @@ export const pages = {
 
                             <!-- Status de Sincronização -->
                             <div style="background: #f9fafb; padding: 20px; border-radius: 12px; border: 1px solid #e5e7eb;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                                    <div>
+                                <div class="sync-status-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
+                                    <div style="flex: 1; min-width: 200px;">
                                         <h4 style="color: var(--text-primary); margin: 0 0 4px 0;">Status por Repositor</h4>
                                         <p class="text-muted" style="margin: 0; font-size: 13px;">
                                             Monitore quando cada repositor sincronizou.
