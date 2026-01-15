@@ -1,11 +1,11 @@
 import express from 'express';
 import { tursoService } from '../services/turso.js';
-import { authenticateToken, optionalAuth } from '../middleware/auth.js';
+import { requireAuth, optionalAuth } from '../middleware/auth.js';
 
 const router = express.Router();
 
 // Todas as rotas requerem autenticação
-router.use(authenticateToken);
+router.use(requireAuth);
 
 /**
  * GET /api/atividades - Listar atividades
