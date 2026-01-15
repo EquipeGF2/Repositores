@@ -2724,6 +2724,7 @@ export const pages = {
                         <button class="config-tab" data-config-tab="usuarios">👤 Usuários</button>
                         <button class="config-tab" data-config-tab="acessos">🔐 Acessos</button>
                         <button class="config-tab" data-config-tab="espacos">📦 Tipos de Espaço</button>
+                        <button class="config-tab" data-config-tab="sincronizacao">🔄 Sincronização</button>
                     </div>
 
                     <!-- Tabs de Configuração - Mobile (Dropdown) -->
@@ -2738,6 +2739,7 @@ export const pages = {
                             <option value="usuarios">👤 Usuários</option>
                             <option value="acessos">🔐 Acessos</option>
                             <option value="espacos">📦 Tipos de Espaço</option>
+                            <option value="sincronizacao">🔄 Sincronização</option>
                         </select>
                     </div>
 
@@ -3017,6 +3019,172 @@ export const pages = {
                             @media (max-width: 768px) {
                                 #tabelaTiposEspacoConfig .hide-mobile { display: none; }
                                 #tabelaTiposEspacoConfig .btn-sm { padding: 4px 6px; font-size: 12px; }
+                            }
+                        </style>
+                    </div>
+
+                    <!-- Aba Sincronização PWA -->
+                    <div class="config-tab-content" id="config-tab-sincronizacao">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+                            <!-- Configurações de Horários -->
+                            <div style="background: #f9fafb; padding: 20px; border-radius: 12px; border: 1px solid #e5e7eb;">
+                                <h4 style="color: var(--text-primary); margin: 0 0 8px 0;">Horários de Download</h4>
+                                <p class="text-muted" style="margin: 0 0 16px; font-size: 13px;">
+                                    Defina os horários em que os repositores receberão dados atualizados do servidor.
+                                </p>
+
+                                <div class="form-group" style="margin-bottom: 12px;">
+                                    <label for="syncHorario1">Primeiro horário (manhã)</label>
+                                    <input type="time" id="syncHorario1" value="06:00" style="width: 100%;">
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 16px;">
+                                    <label for="syncHorario2">Segundo horário (meio-dia)</label>
+                                    <input type="time" id="syncHorario2" value="12:00" style="width: 100%;">
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 16px;">
+                                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                        <input type="checkbox" id="syncEnviarCheckout" checked>
+                                        <span>Enviar dados automaticamente no checkout</span>
+                                    </label>
+                                    <small class="text-muted" style="display: block; margin-top: 4px;">
+                                        Se desmarcado, os dados ficam na fila até o próximo horário de sync.
+                                    </small>
+                                </div>
+
+                                <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 16px 0;">
+
+                                <h4 style="color: var(--text-primary); margin: 0 0 8px 0;">Validação de Tempo</h4>
+                                <p class="text-muted" style="margin: 0 0 16px; font-size: 13px;">
+                                    Previne manipulação de tempo de atendimento.
+                                </p>
+
+                                <div class="form-group" style="margin-bottom: 12px;">
+                                    <label for="syncTempoMaxCheckout">Tempo máximo para checkout (minutos)</label>
+                                    <input type="number" id="syncTempoMaxCheckout" value="30" min="5" max="120" style="width: 100%;">
+                                    <small class="text-muted" style="display: block; margin-top: 4px;">
+                                        Tempo máximo permitido após tirar foto para completar checkout.
+                                    </small>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 16px;">
+                                    <label for="syncTempoMinimoVisitas">Tempo mínimo entre visitas (minutos)</label>
+                                    <input type="number" id="syncTempoMinimoVisitas" value="5" min="1" max="60" style="width: 100%;">
+                                    <small class="text-muted" style="display: block; margin-top: 4px;">
+                                        Tempo mínimo obrigatório entre checkout e próximo checkin.
+                                    </small>
+                                </div>
+
+                                <button type="button" class="btn btn-primary" id="btnSalvarConfigSync">
+                                    Salvar Configurações
+                                </button>
+                            </div>
+
+                            <!-- Status de Sincronização -->
+                            <div style="background: #f9fafb; padding: 20px; border-radius: 12px; border: 1px solid #e5e7eb;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                                    <div>
+                                        <h4 style="color: var(--text-primary); margin: 0 0 4px 0;">Status por Repositor</h4>
+                                        <p class="text-muted" style="margin: 0; font-size: 13px;">
+                                            Monitore quando cada repositor sincronizou.
+                                        </p>
+                                    </div>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="btnAtualizarStatusSync">
+                                        Atualizar
+                                    </button>
+                                </div>
+
+                                <div id="listaStatusSync" style="max-height: 300px; overflow-y: auto;">
+                                    <p class="text-muted" style="text-align: center; padding: 20px;">
+                                        Clique em "Atualizar" para carregar.
+                                    </p>
+                                </div>
+
+                                <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 16px 0;">
+
+                                <!-- Ações de Forçar Sincronização -->
+                                <h4 style="color: var(--text-primary); margin: 0 0 8px 0;">Forçar Sincronização</h4>
+                                <p class="text-muted" style="margin: 0 0 12px; font-size: 13px;">
+                                    Force repositores a sincronizar na próxima conexão.
+                                </p>
+
+                                <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+                                    <button type="button" class="btn btn-warning btn-sm" id="btnForcarDownloadTodos" title="Forçar todos os repositores a baixar dados atualizados">
+                                        Forçar Download (Todos)
+                                    </button>
+                                    <button type="button" class="btn btn-warning btn-sm" id="btnForcarUploadTodos" title="Forçar todos os repositores a enviar dados pendentes">
+                                        Forçar Upload (Todos)
+                                    </button>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="selectForcarSyncRepositor" style="font-size: 13px;">Forçar repositor específico:</label>
+                                    <div style="display: flex; gap: 8px; margin-top: 4px;">
+                                        <select id="selectForcarSyncRepositor" style="flex: 1; min-width: 150px;">
+                                            <option value="">Selecione um repositor...</option>
+                                        </select>
+                                        <button type="button" class="btn btn-outline btn-sm" id="btnForcarSyncIndividual" disabled>
+                                            Forçar Sync
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <style>
+                            @media (max-width: 768px) {
+                                #config-tab-sincronizacao > div {
+                                    grid-template-columns: 1fr !important;
+                                }
+                            }
+
+                            .sync-repositor-item {
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
+                                padding: 12px;
+                                background: white;
+                                border-radius: 8px;
+                                margin-bottom: 8px;
+                                border: 1px solid #e5e7eb;
+                            }
+
+                            .sync-repositor-info {
+                                flex: 1;
+                            }
+
+                            .sync-repositor-info strong {
+                                display: block;
+                                color: #111827;
+                                font-size: 14px;
+                            }
+
+                            .sync-repositor-info small {
+                                color: #6b7280;
+                                font-size: 12px;
+                            }
+
+                            .sync-status-badge {
+                                padding: 4px 8px;
+                                border-radius: 12px;
+                                font-size: 11px;
+                                font-weight: 600;
+                            }
+
+                            .sync-status-ok {
+                                background: #dcfce7;
+                                color: #166534;
+                            }
+
+                            .sync-status-warning {
+                                background: #fef3c7;
+                                color: #92400e;
+                            }
+
+                            .sync-status-error {
+                                background: #fee2e2;
+                                color: #991b1b;
                             }
                         </style>
                     </div>

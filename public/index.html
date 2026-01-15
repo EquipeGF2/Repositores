@@ -171,6 +171,14 @@
                 </button>
                 <h2 id="pageTitle">Resumo do Período</h2>
                 <div class="user-info">
+                    <!-- Indicador de Sync PWA -->
+                    <div id="syncIndicator" class="sync-indicator hidden">
+                        <span id="syncStatusIcon" class="sync-icon">&#8635;</span>
+                        <span id="syncStatusText" class="sync-text">Sincronizado</span>
+                        <button id="btnSyncManual" class="btn-sync-manual" title="Sincronizar agora">
+                            &#8635;
+                        </button>
+                    </div>
                     <span id="userStatus">Sistema Online</span>
                 </div>
             </div>
@@ -263,8 +271,10 @@
 
     <!-- Scripts -->
     <script src="js/auth.js"></script>
+    <script src="js/offline-db.js"></script>
+    <script src="js/sync-service.js"></script>
     <script type="module" src="js/db.js"></script>
-    <script type="module" src="js/app.js?v=20260114_01"></script>
+    <script type="module" src="js/app.js?v=20260115_01"></script>
 
     <!-- Handler do formulário de login -->
     <script>
@@ -378,6 +388,101 @@
         } else {
             console.warn('⚠️ Service Worker não suportado neste navegador');
         }
+    </script>
+
+    <!-- Inicialização do SyncService para PWA -->
+    <script>
+        (async function initSyncUI() {
+            // Verificar se está em modo PWA (standalone)
+            const isPWA = window.matchMedia('(display-mode: standalone)').matches ||
+                          window.navigator.standalone === true;
+
+            const syncIndicator = document.getElementById('syncIndicator');
+            const syncStatusIcon = document.getElementById('syncStatusIcon');
+            const syncStatusText = document.getElementById('syncStatusText');
+            const btnSyncManual = document.getElementById('btnSyncManual');
+
+            // Mostrar indicador apenas no PWA
+            if (isPWA && syncIndicator) {
+                syncIndicator.classList.remove('hidden');
+
+                // Inicializar SyncService após login
+                if (typeof syncService !== 'undefined') {
+                    try {
+                        await syncService.init();
+
+                        // Atualizar UI baseado em eventos do sync
+                        syncService.onSync((evento, dados) => {
+                            switch (evento) {
+                                case 'online':
+                                    syncStatusIcon.textContent = '\u2713';
+                                    syncStatusIcon.style.color = '#10b981';
+                                    syncStatusText.textContent = 'Online';
+                                    break;
+                                case 'offline':
+                                    syncStatusIcon.textContent = '\u26A0';
+                                    syncStatusIcon.style.color = '#f59e0b';
+                                    syncStatusText.textContent = 'Offline';
+                                    break;
+                                case 'syncInicio':
+                                    syncStatusIcon.textContent = '\u21BB';
+                                    syncStatusIcon.style.color = '#3b82f6';
+                                    syncStatusText.textContent = 'Sincronizando...';
+                                    btnSyncManual.disabled = true;
+                                    btnSyncManual.classList.add('syncing');
+                                    break;
+                                case 'syncFim':
+                                    syncStatusIcon.textContent = dados.ok ? '\u2713' : '\u2717';
+                                    syncStatusIcon.style.color = dados.ok ? '#10b981' : '#ef4444';
+                                    syncStatusText.textContent = dados.ok ? 'Sincronizado' : 'Erro';
+                                    btnSyncManual.disabled = false;
+                                    btnSyncManual.classList.remove('syncing');
+                                    break;
+                                case 'pendentesAtualizado':
+                                    if (dados.total > 0) {
+                                        syncStatusText.textContent = `${dados.total} pendentes`;
+                                        syncStatusIcon.style.color = '#f59e0b';
+                                    }
+                                    break;
+                                case 'forcaSync':
+                                    if (dados.mensagem) {
+                                        alert('Admin solicitou sincronização: ' + dados.mensagem);
+                                    }
+                                    break;
+                            }
+                        });
+
+                        // Botão de sincronização manual
+                        if (btnSyncManual) {
+                            btnSyncManual.addEventListener('click', async () => {
+                                btnSyncManual.disabled = true;
+                                btnSyncManual.classList.add('syncing');
+                                try {
+                                    await syncService.sincronizarAgora();
+                                } catch (error) {
+                                    console.error('Erro na sincronização manual:', error);
+                                    alert('Erro ao sincronizar: ' + error.message);
+                                } finally {
+                                    btnSyncManual.disabled = false;
+                                    btnSyncManual.classList.remove('syncing');
+                                }
+                            });
+                        }
+
+                        // Verificar status atual
+                        const status = await syncService.getStatus();
+                        if (status.pendentes.total > 0) {
+                            syncStatusText.textContent = `${status.pendentes.total} pendentes`;
+                            syncStatusIcon.style.color = '#f59e0b';
+                        }
+
+                        console.log('[SyncUI] Indicador de sincronização inicializado');
+                    } catch (error) {
+                        console.error('[SyncUI] Erro ao inicializar:', error);
+                    }
+                }
+            }
+        })();
     </script>
 </body>
 </html>

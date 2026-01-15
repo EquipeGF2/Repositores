@@ -1,21 +1,26 @@
 import express from 'express';
 import { tursoService } from '../services/turso.js';
 import { authService } from '../services/auth.js';
-import { requireAuth, requireAdmin } from '../middleware/auth.js';
+import { requireAuth, requireAdmin, optionalAuth } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// TEMPORÁRIO: Acesso livre para gestão de usuários do PWA
-// TODO: Implementar autenticação web completa com seleção de usuário
-// router.use(requireAuth);
-// router.use(requireAdmin);
-
-// GET /api/usuarios - Listar todos os usuários
-router.get('/', async (req, res) => {
+// GET /api/usuarios - Listar usuários
+// - Admin: vê todos os usuários
+// - Repositor: vê apenas seu próprio usuário
+// - Sem autenticação (web): vê todos (mantém compatibilidade)
+router.get('/', optionalAuth, async (req, res) => {
   try {
-    const usuarios = await tursoService.listarUsuarios();
+    let usuarios = await tursoService.listarUsuarios();
 
-    console.log(`[Listar usuários] Total: ${usuarios.length}, IDs: ${usuarios.map(u => u.usuario_id).join(', ')}`);
+    // Se há usuário autenticado e é repositor, filtrar apenas seu usuário
+    if (req.user && req.user.perfil === 'repositor' && req.user.rep_id) {
+      const repIdLogado = Number(req.user.rep_id);
+      usuarios = usuarios.filter(u => Number(u.rep_id) === repIdLogado);
+      console.log(`[Listar usuários] Repositor ${req.user.username} (rep_id: ${repIdLogado}) - Filtrado para ${usuarios.length} usuário(s)`);
+    } else {
+      console.log(`[Listar usuários] Total: ${usuarios.length}, IDs: ${usuarios.map(u => u.usuario_id).join(', ')}`);
+    }
 
     // Remover password_hash da resposta
     const usuariosSafe = usuarios.map(u => {

@@ -1154,6 +1154,8 @@ class App {
                 this.inicializarAbaAcessosConfig();
             } else if (tabName === 'espacos') {
                 this.carregarTiposEspacoConfig();
+            } else if (tabName === 'sincronizacao') {
+                this.inicializarAbaSincronizacaoConfig();
             }
         };
 
@@ -19855,6 +19857,276 @@ class App {
         } catch (error) {
             console.error('Erro ao excluir tipo de espaço:', error);
             this.showNotification(error.message || 'Erro ao excluir tipo de espaço', 'error');
+        }
+    }
+
+    // === Sincronização PWA ===
+
+    async inicializarAbaSincronizacaoConfig() {
+        // Carregar configurações atuais
+        await this.carregarConfigSync();
+
+        // Event listeners básicos
+        document.getElementById('btnSalvarConfigSync')?.addEventListener('click', () => this.salvarConfigSync());
+        document.getElementById('btnAtualizarStatusSync')?.addEventListener('click', () => this.carregarStatusSync());
+
+        // Event listeners para forçar sync
+        document.getElementById('btnForcarDownloadTodos')?.addEventListener('click', () => this.forcarSyncTodos('download'));
+        document.getElementById('btnForcarUploadTodos')?.addEventListener('click', () => this.forcarSyncTodos('upload'));
+        document.getElementById('btnForcarSyncIndividual')?.addEventListener('click', () => this.forcarSyncIndividual());
+
+        // Habilitar/desabilitar botão individual baseado na seleção
+        const selectRepositor = document.getElementById('selectForcarSyncRepositor');
+        const btnForcarIndividual = document.getElementById('btnForcarSyncIndividual');
+        if (selectRepositor && btnForcarIndividual) {
+            selectRepositor.addEventListener('change', () => {
+                btnForcarIndividual.disabled = !selectRepositor.value;
+            });
+        }
+
+        // Carregar status e lista de repositores automaticamente
+        await this.carregarStatusSync();
+        await this.carregarRepositoresParaForcarSync();
+    }
+
+    async carregarConfigSync() {
+        try {
+            const token = localStorage.getItem('auth_token');
+            const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+
+            const response = await fetchJson(`${API_BASE_URL}/api/sync/config`, { headers });
+
+            if (response?.ok && response.config) {
+                const config = response.config;
+
+                // Preencher horários
+                const horarios = config.horariosDownload || ['06:00', '12:00'];
+                document.getElementById('syncHorario1').value = horarios[0] || '06:00';
+                document.getElementById('syncHorario2').value = horarios[1] || '12:00';
+
+                // Checkbox de envio no checkout
+                document.getElementById('syncEnviarCheckout').checked = config.enviarNoCheckout !== false;
+
+                // Campos de validação de tempo
+                const tempoMaxEl = document.getElementById('syncTempoMaxCheckout');
+                const tempoMinEl = document.getElementById('syncTempoMinimoVisitas');
+                if (tempoMaxEl) tempoMaxEl.value = config.tempoMaximoCheckout || 30;
+                if (tempoMinEl) tempoMinEl.value = config.tempoMinimoEntreVisitas || 5;
+            }
+        } catch (error) {
+            console.error('Erro ao carregar config sync:', error);
+        }
+    }
+
+    async salvarConfigSync() {
+        try {
+            const horario1 = document.getElementById('syncHorario1').value;
+            const horario2 = document.getElementById('syncHorario2').value;
+            const enviarNoCheckout = document.getElementById('syncEnviarCheckout').checked;
+            const tempoMaximoCheckout = parseInt(document.getElementById('syncTempoMaxCheckout')?.value, 10) || 30;
+            const tempoMinimoEntreVisitas = parseInt(document.getElementById('syncTempoMinimoVisitas')?.value, 10) || 5;
+
+            const config = {
+                horariosDownload: [horario1, horario2],
+                enviarNoCheckout,
+                tempoMaximoCheckout,
+                tempoMinimoEntreVisitas
+            };
+
+            const token = localStorage.getItem('auth_token');
+            const response = await fetchJson(`${API_BASE_URL}/api/sync/config`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': token ? `Bearer ${token}` : ''
+                },
+                body: JSON.stringify(config)
+            });
+
+            if (response?.ok) {
+                this.showNotification('Configurações de sincronização salvas!', 'success');
+            } else {
+                throw new Error(response?.message || 'Erro ao salvar');
+            }
+        } catch (error) {
+            console.error('Erro ao salvar config sync:', error);
+            this.showNotification(error.message || 'Erro ao salvar configurações', 'error');
+        }
+    }
+
+    async carregarStatusSync() {
+        const container = document.getElementById('listaStatusSync');
+        if (!container) return;
+
+        container.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px;">Carregando...</p>';
+
+        try {
+            const token = localStorage.getItem('auth_token');
+            const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+
+            const response = await fetchJson(`${API_BASE_URL}/api/sync/status`, { headers });
+
+            if (!response?.ok || !response.repositores) {
+                container.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px;">Nenhum dado disponível</p>';
+                return;
+            }
+
+            const repositores = response.repositores;
+
+            if (repositores.length === 0) {
+                container.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px;">Nenhum repositor encontrado</p>';
+                return;
+            }
+
+            const agora = new Date();
+
+            container.innerHTML = repositores.map(repo => {
+                const ultimoDownload = repo.ultimo_download ? new Date(repo.ultimo_download) : null;
+                const ultimoUpload = repo.ultimo_upload ? new Date(repo.ultimo_upload) : null;
+
+                // Determinar status baseado no último download
+                let statusClass = 'sync-status-error';
+                let statusTexto = 'Nunca sincronizou';
+
+                if (ultimoDownload) {
+                    const horasAtras = (agora - ultimoDownload) / (1000 * 60 * 60);
+
+                    if (horasAtras < 12) {
+                        statusClass = 'sync-status-ok';
+                        statusTexto = 'OK';
+                    } else if (horasAtras < 24) {
+                        statusClass = 'sync-status-warning';
+                        statusTexto = 'Desatualizado';
+                    } else {
+                        statusClass = 'sync-status-error';
+                        statusTexto = `${Math.floor(horasAtras / 24)}d atrás`;
+                    }
+                }
+
+                const formatarData = (data) => {
+                    if (!data) return '-';
+                    return data.toLocaleString('pt-BR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                };
+
+                return `
+                    <div class="sync-repositor-item">
+                        <div class="sync-repositor-info">
+                            <strong>${repo.repo_nome || `Repositor ${repo.rep_id}`}</strong>
+                            <small>
+                                Download: ${formatarData(ultimoDownload)} |
+                                Upload: ${formatarData(ultimoUpload)}
+                            </small>
+                        </div>
+                        <span class="sync-status-badge ${statusClass}">${statusTexto}</span>
+                    </div>
+                `;
+            }).join('');
+
+        } catch (error) {
+            console.error('Erro ao carregar status sync:', error);
+            container.innerHTML = `<p style="color: #991b1b; text-align: center; padding: 20px;">Erro: ${error.message}</p>`;
+        }
+    }
+
+    async carregarRepositoresParaForcarSync() {
+        const select = document.getElementById('selectForcarSyncRepositor');
+        if (!select) return;
+
+        try {
+            const token = localStorage.getItem('auth_token');
+            const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+
+            const response = await fetchJson(`${API_BASE_URL}/api/sync/status`, { headers });
+
+            if (response?.ok && response.repositores) {
+                select.innerHTML = '<option value="">Selecione um repositor...</option>' +
+                    response.repositores.map(repo =>
+                        `<option value="${repo.rep_id}">${repo.repo_nome || `Repositor ${repo.rep_id}`}</option>`
+                    ).join('');
+            }
+        } catch (error) {
+            console.error('Erro ao carregar repositores para força sync:', error);
+        }
+    }
+
+    async forcarSyncTodos(tipo) {
+        const tipoTexto = tipo === 'download' ? 'Download' : 'Upload';
+
+        if (!confirm(`Tem certeza que deseja forçar ${tipoTexto} para TODOS os repositores?\n\nIsso fará com que todos os repositores sincronizem na próxima conexão.`)) {
+            return;
+        }
+
+        try {
+            const token = localStorage.getItem('auth_token');
+            const response = await fetchJson(`${API_BASE_URL}/api/sync/forcar`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': token ? `Bearer ${token}` : ''
+                },
+                body: JSON.stringify({
+                    todos: true,
+                    tipo,
+                    mensagem: `Forçado pelo admin via web em ${new Date().toLocaleString('pt-BR')}`
+                })
+            });
+
+            if (response?.ok) {
+                this.showNotification(response.message || `${tipoTexto} forçado para todos os repositores!`, 'success');
+            } else {
+                throw new Error(response?.message || 'Erro ao forçar sincronização');
+            }
+        } catch (error) {
+            console.error('Erro ao forçar sync todos:', error);
+            this.showNotification(error.message || 'Erro ao forçar sincronização', 'error');
+        }
+    }
+
+    async forcarSyncIndividual() {
+        const select = document.getElementById('selectForcarSyncRepositor');
+        const repId = select?.value;
+
+        if (!repId) {
+            this.showNotification('Selecione um repositor', 'warning');
+            return;
+        }
+
+        const repoNome = select.options[select.selectedIndex].text;
+
+        if (!confirm(`Forçar sincronização para ${repoNome}?\n\nIsso fará com que o repositor sincronize na próxima conexão.`)) {
+            return;
+        }
+
+        try {
+            const token = localStorage.getItem('auth_token');
+            const response = await fetchJson(`${API_BASE_URL}/api/sync/forcar`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': token ? `Bearer ${token}` : ''
+                },
+                body: JSON.stringify({
+                    repId: parseInt(repId, 10),
+                    tipo: 'ambos',
+                    mensagem: `Forçado pelo admin via web em ${new Date().toLocaleString('pt-BR')}`
+                })
+            });
+
+            if (response?.ok) {
+                this.showNotification(`Sincronização forçada para ${repoNome}!`, 'success');
+                select.value = '';
+                document.getElementById('btnForcarSyncIndividual').disabled = true;
+            } else {
+                throw new Error(response?.message || 'Erro ao forçar sincronização');
+            }
+        } catch (error) {
+            console.error('Erro ao forçar sync individual:', error);
+            this.showNotification(error.message || 'Erro ao forçar sincronização', 'error');
         }
     }
 
