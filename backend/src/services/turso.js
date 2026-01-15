@@ -3262,6 +3262,197 @@ class TursoService {
       console.error('[TursoService] Erro ao limpar força sync:', error);
     }
   }
+
+  // ==================== ATIVIDADES DINÂMICAS ====================
+
+  /**
+   * Criar tabela de atividades se não existir
+   */
+  async criarTabelaAtividades() {
+    await this.execute(`
+      CREATE TABLE IF NOT EXISTS cc_atividades (
+        atv_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        atv_nome TEXT NOT NULL,
+        atv_descricao TEXT,
+        atv_tipo TEXT NOT NULL DEFAULT 'checkbox',
+        atv_obrigatorio INTEGER DEFAULT 0,
+        atv_requer_valor INTEGER DEFAULT 0,
+        atv_valor_label TEXT,
+        atv_valor_tipo TEXT DEFAULT 'number',
+        atv_ordem INTEGER DEFAULT 0,
+        atv_ativo INTEGER DEFAULT 1,
+        atv_grupo TEXT DEFAULT 'checklist',
+        criado_em TEXT DEFAULT (datetime('now')),
+        atualizado_em TEXT DEFAULT (datetime('now'))
+      )
+    `, []);
+  }
+
+  /**
+   * Listar todas as atividades
+   */
+  async listarAtividades(apenasAtivas = false) {
+    try {
+      await this.criarTabelaAtividades();
+
+      let sql = 'SELECT * FROM cc_atividades';
+      if (apenasAtivas) {
+        sql += ' WHERE atv_ativo = 1';
+      }
+      sql += ' ORDER BY atv_grupo, atv_ordem, atv_nome';
+
+      const result = await this.execute(sql, []);
+      return result?.rows || result || [];
+    } catch (error) {
+      console.error('[TursoService] Erro ao listar atividades:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Buscar atividade por ID
+   */
+  async buscarAtividadePorId(atvId) {
+    try {
+      const result = await this.execute(
+        'SELECT * FROM cc_atividades WHERE atv_id = ?',
+        [atvId]
+      );
+      const rows = result?.rows || result || [];
+      return rows.length > 0 ? rows[0] : null;
+    } catch (error) {
+      console.error('[TursoService] Erro ao buscar atividade:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Criar nova atividade
+   */
+  async criarAtividade(dados) {
+    try {
+      await this.criarTabelaAtividades();
+
+      const result = await this.execute(`
+        INSERT INTO cc_atividades (
+          atv_nome, atv_descricao, atv_tipo, atv_obrigatorio,
+          atv_requer_valor, atv_valor_label, atv_valor_tipo,
+          atv_ordem, atv_ativo, atv_grupo
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        dados.atv_nome,
+        dados.atv_descricao || null,
+        dados.atv_tipo || 'checkbox',
+        dados.atv_obrigatorio ? 1 : 0,
+        dados.atv_requer_valor ? 1 : 0,
+        dados.atv_valor_label || null,
+        dados.atv_valor_tipo || 'number',
+        dados.atv_ordem || 0,
+        dados.atv_ativo !== false ? 1 : 0,
+        dados.atv_grupo || 'checklist'
+      ]);
+
+      return { atv_id: result.lastInsertRowid };
+    } catch (error) {
+      console.error('[TursoService] Erro ao criar atividade:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Atualizar atividade existente
+   */
+  async atualizarAtividade(atvId, dados) {
+    try {
+      await this.execute(`
+        UPDATE cc_atividades SET
+          atv_nome = ?,
+          atv_descricao = ?,
+          atv_tipo = ?,
+          atv_obrigatorio = ?,
+          atv_requer_valor = ?,
+          atv_valor_label = ?,
+          atv_valor_tipo = ?,
+          atv_ordem = ?,
+          atv_ativo = ?,
+          atv_grupo = ?,
+          atualizado_em = datetime('now')
+        WHERE atv_id = ?
+      `, [
+        dados.atv_nome,
+        dados.atv_descricao || null,
+        dados.atv_tipo || 'checkbox',
+        dados.atv_obrigatorio ? 1 : 0,
+        dados.atv_requer_valor ? 1 : 0,
+        dados.atv_valor_label || null,
+        dados.atv_valor_tipo || 'number',
+        dados.atv_ordem || 0,
+        dados.atv_ativo !== false ? 1 : 0,
+        dados.atv_grupo || 'checklist',
+        atvId
+      ]);
+
+      return { ok: true };
+    } catch (error) {
+      console.error('[TursoService] Erro ao atualizar atividade:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Excluir atividade (soft delete - marca como inativa)
+   */
+  async excluirAtividade(atvId) {
+    try {
+      await this.execute(`
+        UPDATE cc_atividades SET atv_ativo = 0, atualizado_em = datetime('now')
+        WHERE atv_id = ?
+      `, [atvId]);
+      return { ok: true };
+    } catch (error) {
+      console.error('[TursoService] Erro ao excluir atividade:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Inicializar atividades padrão (se tabela estiver vazia)
+   */
+  async inicializarAtividadesPadrao() {
+    try {
+      await this.criarTabelaAtividades();
+
+      // Verificar se já existem atividades
+      const result = await this.execute('SELECT COUNT(*) as total FROM cc_atividades', []);
+      const rows = result?.rows || result || [];
+      const total = rows[0]?.total || 0;
+
+      if (total > 0) {
+        return { inicializado: false, message: 'Atividades já existem' };
+      }
+
+      // Atividades padrão baseadas no sistema atual
+      const atividadesPadrao = [
+        // Grupo: campos
+        { atv_nome: 'Quantidade de Frentes', atv_tipo: 'number', atv_obrigatorio: 1, atv_grupo: 'campos', atv_ordem: 1, atv_valor_label: 'Qtd. Frentes' },
+        { atv_nome: 'Usou Merchandising', atv_tipo: 'boolean', atv_obrigatorio: 1, atv_grupo: 'campos', atv_ordem: 2 },
+        // Grupo: checklist
+        { atv_nome: 'Abastecimento', atv_tipo: 'checkbox', atv_obrigatorio: 0, atv_grupo: 'checklist', atv_ordem: 1 },
+        { atv_nome: 'Espaço Loja', atv_tipo: 'checkbox', atv_obrigatorio: 0, atv_grupo: 'checklist', atv_ordem: 2 },
+        { atv_nome: 'Ruptura Loja', atv_tipo: 'checkbox', atv_obrigatorio: 0, atv_grupo: 'checklist', atv_ordem: 3 },
+        { atv_nome: 'Pontos Extras', atv_tipo: 'checkbox', atv_obrigatorio: 0, atv_grupo: 'checklist', atv_ordem: 4, atv_requer_valor: 1, atv_valor_label: 'Quantidade de Pontos Extras', atv_valor_tipo: 'number' }
+      ];
+
+      for (const atv of atividadesPadrao) {
+        await this.criarAtividade(atv);
+      }
+
+      return { inicializado: true, total: atividadesPadrao.length };
+    } catch (error) {
+      console.error('[TursoService] Erro ao inicializar atividades:', error);
+      throw error;
+    }
+  }
 }
 
 export const tursoService = new TursoService();

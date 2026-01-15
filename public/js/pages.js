@@ -2725,6 +2725,7 @@ export const pages = {
                         <button class="config-tab" data-config-tab="acessos">🔐 Acessos</button>
                         <button class="config-tab" data-config-tab="espacos">📦 Tipos de Espaço</button>
                         <button class="config-tab" data-config-tab="sincronizacao">🔄 Sincronização</button>
+                        <button class="config-tab" data-config-tab="atividades">📋 Atividades</button>
                     </div>
 
                     <!-- Tabs de Configuração - Mobile (Dropdown) -->
@@ -2740,6 +2741,7 @@ export const pages = {
                             <option value="acessos">🔐 Acessos</option>
                             <option value="espacos">📦 Tipos de Espaço</option>
                             <option value="sincronizacao">🔄 Sincronização</option>
+                            <option value="atividades">📋 Atividades</option>
                         </select>
                     </div>
 
@@ -3187,6 +3189,211 @@ export const pages = {
                                 color: #991b1b;
                             }
                         </style>
+                    </div>
+
+                    <!-- Aba Atividades -->
+                    <div class="config-tab-content" id="config-tab-atividades">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+                            <div>
+                                <h4 style="margin: 0 0 4px 0; color: var(--text-primary);">Atividades do Repositor</h4>
+                                <p class="text-muted" style="margin: 0; font-size: 13px;">
+                                    Configure as atividades que os repositores podem registrar durante as visitas.
+                                </p>
+                            </div>
+                            <div style="display: flex; gap: 8px;">
+                                <button type="button" class="btn btn-secondary btn-sm" id="btnInicializarAtividades">
+                                    Inicializar Padrão
+                                </button>
+                                <button type="button" class="btn btn-primary btn-sm" id="btnNovaAtividade">
+                                    + Nova Atividade
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="listaAtividadesConfig" style="display: flex; flex-direction: column; gap: 8px;">
+                            <p class="text-muted" style="text-align: center; padding: 40px;">Carregando atividades...</p>
+                        </div>
+
+                        <style>
+                            .atividade-item {
+                                display: flex;
+                                align-items: center;
+                                gap: 16px;
+                                padding: 16px;
+                                background: #f9fafb;
+                                border-radius: 8px;
+                                border: 1px solid #e5e7eb;
+                            }
+
+                            .atividade-item.inativa {
+                                opacity: 0.6;
+                                background: #fef2f2;
+                            }
+
+                            .atividade-info {
+                                flex: 1;
+                            }
+
+                            .atividade-info strong {
+                                display: block;
+                                color: #111827;
+                                font-size: 14px;
+                                margin-bottom: 4px;
+                            }
+
+                            .atividade-info small {
+                                color: #6b7280;
+                                font-size: 12px;
+                            }
+
+                            .atividade-badges {
+                                display: flex;
+                                gap: 6px;
+                                flex-wrap: wrap;
+                            }
+
+                            .atividade-badge {
+                                padding: 2px 8px;
+                                border-radius: 12px;
+                                font-size: 11px;
+                                font-weight: 500;
+                            }
+
+                            .badge-tipo {
+                                background: #dbeafe;
+                                color: #1e40af;
+                            }
+
+                            .badge-obrigatorio {
+                                background: #fef3c7;
+                                color: #92400e;
+                            }
+
+                            .badge-valor {
+                                background: #dcfce7;
+                                color: #166534;
+                            }
+
+                            .badge-grupo {
+                                background: #f3e8ff;
+                                color: #7c3aed;
+                            }
+
+                            .atividade-acoes {
+                                display: flex;
+                                gap: 8px;
+                            }
+
+                            @media (max-width: 768px) {
+                                .atividade-item {
+                                    flex-direction: column;
+                                    align-items: flex-start;
+                                }
+
+                                .atividade-acoes {
+                                    width: 100%;
+                                    justify-content: flex-end;
+                                }
+                            }
+                        </style>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal para Atividade -->
+            <div class="modal" id="modalAtividadeConfig">
+                <div class="modal-content" style="max-width: 550px;">
+                    <div class="modal-header">
+                        <h3 id="modalAtividadeConfigTitulo">Nova Atividade</h3>
+                        <button class="modal-close" onclick="document.getElementById('modalAtividadeConfig').classList.remove('active')">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="formAtividadeConfig">
+                            <input type="hidden" id="atividadeIdConfig">
+
+                            <div class="form-group">
+                                <label for="atividadeNomeConfig">Nome da Atividade *</label>
+                                <input type="text" id="atividadeNomeConfig" required maxlength="100" placeholder="Ex: Abastecimento">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="atividadeDescricaoConfig">Descrição</label>
+                                <textarea id="atividadeDescricaoConfig" rows="2" placeholder="Descrição opcional"></textarea>
+                            </div>
+
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                                <div class="form-group">
+                                    <label for="atividadeTipoConfig">Tipo de Campo *</label>
+                                    <select id="atividadeTipoConfig" required>
+                                        <option value="checkbox">Checkbox (marcar/desmarcar)</option>
+                                        <option value="boolean">Sim/Não (radio)</option>
+                                        <option value="number">Número</option>
+                                        <option value="text">Texto</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="atividadeGrupoConfig">Grupo</label>
+                                    <select id="atividadeGrupoConfig">
+                                        <option value="checklist">Checklist de Atividades</option>
+                                        <option value="campos">Campos Obrigatórios</option>
+                                        <option value="extras">Informações Extras</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                                <div class="form-group">
+                                    <label for="atividadeOrdemConfig">Ordem de Exibição</label>
+                                    <input type="number" id="atividadeOrdemConfig" value="0" min="0" max="999">
+                                </div>
+
+                                <div class="form-group">
+                                    <label style="display: flex; align-items: center; gap: 8px; margin-top: 24px;">
+                                        <input type="checkbox" id="atividadeObrigatorioConfig">
+                                        <span>Obrigatório</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="form-group" style="padding: 12px; background: #f3f4f6; border-radius: 8px;">
+                                <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                    <input type="checkbox" id="atividadeRequerValorConfig">
+                                    <span>Requer valor adicional ao marcar</span>
+                                </label>
+                                <small class="text-muted" style="display: block; margin-bottom: 12px;">
+                                    Ex: "Pontos Extras" requer informar a quantidade
+                                </small>
+
+                                <div id="grupoValorAdicional" style="display: none;">
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                        <div class="form-group" style="margin-bottom: 0;">
+                                            <label for="atividadeValorLabelConfig">Rótulo do Campo</label>
+                                            <input type="text" id="atividadeValorLabelConfig" placeholder="Ex: Quantidade">
+                                        </div>
+                                        <div class="form-group" style="margin-bottom: 0;">
+                                            <label for="atividadeValorTipoConfig">Tipo do Valor</label>
+                                            <select id="atividadeValorTipoConfig">
+                                                <option value="number">Número</option>
+                                                <option value="text">Texto</option>
+                                                <option value="currency">Valor (R$)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label style="display: flex; align-items: center; gap: 8px;">
+                                    <input type="checkbox" id="atividadeAtivoConfig" checked>
+                                    <span>Atividade Ativa</span>
+                                </label>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalAtividadeConfig').classList.remove('active')">Cancelar</button>
+                        <button type="button" class="btn btn-primary" id="btnSalvarAtividadeConfig">Salvar</button>
                     </div>
                 </div>
             </div>

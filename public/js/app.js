@@ -1156,6 +1156,8 @@ class App {
                 this.carregarTiposEspacoConfig();
             } else if (tabName === 'sincronizacao') {
                 this.inicializarAbaSincronizacaoConfig();
+            } else if (tabName === 'atividades') {
+                this.inicializarAbaAtividadesConfig();
             }
         };
 
@@ -20039,18 +20041,30 @@ class App {
 
         try {
             const token = localStorage.getItem('auth_token');
-            const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+            if (!token) {
+                console.log('Sem token de autenticação para carregar repositores');
+                return;
+            }
 
-            const response = await fetchJson(`${API_BASE_URL}/api/sync/status`, { headers });
+            const response = await fetch(`${API_BASE_URL}/api/sync/status`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
 
-            if (response?.ok && response.repositores) {
+            if (!response.ok) {
+                console.warn('Erro ao carregar repositores:', response.status);
+                return;
+            }
+
+            const data = await response.json();
+
+            if (data?.ok && data.repositores) {
                 select.innerHTML = '<option value="">Selecione um repositor...</option>' +
-                    response.repositores.map(repo =>
+                    data.repositores.map(repo =>
                         `<option value="${repo.rep_id}">${repo.repo_nome || `Repositor ${repo.rep_id}`}</option>`
                     ).join('');
             }
         } catch (error) {
-            console.error('Erro ao carregar repositores para força sync:', error);
+            console.warn('Erro ao carregar repositores para força sync:', error.message);
         }
     }
 
@@ -20127,6 +20141,266 @@ class App {
         } catch (error) {
             console.error('Erro ao forçar sync individual:', error);
             this.showNotification(error.message || 'Erro ao forçar sincronização', 'error');
+        }
+    }
+
+    // === Atividades Config ===
+
+    async inicializarAbaAtividadesConfig() {
+        // Event listeners
+        document.getElementById('btnNovaAtividade')?.addEventListener('click', () => this.abrirModalAtividadeConfig());
+        document.getElementById('btnInicializarAtividades')?.addEventListener('click', () => this.inicializarAtividadesPadrao());
+        document.getElementById('btnSalvarAtividadeConfig')?.addEventListener('click', () => this.salvarAtividadeConfig());
+
+        // Toggle do grupo de valor adicional
+        const checkRequerValor = document.getElementById('atividadeRequerValorConfig');
+        const grupoValor = document.getElementById('grupoValorAdicional');
+        if (checkRequerValor && grupoValor) {
+            checkRequerValor.addEventListener('change', () => {
+                grupoValor.style.display = checkRequerValor.checked ? 'block' : 'none';
+            });
+        }
+
+        // Carregar atividades
+        await this.carregarAtividadesConfig();
+    }
+
+    async carregarAtividadesConfig() {
+        const container = document.getElementById('listaAtividadesConfig');
+        if (!container) return;
+
+        container.innerHTML = '<p class="text-muted" style="text-align: center; padding: 40px;">Carregando...</p>';
+
+        try {
+            const token = localStorage.getItem('auth_token');
+            const response = await fetch(`${API_BASE_URL}/api/atividades`, {
+                headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+            });
+
+            if (!response.ok) throw new Error('Erro ao carregar atividades');
+
+            const data = await response.json();
+
+            if (!data.ok || !data.data || data.data.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 40px; background: #f9fafb; border-radius: 12px;">
+                        <p class="text-muted" style="margin-bottom: 16px;">Nenhuma atividade cadastrada.</p>
+                        <button class="btn btn-primary btn-sm" onclick="window.app.inicializarAtividadesPadrao()">
+                            Inicializar com Atividades Padrão
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+
+            const tipoLabels = {
+                'checkbox': 'Checkbox',
+                'boolean': 'Sim/Não',
+                'number': 'Número',
+                'text': 'Texto'
+            };
+
+            const grupoLabels = {
+                'checklist': 'Checklist',
+                'campos': 'Campo Obrigatório',
+                'extras': 'Extra'
+            };
+
+            container.innerHTML = data.data.map(atv => `
+                <div class="atividade-item ${atv.atv_ativo ? '' : 'inativa'}">
+                    <div class="atividade-info">
+                        <strong>${atv.atv_nome}</strong>
+                        <small>${atv.atv_descricao || 'Sem descrição'}</small>
+                        <div class="atividade-badges" style="margin-top: 8px;">
+                            <span class="atividade-badge badge-tipo">${tipoLabels[atv.atv_tipo] || atv.atv_tipo}</span>
+                            <span class="atividade-badge badge-grupo">${grupoLabels[atv.atv_grupo] || atv.atv_grupo}</span>
+                            ${atv.atv_obrigatorio ? '<span class="atividade-badge badge-obrigatorio">Obrigatório</span>' : ''}
+                            ${atv.atv_requer_valor ? `<span class="atividade-badge badge-valor">+ ${atv.atv_valor_label || 'Valor'}</span>` : ''}
+                            ${!atv.atv_ativo ? '<span class="atividade-badge" style="background:#fee2e2;color:#991b1b;">Inativa</span>' : ''}
+                        </div>
+                    </div>
+                    <div class="atividade-acoes">
+                        <button class="btn btn-secondary btn-sm" onclick="window.app.editarAtividadeConfig(${atv.atv_id})">
+                            Editar
+                        </button>
+                        <button class="btn btn-outline btn-sm" onclick="window.app.excluirAtividadeConfig(${atv.atv_id}, '${atv.atv_nome.replace(/'/g, "\\'")}')">
+                            Excluir
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+
+        } catch (error) {
+            console.error('Erro ao carregar atividades:', error);
+            container.innerHTML = `<p style="color: #991b1b; text-align: center; padding: 40px;">Erro: ${error.message}</p>`;
+        }
+    }
+
+    abrirModalAtividadeConfig(atividade = null) {
+        const modal = document.getElementById('modalAtividadeConfig');
+        const titulo = document.getElementById('modalAtividadeConfigTitulo');
+
+        if (atividade) {
+            titulo.textContent = 'Editar Atividade';
+            document.getElementById('atividadeIdConfig').value = atividade.atv_id;
+            document.getElementById('atividadeNomeConfig').value = atividade.atv_nome || '';
+            document.getElementById('atividadeDescricaoConfig').value = atividade.atv_descricao || '';
+            document.getElementById('atividadeTipoConfig').value = atividade.atv_tipo || 'checkbox';
+            document.getElementById('atividadeGrupoConfig').value = atividade.atv_grupo || 'checklist';
+            document.getElementById('atividadeOrdemConfig').value = atividade.atv_ordem || 0;
+            document.getElementById('atividadeObrigatorioConfig').checked = !!atividade.atv_obrigatorio;
+            document.getElementById('atividadeRequerValorConfig').checked = !!atividade.atv_requer_valor;
+            document.getElementById('atividadeValorLabelConfig').value = atividade.atv_valor_label || '';
+            document.getElementById('atividadeValorTipoConfig').value = atividade.atv_valor_tipo || 'number';
+            document.getElementById('atividadeAtivoConfig').checked = atividade.atv_ativo !== false;
+
+            // Mostrar/esconder grupo de valor
+            document.getElementById('grupoValorAdicional').style.display = atividade.atv_requer_valor ? 'block' : 'none';
+        } else {
+            titulo.textContent = 'Nova Atividade';
+            document.getElementById('formAtividadeConfig').reset();
+            document.getElementById('atividadeIdConfig').value = '';
+            document.getElementById('atividadeAtivoConfig').checked = true;
+            document.getElementById('grupoValorAdicional').style.display = 'none';
+        }
+
+        modal.classList.add('active');
+    }
+
+    async editarAtividadeConfig(atvId) {
+        try {
+            const token = localStorage.getItem('auth_token');
+            const response = await fetch(`${API_BASE_URL}/api/atividades/${atvId}`, {
+                headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+            });
+
+            if (!response.ok) throw new Error('Erro ao buscar atividade');
+
+            const data = await response.json();
+
+            if (data.ok && data.data) {
+                this.abrirModalAtividadeConfig(data.data);
+            } else {
+                throw new Error(data.message || 'Atividade não encontrada');
+            }
+        } catch (error) {
+            console.error('Erro ao editar atividade:', error);
+            this.showNotification(error.message || 'Erro ao carregar atividade', 'error');
+        }
+    }
+
+    async salvarAtividadeConfig() {
+        try {
+            const atvId = document.getElementById('atividadeIdConfig').value;
+            const isEditing = !!atvId;
+
+            const dados = {
+                atv_nome: document.getElementById('atividadeNomeConfig').value.trim(),
+                atv_descricao: document.getElementById('atividadeDescricaoConfig').value.trim() || null,
+                atv_tipo: document.getElementById('atividadeTipoConfig').value,
+                atv_grupo: document.getElementById('atividadeGrupoConfig').value,
+                atv_ordem: parseInt(document.getElementById('atividadeOrdemConfig').value) || 0,
+                atv_obrigatorio: document.getElementById('atividadeObrigatorioConfig').checked,
+                atv_requer_valor: document.getElementById('atividadeRequerValorConfig').checked,
+                atv_valor_label: document.getElementById('atividadeValorLabelConfig').value.trim() || null,
+                atv_valor_tipo: document.getElementById('atividadeValorTipoConfig').value,
+                atv_ativo: document.getElementById('atividadeAtivoConfig').checked
+            };
+
+            if (!dados.atv_nome) {
+                this.showNotification('Nome da atividade é obrigatório', 'warning');
+                return;
+            }
+
+            const token = localStorage.getItem('auth_token');
+            const url = isEditing ? `${API_BASE_URL}/api/atividades/${atvId}` : `${API_BASE_URL}/api/atividades`;
+            const method = isEditing ? 'PUT' : 'POST';
+
+            const response = await fetch(url, {
+                method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': token ? `Bearer ${token}` : ''
+                },
+                body: JSON.stringify(dados)
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || !data.ok) {
+                throw new Error(data.message || 'Erro ao salvar');
+            }
+
+            this.showNotification(data.message || 'Atividade salva com sucesso!', 'success');
+            document.getElementById('modalAtividadeConfig').classList.remove('active');
+            await this.carregarAtividadesConfig();
+
+        } catch (error) {
+            console.error('Erro ao salvar atividade:', error);
+            this.showNotification(error.message || 'Erro ao salvar atividade', 'error');
+        }
+    }
+
+    async excluirAtividadeConfig(atvId, nome) {
+        if (!confirm(`Tem certeza que deseja excluir a atividade "${nome}"?\n\nA atividade será marcada como inativa e não aparecerá mais no registro de rotas.`)) {
+            return;
+        }
+
+        try {
+            const token = localStorage.getItem('auth_token');
+            const response = await fetch(`${API_BASE_URL}/api/atividades/${atvId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': token ? `Bearer ${token}` : ''
+                }
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || !data.ok) {
+                throw new Error(data.message || 'Erro ao excluir');
+            }
+
+            this.showNotification('Atividade excluída com sucesso!', 'success');
+            await this.carregarAtividadesConfig();
+
+        } catch (error) {
+            console.error('Erro ao excluir atividade:', error);
+            this.showNotification(error.message || 'Erro ao excluir atividade', 'error');
+        }
+    }
+
+    async inicializarAtividadesPadrao() {
+        if (!confirm('Isso irá criar as atividades padrão do sistema.\n\nDeseja continuar?')) {
+            return;
+        }
+
+        try {
+            const token = localStorage.getItem('auth_token');
+            const response = await fetch(`${API_BASE_URL}/api/atividades/inicializar`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': token ? `Bearer ${token}` : ''
+                }
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || !data.ok) {
+                throw new Error(data.message || 'Erro ao inicializar');
+            }
+
+            if (data.inicializado) {
+                this.showNotification(`${data.total} atividades criadas com sucesso!`, 'success');
+            } else {
+                this.showNotification(data.message || 'Atividades já existem', 'info');
+            }
+
+            await this.carregarAtividadesConfig();
+
+        } catch (error) {
+            console.error('Erro ao inicializar atividades:', error);
+            this.showNotification(error.message || 'Erro ao inicializar atividades', 'error');
         }
     }
 
