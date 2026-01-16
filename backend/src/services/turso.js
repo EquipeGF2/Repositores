@@ -3670,8 +3670,21 @@ class TursoService {
     `, [usuarioId]);
   }
 
-  // Buscar usuário web (inclui campos adicionais)
-  // Permite login de qualquer usuário ativo - controle de acesso é feito pelas telas
+  // Buscar usuário na tabela users do banco comercial
+  // Retorna id, username e password para validação de login
+  async buscarUsuarioComercialPorUsername(username) {
+    try {
+      const sql = `SELECT id, username, password FROM users WHERE username = ? LIMIT 1`;
+      const result = await this.execute(sql, [username]);
+      return result.rows[0] || null;
+    } catch (error) {
+      console.error('[buscarUsuarioComercialPorUsername] Erro:', error.message);
+      return null;
+    }
+  }
+
+  // Buscar usuário web (inclui campos adicionais do cc_usuarios)
+  // Usado para obter dados adicionais após autenticação via tabela users
   async buscarUsuarioWebPorUsername(username) {
     const sql = `
       SELECT u.*, r.repo_nome
