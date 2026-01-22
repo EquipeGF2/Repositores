@@ -30,6 +30,9 @@ class TursoService {
       this.ensureUsuariosSchema().catch((err) => {
         console.warn('⚠️  Falha ao garantir schema de usuários:', err?.message || err);
       });
+      this.ensureUsersWebSchema().catch((err) => {
+        console.warn('⚠️  Falha ao garantir schema de users_web:', err?.message || err);
+      });
     } catch (error) {
       if (error instanceof DatabaseNotConfiguredError) {
         this.client = null;
@@ -3675,23 +3678,112 @@ class TursoService {
     `, [usuarioId]);
   }
 
-  // Buscar usuário na tabela users para login web
-  // Tabela users: username (texto), password (texto) - no banco COMERCIAL
+  // ==================== USERS_WEB - Login Web com sincronização ====================
+
+  // Garantir schema da tabela users_web (réplica local do banco comercial)
+  async ensureUsersWebSchema() {
+    const sql = `
+      CREATE TABLE IF NOT EXISTS users_web (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        nome TEXT,
+        ativo INTEGER DEFAULT 1,
+        comercial_id INTEGER,
+        sincronizado_em TEXT,
+        criado_em TEXT DEFAULT (datetime('now')),
+        atualizado_em TEXT DEFAULT (datetime('now'))
+      )
+    `;
+    await this.execute(sql, []);
+    console.log('✅ Tabela users_web garantida');
+  }
+
+  // Buscar usuário na tabela users_web (local) para login web
   async buscarUsuarioLoginWeb(username) {
+    try {
+      const sql = `SELECT id, username, password, nome, ativo FROM users_web WHERE username = ? AND ativo = 1 LIMIT 1`;
+      const result = await this.execute(sql, [username]);
+      console.log(`[buscarUsuarioLoginWeb] Buscando: ${username}, encontrado: ${result.rows?.length > 0}`);
+      return result.rows?.[0] || null;
+    } catch (error) {
+      console.error('[buscarUsuarioLoginWeb] Erro:', error.message);
+      return null;
+    }
+  }
+
+  // Sincronizar usuários do banco comercial para a tabela local users_web
+  async sincronizarUsuariosComercial() {
     try {
       const comercialClient = this.getComercialClient();
       if (!comercialClient) {
-        console.error('[buscarUsuarioLoginWeb] Banco comercial não disponível');
-        return null;
+        console.error('[sincronizarUsuariosComercial] Banco comercial não disponível');
+        return { success: false, error: 'Banco comercial não configurado' };
       }
-      const sql = `SELECT id, username, password FROM users WHERE username = ? LIMIT 1`;
-      const result = await comercialClient.execute({ sql, args: [username] });
-      console.log(`[buscarUsuarioLoginWeb] Buscando no banco comercial: ${username}, encontrado: ${result.rows?.length > 0}`);
-      return result.rows?.[0] || null;
+
+      // Buscar todos usuários do banco comercial
+      const sql = `SELECT id, username, password FROM users`;
+      const result = await comercialClient.execute({ sql, args: [] });
+      const usuariosComercial = result.rows || [];
+
+      console.log(`[sincronizarUsuariosComercial] Encontrados ${usuariosComercial.length} usuários no banco comercial`);
+
+      if (usuariosComercial.length === 0) {
+        return { success: true, sincronizados: 0, mensagem: 'Nenhum usuário encontrado no banco comercial' };
+      }
+
+      let sincronizados = 0;
+      let erros = 0;
+
+      for (const usuario of usuariosComercial) {
+        try {
+          // Verificar se usuário já existe localmente
+          const existente = await this.execute(
+            `SELECT id FROM users_web WHERE username = ?`,
+            [usuario.username]
+          );
+
+          const agora = new Date().toISOString();
+
+          if (existente.rows?.length > 0) {
+            // Atualizar usuário existente
+            await this.execute(
+              `UPDATE users_web SET password = ?, comercial_id = ?, sincronizado_em = ?, atualizado_em = ? WHERE username = ?`,
+              [usuario.password, usuario.id, agora, agora, usuario.username]
+            );
+          } else {
+            // Inserir novo usuário
+            await this.execute(
+              `INSERT INTO users_web (username, password, comercial_id, sincronizado_em, criado_em, atualizado_em) VALUES (?, ?, ?, ?, ?, ?)`,
+              [usuario.username, usuario.password, usuario.id, agora, agora, agora]
+            );
+          }
+          sincronizados++;
+        } catch (err) {
+          console.error(`[sincronizarUsuariosComercial] Erro ao sincronizar ${usuario.username}:`, err.message);
+          erros++;
+        }
+      }
+
+      console.log(`[sincronizarUsuariosComercial] Sincronização concluída: ${sincronizados} OK, ${erros} erros`);
+      return {
+        success: true,
+        sincronizados,
+        erros,
+        total: usuariosComercial.length,
+        mensagem: `${sincronizados} usuários sincronizados${erros > 0 ? `, ${erros} erros` : ''}`
+      };
     } catch (error) {
-      console.error('[buscarUsuarioLoginWeb] Erro ao buscar no banco comercial:', error.message);
-      return null;
+      console.error('[sincronizarUsuariosComercial] Erro:', error.message);
+      return { success: false, error: error.message };
     }
+  }
+
+  // Listar todos usuários web (para admin)
+  async listarUsuariosWeb() {
+    const sql = `SELECT id, username, nome, ativo, comercial_id, sincronizado_em, criado_em FROM users_web ORDER BY username`;
+    const result = await this.execute(sql, []);
+    return result.rows || [];
   }
 
   // Buscar usuário web (inclui campos adicionais)

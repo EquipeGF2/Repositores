@@ -167,6 +167,54 @@ router.post('/login-web', async (req, res) => {
   }
 });
 
+// POST /api/auth/sync-users - Sincronizar usuários do banco comercial
+// Copia usuários da tabela users (banco comercial) para users_web (banco local)
+router.post('/sync-users', async (req, res) => {
+  try {
+    console.log('[SYNC-USERS] Iniciando sincronização de usuários...');
+
+    const resultado = await tursoService.sincronizarUsuariosComercial();
+
+    if (!resultado.success) {
+      return res.status(500).json({
+        ok: false,
+        code: 'SYNC_ERROR',
+        message: resultado.error || 'Erro na sincronização'
+      });
+    }
+
+    return res.json({
+      ok: true,
+      ...resultado
+    });
+  } catch (error) {
+    console.error('Erro ao sincronizar usuários:', error);
+    return res.status(500).json({
+      ok: false,
+      code: 'SYNC_ERROR',
+      message: 'Erro ao sincronizar usuários'
+    });
+  }
+});
+
+// GET /api/auth/users-web - Listar usuários web sincronizados
+router.get('/users-web', requireAuth, async (req, res) => {
+  try {
+    const usuarios = await tursoService.listarUsuariosWeb();
+    return res.json({
+      ok: true,
+      usuarios
+    });
+  } catch (error) {
+    console.error('Erro ao listar usuários web:', error);
+    return res.status(500).json({
+      ok: false,
+      code: 'LIST_ERROR',
+      message: 'Erro ao listar usuários'
+    });
+  }
+});
+
 // GET /api/auth/me - Obter dados do usuário logado
 router.get('/me', requireAuth, async (req, res) => {
   try {
