@@ -286,10 +286,10 @@ class AuthManager {
         return true;
       }
 
-      // Se não está autenticado no web, criar sessão guest (acesso livre)
-      this.criarSessaoGuest();
-      this.mostrarAplicacao();
-      return true;
+      // Se não está autenticado no web, exigir login
+      console.log('[AUTH] Web Desktop - login obrigatório');
+      this.mostrarTelaLoginWeb();
+      return false;
     }
 
     // Se é PWA e não está autenticado, exigir login
@@ -688,9 +688,8 @@ class AuthManager {
         <button onclick="authManager.logout()" class="btn btn-outline btn-sm" style="margin-left: 8px;">Sair</button>
       `;
     } else {
-      headerUser.innerHTML = `
-        <button onclick="authManager.habilitarLoginWeb()" class="btn btn-primary btn-sm">Entrar</button>
-      `;
+      // Não mostrar nada - tela de login aparece automaticamente
+      headerUser.innerHTML = '';
     }
   }
 

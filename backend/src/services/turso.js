@@ -3674,9 +3674,19 @@ class TursoService {
   // Retorna id, username e password para validação de login
   async buscarUsuarioComercialPorUsername(username) {
     try {
-      const sql = `SELECT id, username, password FROM users WHERE username = ? LIMIT 1`;
-      const result = await this.execute(sql, [username]);
-      return result.rows[0] || null;
+      const comercialClient = this.getComercialClient();
+      if (!comercialClient) {
+        console.error('[buscarUsuarioComercialPorUsername] Cliente do banco não disponível');
+        return null;
+      }
+
+      const result = await comercialClient.execute({
+        sql: 'SELECT id, username, password FROM users WHERE username = ? LIMIT 1',
+        args: [username]
+      });
+
+      console.log(`[buscarUsuarioComercialPorUsername] Buscando usuario: ${username}, encontrado: ${result.rows?.length > 0}`);
+      return result.rows?.[0] || null;
     } catch (error) {
       console.error('[buscarUsuarioComercialPorUsername] Erro:', error.message);
       return null;
