@@ -1,4 +1,4 @@
-import { getDbClient, DatabaseNotConfiguredError } from '../config/db.js';
+import { getDbClient, getComercialDbClient, DatabaseNotConfiguredError } from '../config/db.js';
 import { config } from '../config/env.js';
 
 function normalizeClienteId(clienteId) {
@@ -460,6 +460,11 @@ class TursoService {
   }
 
   getComercialClient() {
+    const comercialClient = getComercialDbClient();
+    if (comercialClient) {
+      return comercialClient;
+    }
+    console.warn('⚠️ Banco comercial não configurado, usando banco principal como fallback');
     return this.getClient();
   }
 
@@ -3671,15 +3676,20 @@ class TursoService {
   }
 
   // Buscar usuário na tabela users para login web
-  // Tabela users: username (texto), password (texto)
+  // Tabela users: username (texto), password (texto) - no banco COMERCIAL
   async buscarUsuarioLoginWeb(username) {
     try {
+      const comercialClient = this.getComercialClient();
+      if (!comercialClient) {
+        console.error('[buscarUsuarioLoginWeb] Banco comercial não disponível');
+        return null;
+      }
       const sql = `SELECT id, username, password FROM users WHERE username = ? LIMIT 1`;
-      const result = await this.execute(sql, [username]);
-      console.log(`[buscarUsuarioLoginWeb] Buscando: ${username}, encontrado: ${result.rows?.length > 0}`);
+      const result = await comercialClient.execute({ sql, args: [username] });
+      console.log(`[buscarUsuarioLoginWeb] Buscando no banco comercial: ${username}, encontrado: ${result.rows?.length > 0}`);
       return result.rows?.[0] || null;
     } catch (error) {
-      console.error('[buscarUsuarioLoginWeb] Erro:', error.message);
+      console.error('[buscarUsuarioLoginWeb] Erro ao buscar no banco comercial:', error.message);
       return null;
     }
   }
