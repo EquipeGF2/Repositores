@@ -509,8 +509,8 @@ class App {
         // await this.atualizarAlertaRateioGlobal(); // DESABILITADO - tabela cliente não existe no banco principal
 
         // Verificar se usuário tem acesso a alguma tela
-        const telasPermitidas = auth?.telas || [];
-        if (telasPermitidas.length === 0 && auth?.isLoggedIn()) {
+        const telasPermitidas = authManager?.telas || [];
+        if (telasPermitidas.length === 0 && authManager?.isLoggedIn()) {
             // Usuário logado mas sem permissões
             this.elements.pageTitle.textContent = 'Sem permissões';
             this.elements.contentBody.innerHTML = `
@@ -938,17 +938,17 @@ class App {
         const paginaHash = this.obterPaginaDoHash();
 
         // Se tem hash e o usuário tem permissão, usar
-        if (paginaHash && auth?.podeAcessarTela(paginaHash)) {
+        if (paginaHash && authManager?.podeAcessarTela(paginaHash)) {
             return paginaHash;
         }
 
         // Se a página atual está nas permissões, usar
-        if (this.currentPage && auth?.podeAcessarTela(this.currentPage)) {
+        if (this.currentPage && authManager?.podeAcessarTela(this.currentPage)) {
             return this.currentPage;
         }
 
         // Se não, usar a primeira tela permitida
-        const primeiraTela = auth?.telas?.[0]?.id;
+        const primeiraTela = authManager?.telas?.[0]?.id;
         if (primeiraTela) {
             return primeiraTela;
         }
@@ -1143,9 +1143,9 @@ class App {
     }
 
     usuarioTemPermissao(tela) {
-        // Verificar usando o sistema de telas do auth
-        if (typeof auth !== 'undefined' && auth.isLoggedIn()) {
-            return auth.podeAcessarTela(tela);
+        // Verificar usando o sistema de telas do authManager
+        if (typeof authManager !== 'undefined' && authManager.isLoggedIn()) {
+            return authManager.podeAcessarTela(tela);
         }
         // Se não está logado, não tem permissão
         return false;
@@ -1194,8 +1194,8 @@ class App {
     }
 
     renderAcessoNegado(tela) {
-        // Buscar título da tela nas telas do auth ou usar nome da tela
-        const telaInfo = auth?.telas?.find(t => t.id === tela);
+        // Buscar título da tela nas telas do authManager ou usar nome da tela
+        const telaInfo = authManager?.telas?.find(t => t.id === tela);
         const telaLabel = telaInfo?.titulo || tela || 'esta página';
         this.elements.pageTitle.textContent = 'Acesso negado';
         this.elements.contentBody.innerHTML = `
@@ -1969,7 +1969,7 @@ class App {
 
         try {
             const backendUrl = this.registroRotaState?.backendUrl || 'https://repositor-backend.onrender.com';
-            const token = auth.token;
+            const token = authManager.token;
 
             // Buscar permissões do usuário via API
             const response = await fetch(`${backendUrl}/api/auth/usuario/${this.usuarioSelecionadoAclConfig.id}/permissoes`, {
@@ -2061,7 +2061,7 @@ class App {
 
         try {
             const backendUrl = this.registroRotaState?.backendUrl || 'https://repositor-backend.onrender.com';
-            const token = auth.token;
+            const token = authManager.token;
 
             const response = await fetch(`${backendUrl}/api/auth/usuario/${this.usuarioSelecionadoAclConfig.id}/permissoes`, {
                 method: 'PUT',
