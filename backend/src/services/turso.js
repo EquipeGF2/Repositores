@@ -3670,6 +3670,20 @@ class TursoService {
     `, [usuarioId]);
   }
 
+  // Buscar usuário na tabela users para login web
+  // Tabela users: username (texto), password (texto)
+  async buscarUsuarioLoginWeb(username) {
+    try {
+      const sql = `SELECT id, username, password FROM users WHERE username = ? LIMIT 1`;
+      const result = await this.execute(sql, [username]);
+      console.log(`[buscarUsuarioLoginWeb] Buscando: ${username}, encontrado: ${result.rows?.length > 0}`);
+      return result.rows?.[0] || null;
+    } catch (error) {
+      console.error('[buscarUsuarioLoginWeb] Erro:', error.message);
+      return null;
+    }
+  }
+
   // Buscar usuário web (inclui campos adicionais)
   async buscarUsuarioWebPorUsername(username) {
     const sql = `

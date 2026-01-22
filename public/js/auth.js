@@ -286,10 +286,10 @@ class AuthManager {
         return true;
       }
 
-      // Se não está autenticado no web, criar sessão guest (acesso livre)
-      this.criarSessaoGuest();
-      this.mostrarAplicacao();
-      return true;
+      // Se não está autenticado no web, exigir login
+      console.log('[AUTH] Web Desktop - login obrigatório');
+      this.mostrarTelaLoginWeb();
+      return false;
     }
 
     // Se é PWA e não está autenticado, exigir login
@@ -382,14 +382,6 @@ class AuthManager {
                 <button type="submit" class="btn btn-primary btn-login" id="btnEntrarWeb">Entrar</button>
               </form>
 
-              <div class="login-divider">
-                <span>ou</span>
-              </div>
-
-              <button type="button" class="btn btn-outline btn-visitante" id="btnContinuarVisitante">
-                Continuar como Visitante
-              </button>
-              <p class="login-hint">Visitantes têm acesso limitado ao sistema</p>
             </div>
           </div>
         </div>
@@ -507,40 +499,6 @@ class AuthManager {
             margin-top: 8px;
           }
 
-          .login-divider {
-            display: flex;
-            align-items: center;
-            margin: 24px 0;
-          }
-
-          .login-divider::before,
-          .login-divider::after {
-            content: '';
-            flex: 1;
-            height: 1px;
-            background: #e5e7eb;
-          }
-
-          .login-divider span {
-            padding: 0 16px;
-            color: #9ca3af;
-            font-size: 13px;
-          }
-
-          .btn-visitante {
-            width: 100%;
-            padding: 12px;
-            font-size: 14px;
-            border-radius: 8px;
-          }
-
-          .login-hint {
-            text-align: center;
-            color: #9ca3af;
-            font-size: 12px;
-            margin: 12px 0 0;
-          }
-
           @media (max-width: 480px) {
             .login-page-overlay {
               padding: 0;
@@ -568,12 +526,6 @@ class AuthManager {
       document.getElementById('formLoginWeb').addEventListener('submit', async (e) => {
         e.preventDefault();
         await this.processarLoginWeb();
-      });
-
-      document.getElementById('btnContinuarVisitante').addEventListener('click', () => {
-        loginPage.remove();
-        this.criarSessaoGuest();
-        this.mostrarAplicacao();
       });
     }
   }
@@ -736,9 +688,8 @@ class AuthManager {
         <button onclick="authManager.logout()" class="btn btn-outline btn-sm" style="margin-left: 8px;">Sair</button>
       `;
     } else {
-      headerUser.innerHTML = `
-        <button onclick="authManager.habilitarLoginWeb()" class="btn btn-primary btn-sm">Entrar</button>
-      `;
+      // Não mostrar nada - tela de login aparece automaticamente
+      headerUser.innerHTML = '';
     }
   }
 
