@@ -170,6 +170,61 @@ router.post('/login-web', async (req, res) => {
 
 // ==================== CRUD de Usuários Web ====================
 
+// POST /api/auth/users-web/seed - Popular usuários iniciais (SEM autenticação - usar apenas uma vez)
+router.post('/users-web/seed', async (req, res) => {
+  try {
+    const usuariosIniciais = [
+      { username: 'Angelo', password: 'geR*123*', full_name: 'Angelo Lopes' },
+      { username: 'Fabricio', password: 'Ger@123*', full_name: 'Fabricio - MKT Grupo Dallas' },
+      { username: 'Genaro', password: 'Germ@7600*', full_name: 'Genaro de Freitas Forrati' },
+      { username: 'Isabella', password: 'Mkt@123*', full_name: 'Isabella Faccin' },
+      { username: 'Julio', password: 'Com@123*', full_name: 'Julio Reichel' },
+      { username: 'Patricia', password: 'Mel@123*', full_name: 'Patricia Ilha Vianna Gueths' }
+    ];
+
+    let criados = 0;
+    let existentes = 0;
+    let erros = 0;
+
+    for (const usuario of usuariosIniciais) {
+      try {
+        // Verificar se já existe
+        const existente = await tursoService.buscarUsuarioLoginWeb(usuario.username);
+        if (existente) {
+          existentes++;
+          continue;
+        }
+
+        await tursoService.criarUsuarioWeb({
+          username: usuario.username,
+          password: usuario.password,
+          full_name: usuario.full_name,
+          active: 1
+        });
+        criados++;
+      } catch (err) {
+        console.error(`Erro ao criar ${usuario.username}:`, err.message);
+        erros++;
+      }
+    }
+
+    return res.json({
+      ok: true,
+      message: `Seed concluído: ${criados} criados, ${existentes} já existiam, ${erros} erros`,
+      criados,
+      existentes,
+      erros
+    });
+  } catch (error) {
+    console.error('Erro no seed de usuários:', error);
+    return res.status(500).json({
+      ok: false,
+      code: 'SEED_ERROR',
+      message: 'Erro ao popular usuários'
+    });
+  }
+});
+
 // GET /api/auth/users-web - Listar usuários web
 router.get('/users-web', requireAuth, async (req, res) => {
   try {
