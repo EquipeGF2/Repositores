@@ -938,12 +938,12 @@ class App {
         const paginaHash = this.obterPaginaDoHash();
 
         // Se tem hash e o usuário tem permissão, usar
-        if (paginaHash && authManager?.podeAcessarTela(paginaHash)) {
+        if (paginaHash && authManager?.hasPermission(paginaHash)) {
             return paginaHash;
         }
 
         // Se a página atual está nas permissões, usar
-        if (this.currentPage && authManager?.podeAcessarTela(this.currentPage)) {
+        if (this.currentPage && authManager?.hasPermission(this.currentPage)) {
             return this.currentPage;
         }
 
@@ -1145,7 +1145,7 @@ class App {
     usuarioTemPermissao(tela) {
         // Verificar usando o sistema de telas do authManager
         if (typeof authManager !== 'undefined' && authManager.isAuthenticated()) {
-            return authManager.podeAcessarTela(tela);
+            return authManager.hasPermission(tela);
         }
         // Se não está logado, não tem permissão
         return false;
