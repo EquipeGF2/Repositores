@@ -2024,7 +2024,7 @@ class TursoService {
 
     if (campos.length === 0) return;
 
-    campos.push('atualizado_em = datetime("now")');
+    campos.push('atualizado_em = datetime("now", "-03:00")');
     valores.push(usuarioId);
 
     const sql = `UPDATE cc_usuarios SET ${campos.join(', ')} WHERE usuario_id = ?`;
@@ -2032,12 +2032,12 @@ class TursoService {
   }
 
   async registrarUltimoLogin(usuarioId) {
-    const sql = 'UPDATE cc_usuarios SET ultimo_login = datetime("now") WHERE usuario_id = ?';
+    const sql = 'UPDATE cc_usuarios SET ultimo_login = datetime("now", "-03:00") WHERE usuario_id = ?';
     await this.execute(sql, [usuarioId]);
   }
 
   async desativarUsuario(usuarioId) {
-    const sql = 'UPDATE cc_usuarios SET ativo = 0, atualizado_em = datetime("now") WHERE usuario_id = ?';
+    const sql = 'UPDATE cc_usuarios SET ativo = 0, atualizado_em = datetime("now", "-03:00") WHERE usuario_id = ?';
     await this.execute(sql, [usuarioId]);
   }
 
