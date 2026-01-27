@@ -217,7 +217,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { nome_completo, email, perfil, ativo, nova_senha } = req.body;
+    const { nome_completo, email, perfil, ativo, nova_senha, rep_id } = req.body;
 
     const usuario = await tursoService.buscarUsuarioPorId(id);
     if (!usuario) {
@@ -234,6 +234,7 @@ router.put('/:id', async (req, res) => {
     if (email !== undefined) dadosAtualizacao.email = email;
     if (perfil !== undefined) dadosAtualizacao.perfil = perfil;
     if (ativo !== undefined) dadosAtualizacao.ativo = ativo ? 1 : 0;
+    if (rep_id !== undefined) dadosAtualizacao.repId = rep_id;
 
     // Atualizar senha se fornecida
     if (nova_senha) {

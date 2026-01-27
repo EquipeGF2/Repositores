@@ -1876,7 +1876,7 @@ class App {
             const method = id ? 'PUT' : 'POST';
 
             const body = { username, nome_completo, email, rep_id, perfil };
-            if (senha) body.senha = senha;
+            if (senha) body.nova_senha = senha;
             if (id) body.ativo = ativo;
 
             const headers = { 'Content-Type': 'application/json' };

@@ -2017,6 +2017,10 @@ class TursoService {
       campos.push('ativo = ?');
       valores.push(dados.ativo);
     }
+    if (dados.repId !== undefined) {
+      campos.push('rep_id = ?');
+      valores.push(dados.repId);
+    }
 
     if (campos.length === 0) return;
 
