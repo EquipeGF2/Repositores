@@ -1876,8 +1876,14 @@ class App {
             const method = id ? 'PUT' : 'POST';
 
             const body = { username, nome_completo, email, rep_id, perfil };
-            if (senha) body.nova_senha = senha;
-            if (id) body.ativo = ativo;
+            if (id) {
+                // Edição: backend espera 'nova_senha' para atualizar senha
+                if (senha) body.nova_senha = senha;
+                body.ativo = ativo;
+            } else {
+                // Criação: backend espera 'password'
+                if (senha) body.password = senha;
+            }
 
             const headers = { 'Content-Type': 'application/json' };
             if (token) headers['Authorization'] = `Bearer ${token}`;
