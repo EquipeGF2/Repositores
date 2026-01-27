@@ -217,7 +217,12 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { nome_completo, email, perfil, ativo, nova_senha, rep_id } = req.body;
+    let { nome_completo, email, perfil, ativo, nova_senha, rep_id, password } = req.body;
+
+    // Compatibilidade com frontend que envia "password" em vez de "nova_senha"
+    if (!nova_senha && password) {
+      nova_senha = password;
+    }
 
     const usuario = await tursoService.buscarUsuarioPorId(id);
     if (!usuario) {
