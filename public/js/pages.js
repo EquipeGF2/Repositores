@@ -1925,63 +1925,11 @@ export const pages = {
                         </div>
                         <button class="modal-close" onclick="window.app.fecharModalAtividades()">&times;</button>
                     </div>
-                    <div class="modal-body">
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
-                            <!-- Coluna 1 -->
-                            <div style="display: flex; flex-direction: column; gap: 20px;">
-                                <!-- Quantidade de Frentes -->
-                                <div class="form-group">
-                                    <label for="atv_qtd_frentes">Quantidade de Frentes *</label>
-                                    <input type="number" id="atv_qtd_frentes" min="1" placeholder="Ex: 3" required>
-                                </div>
-
-                                <!-- Merchandising -->
-                                <div class="form-group">
-                                    <label style="margin-bottom: 12px; display: block; font-weight: 600;">Usou Merchandising? *</label>
-                                    <div style="display: flex; gap: 16px;">
-                                        <label class="checkbox-label" style="flex: 0;">
-                                            <input type="radio" name="atv_merchandising" id="atv_merchandising_sim" value="1" required>
-                                            <span>Sim</span>
-                                        </label>
-                                        <label class="checkbox-label" style="flex: 0;">
-                                            <input type="radio" name="atv_merchandising" id="atv_merchandising_nao" value="0" required>
-                                            <span>Não</span>
-                                        </label>
-                                    </div>
-                                </div>
-
-                                <!-- Quantidade Pontos Extras (condicional) -->
-                                <div class="form-group" id="grupo_qtd_pontos_extras" style="display: none;">
-                                    <label for="atv_qtd_pontos_extras">Quantidade de Pontos Extras *</label>
-                                    <input type="number" id="atv_qtd_pontos_extras" min="1" placeholder="Ex: 5">
-                                </div>
-                            </div>
-
-                            <!-- Coluna 2 -->
-                            <div style="display: flex; flex-direction: column; gap: 20px;">
-                                <!-- Checklist de Serviços -->
-                                <div class="form-group">
-                                    <label style="margin-bottom: 12px; display: block; font-weight: 600;">Atividades Realizadas * (marque ao menos uma)</label>
-                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                                        <label class="checkbox-label">
-                                            <input type="checkbox" id="atv_abastecimento">
-                                            <span>Abastecimento</span>
-                                        </label>
-                                        <label class="checkbox-label">
-                                            <input type="checkbox" id="atv_espaco_loja">
-                                            <span>Espaço Loja</span>
-                                        </label>
-                                        <label class="checkbox-label">
-                                            <input type="checkbox" id="atv_ruptura_loja">
-                                            <span>Ruptura Loja</span>
-                                        </label>
-                                        <label class="checkbox-label">
-                                            <input type="checkbox" id="atv_pontos_extras">
-                                            <span>Pontos Extras</span>
-                                        </label>
-                                    </div>
-                                </div>
-                            </div>
+                    <div class="modal-body" id="modalAtividadesBody">
+                        <!-- Conteúdo será gerado dinamicamente pelo app.js -->
+                        <div style="text-align: center; padding: 40px;">
+                            <div class="spinner"></div>
+                            <p style="margin-top: 12px; color: #6b7280;">Carregando atividades...</p>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -1990,23 +1938,6 @@ export const pages = {
                     </div>
                 </div>
             </div>
-
-            <script>
-                // Mostrar/esconder campo de quantidade de pontos extras
-                document.addEventListener('DOMContentLoaded', function() {
-                    const checkboxPontosExtras = document.getElementById('atv_pontos_extras');
-                    const grupoPontosExtras = document.getElementById('grupo_qtd_pontos_extras');
-
-                    if (checkboxPontosExtras && grupoPontosExtras) {
-                        checkboxPontosExtras.addEventListener('change', function() {
-                            grupoPontosExtras.style.display = this.checked ? 'block' : 'none';
-                            if (!this.checked) {
-                                document.getElementById('atv_qtd_pontos_extras').value = '';
-                            }
-                        });
-                    }
-                });
-            </script>
 
             <style>
                 .checkbox-label {
@@ -2714,8 +2645,8 @@ export const pages = {
         return `
             <div class="card">
                 <div class="card-body" style="padding-top: 0;">
-                    <!-- Tabs de Configuração -->
-                    <div class="config-tabs" style="margin-top: 0;">
+                    <!-- Tabs de Configuração - Desktop -->
+                    <div class="config-tabs config-tabs-desktop" style="margin-top: 0;">
                         <button class="config-tab active" data-config-tab="geral">⚙️ Geral</button>
                         <button class="config-tab" data-config-tab="sessoes">📋 Sessões</button>
                         <button class="config-tab" data-config-tab="documentos">📄 Documentos</button>
@@ -2724,6 +2655,25 @@ export const pages = {
                         <button class="config-tab" data-config-tab="usuarios">👤 Usuários</button>
                         <button class="config-tab" data-config-tab="acessos">🔐 Acessos</button>
                         <button class="config-tab" data-config-tab="espacos">📦 Tipos de Espaço</button>
+                        <button class="config-tab" data-config-tab="sincronizacao">🔄 Sincronização</button>
+                        <button class="config-tab" data-config-tab="atividades">📋 Atividades</button>
+                    </div>
+
+                    <!-- Tabs de Configuração - Mobile (Dropdown) -->
+                    <div class="config-tabs-mobile" style="margin-top: 0; margin-bottom: 16px;">
+                        <label for="configTabSelect" style="display: block; font-size: 13px; color: #6b7280; margin-bottom: 4px;">Seção</label>
+                        <select id="configTabSelect" class="config-tab-select">
+                            <option value="geral">⚙️ Geral</option>
+                            <option value="sessoes">📋 Sessões</option>
+                            <option value="documentos">📄 Documentos</option>
+                            <option value="rubricas">💰 Rubricas</option>
+                            <option value="coordenadas">📍 Coordenadas</option>
+                            <option value="usuarios">👤 Usuários</option>
+                            <option value="acessos">🔐 Acessos</option>
+                            <option value="espacos">📦 Tipos de Espaço</option>
+                            <option value="sincronizacao">🔄 Sincronização</option>
+                            <option value="atividades">📋 Atividades</option>
+                        </select>
                     </div>
 
                     <!-- Aba Geral -->
@@ -2879,19 +2829,19 @@ export const pages = {
 
                     <!-- Aba Usuários -->
                     <div class="config-tab-content" id="config-tab-usuarios">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <div class="usuarios-header-config">
                             <div>
                                 <h4 style="color: var(--text-primary); margin: 0;">Gestão de Usuários</h4>
                                 <p class="text-muted" style="margin: 4px 0 0; font-size: 13px;">
                                     Gerencie os usuários que têm acesso ao sistema PWA.
                                 </p>
                             </div>
-                            <button class="btn btn-primary btn-sm" id="btnNovoUsuarioConfig">
+                            <button class="btn btn-primary btn-sm btn-novo-usuario-config" id="btnNovoUsuarioConfig">
                                 + Novo Usuário
                             </button>
                         </div>
 
-                        <div class="filtros-usuarios" style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; background: #f9fafb; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb;">
+                        <div class="filtros-usuarios filtros-usuarios-config" style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; background: #f9fafb; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb;">
                             <div class="filter-group" style="flex: 1; min-width: 200px;">
                                 <label for="configFiltroUsuarioNome">Buscar por nome ou username</label>
                                 <input type="text" id="configFiltroUsuarioNome" placeholder="Digite para filtrar...">
@@ -2914,7 +2864,8 @@ export const pages = {
                             </div>
                         </div>
 
-                        <div class="table-responsive">
+                        <!-- Tabela Desktop -->
+                        <div class="table-responsive usuarios-table-desktop">
                             <table class="data-table" id="tabelaUsuariosConfig">
                                 <thead>
                                     <tr>
@@ -2937,6 +2888,13 @@ export const pages = {
                                     </tr>
                                 </tbody>
                             </table>
+                        </div>
+
+                        <!-- Cards Mobile -->
+                        <div class="usuarios-cards-mobile" id="usuariosCardsConfig">
+                            <div style="text-align: center; padding: 20px; color: #6b7280;">
+                                Carregando usuários...
+                            </div>
                         </div>
                     </div>
 
@@ -2997,8 +2955,414 @@ export const pages = {
                             }
                         </style>
                     </div>
+
+                    <!-- Aba Sincronização PWA -->
+                    <div class="config-tab-content" id="config-tab-sincronizacao">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+                            <!-- Configurações de Horários -->
+                            <div style="background: #f9fafb; padding: 20px; border-radius: 12px; border: 1px solid #e5e7eb;">
+                                <h4 style="color: var(--text-primary); margin: 0 0 8px 0;">Horários de Download</h4>
+                                <p class="text-muted" style="margin: 0 0 16px; font-size: 13px;">
+                                    Defina os horários em que os repositores receberão dados atualizados do servidor.
+                                </p>
+
+                                <div class="form-group" style="margin-bottom: 12px;">
+                                    <label for="syncHorario1">Primeiro horário (manhã)</label>
+                                    <input type="time" id="syncHorario1" value="06:00" style="width: 100%;">
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 16px;">
+                                    <label for="syncHorario2">Segundo horário (meio-dia)</label>
+                                    <input type="time" id="syncHorario2" value="12:00" style="width: 100%;">
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 16px;">
+                                    <label style="display: inline-flex; align-items: flex-start; cursor: pointer;">
+                                        <input type="checkbox" id="syncEnviarCheckout" checked style="margin: 3px 6px 0 0; flex-shrink: 0;">
+                                        <span style="line-height: 1.4;">Enviar dados automaticamente no checkout</span>
+                                    </label>
+                                    <small class="text-muted" style="display: block; margin-top: 4px;">
+                                        Se desmarcado, os dados ficam na fila até o próximo horário de sync.
+                                    </small>
+                                </div>
+
+                                <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 16px 0;">
+
+                                <h4 style="color: var(--text-primary); margin: 0 0 8px 0;">Validação de Tempo</h4>
+                                <p class="text-muted" style="margin: 0 0 16px; font-size: 13px;">
+                                    Previne manipulação de tempo de atendimento.
+                                </p>
+
+                                <div class="form-group" style="margin-bottom: 12px;">
+                                    <label for="syncTempoMaxCheckout">Tempo máximo para checkout (minutos)</label>
+                                    <input type="number" id="syncTempoMaxCheckout" value="30" min="5" max="120" style="width: 100%;">
+                                    <small class="text-muted" style="display: block; margin-top: 4px;">
+                                        Tempo máximo permitido após tirar foto para completar checkout.
+                                    </small>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 16px;">
+                                    <label for="syncTempoMinimoVisitas">Tempo mínimo entre visitas (minutos)</label>
+                                    <input type="number" id="syncTempoMinimoVisitas" value="5" min="1" max="60" style="width: 100%;">
+                                    <small class="text-muted" style="display: block; margin-top: 4px;">
+                                        Tempo mínimo obrigatório entre checkout e próximo checkin.
+                                    </small>
+                                </div>
+
+                                <button type="button" class="btn btn-primary" id="btnSalvarConfigSync">
+                                    Salvar Configurações
+                                </button>
+                            </div>
+
+                            <!-- Status de Sincronização -->
+                            <div style="background: #f9fafb; padding: 20px; border-radius: 12px; border: 1px solid #e5e7eb;">
+                                <div class="sync-status-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
+                                    <div style="flex: 1; min-width: 200px;">
+                                        <h4 style="color: var(--text-primary); margin: 0 0 4px 0;">Status por Repositor</h4>
+                                        <p class="text-muted" style="margin: 0; font-size: 13px;">
+                                            Monitore quando cada repositor sincronizou.
+                                        </p>
+                                    </div>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="btnAtualizarStatusSync">
+                                        Atualizar
+                                    </button>
+                                </div>
+
+                                <div id="listaStatusSync" style="max-height: 300px; overflow-y: auto;">
+                                    <p class="text-muted" style="text-align: center; padding: 20px;">
+                                        Clique em "Atualizar" para carregar.
+                                    </p>
+                                </div>
+
+                                <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 16px 0;">
+
+                                <!-- Ações de Forçar Sincronização -->
+                                <h4 style="color: var(--text-primary); margin: 0 0 8px 0;">Forçar Sincronização</h4>
+                                <p class="text-muted" style="margin: 0 0 12px; font-size: 13px;">
+                                    Force repositores a sincronizar na próxima conexão.
+                                </p>
+
+                                <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+                                    <button type="button" class="btn btn-warning btn-sm" id="btnForcarDownloadTodos" title="Forçar todos os repositores a baixar dados atualizados">
+                                        Forçar Download (Todos)
+                                    </button>
+                                    <button type="button" class="btn btn-warning btn-sm" id="btnForcarUploadTodos" title="Forçar todos os repositores a enviar dados pendentes">
+                                        Forçar Upload (Todos)
+                                    </button>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="selectForcarSyncRepositor" style="font-size: 13px;">Forçar repositor específico:</label>
+                                    <div style="display: flex; gap: 8px; margin-top: 4px;">
+                                        <select id="selectForcarSyncRepositor" style="flex: 1; min-width: 150px;">
+                                            <option value="">Selecione um repositor...</option>
+                                        </select>
+                                        <button type="button" class="btn btn-outline btn-sm" id="btnForcarSyncIndividual" disabled>
+                                            Forçar Sync
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <style>
+                            @media (max-width: 768px) {
+                                #config-tab-sincronizacao > div {
+                                    grid-template-columns: 1fr !important;
+                                }
+                            }
+
+                            .sync-repositor-item {
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
+                                padding: 12px;
+                                background: white;
+                                border-radius: 8px;
+                                margin-bottom: 8px;
+                                border: 1px solid #e5e7eb;
+                            }
+
+                            .sync-repositor-info {
+                                flex: 1;
+                            }
+
+                            .sync-repositor-info strong {
+                                display: block;
+                                color: #111827;
+                                font-size: 14px;
+                            }
+
+                            .sync-repositor-info small {
+                                color: #6b7280;
+                                font-size: 12px;
+                            }
+
+                            .sync-status-badge {
+                                padding: 4px 8px;
+                                border-radius: 12px;
+                                font-size: 11px;
+                                font-weight: 600;
+                            }
+
+                            .sync-status-ok {
+                                background: #dcfce7;
+                                color: #166534;
+                            }
+
+                            .sync-status-warning {
+                                background: #fef3c7;
+                                color: #92400e;
+                            }
+
+                            .sync-status-error {
+                                background: #fee2e2;
+                                color: #991b1b;
+                            }
+                        </style>
+                    </div>
+
+                    <!-- Aba Atividades -->
+                    <div class="config-tab-content" id="config-tab-atividades">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+                            <div>
+                                <h4 style="margin: 0 0 4px 0; color: var(--text-primary);">Atividades do Repositor</h4>
+                                <p class="text-muted" style="margin: 0; font-size: 13px;">
+                                    Configure as atividades que os repositores podem registrar durante as visitas.
+                                </p>
+                            </div>
+                            <div style="display: flex; gap: 8px;">
+                                <button type="button" class="btn btn-secondary btn-sm" id="btnInicializarAtividades">
+                                    Inicializar Padrão
+                                </button>
+                                <button type="button" class="btn btn-primary btn-sm" id="btnNovaAtividade">
+                                    + Nova Atividade
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="listaAtividadesConfig" style="display: flex; flex-direction: column; gap: 8px;">
+                            <p class="text-muted" style="text-align: center; padding: 40px;">Carregando atividades...</p>
+                        </div>
+
+                        <style>
+                            .atividade-item {
+                                display: flex;
+                                align-items: center;
+                                gap: 16px;
+                                padding: 16px;
+                                background: #f9fafb;
+                                border-radius: 8px;
+                                border: 1px solid #e5e7eb;
+                            }
+
+                            .atividade-item.inativa {
+                                opacity: 0.6;
+                                background: #fef2f2;
+                            }
+
+                            .atividade-info {
+                                flex: 1;
+                            }
+
+                            .atividade-info strong {
+                                display: block;
+                                color: #111827;
+                                font-size: 14px;
+                                margin-bottom: 4px;
+                            }
+
+                            .atividade-info small {
+                                color: #6b7280;
+                                font-size: 12px;
+                            }
+
+                            .atividade-badges {
+                                display: flex;
+                                gap: 6px;
+                                flex-wrap: wrap;
+                            }
+
+                            .atividade-badge {
+                                padding: 2px 8px;
+                                border-radius: 12px;
+                                font-size: 11px;
+                                font-weight: 500;
+                            }
+
+                            .badge-tipo {
+                                background: #dbeafe;
+                                color: #1e40af;
+                            }
+
+                            .badge-obrigatorio {
+                                background: #fef3c7;
+                                color: #92400e;
+                            }
+
+                            .badge-valor {
+                                background: #dcfce7;
+                                color: #166534;
+                            }
+
+                            .badge-grupo {
+                                background: #f3e8ff;
+                                color: #7c3aed;
+                            }
+
+                            .atividade-acoes {
+                                display: flex;
+                                gap: 8px;
+                            }
+
+                            @media (max-width: 768px) {
+                                .atividade-item {
+                                    flex-direction: column;
+                                    align-items: flex-start;
+                                }
+
+                                .atividade-acoes {
+                                    width: 100%;
+                                    justify-content: flex-end;
+                                }
+                            }
+                        </style>
+                    </div>
                 </div>
             </div>
+
+            <!-- Modal para Atividade -->
+            <div class="modal" id="modalAtividadeConfig">
+                <div class="modal-content modal-atividade-config">
+                    <div class="modal-header">
+                        <h3 id="modalAtividadeConfigTitulo">Nova Atividade</h3>
+                        <button class="modal-close" onclick="document.getElementById('modalAtividadeConfig').classList.remove('active')">&times;</button>
+                    </div>
+                    <div class="modal-body" style="padding: 20px;">
+                        <form id="formAtividadeConfig">
+                            <input type="hidden" id="atividadeIdConfig">
+
+                            <!-- Nome -->
+                            <div class="form-group" style="margin-bottom: 16px;">
+                                <label for="atividadeNomeConfig" style="font-weight: 600; margin-bottom: 6px; display: block;">Nome da Atividade *</label>
+                                <input type="text" id="atividadeNomeConfig" required maxlength="100" placeholder="Ex: Abastecimento de Loja" style="width: 100%;">
+                            </div>
+
+                            <!-- Descrição -->
+                            <div class="form-group" style="margin-bottom: 16px;">
+                                <label for="atividadeDescricaoConfig" style="font-weight: 600; margin-bottom: 6px; display: block;">Descrição</label>
+                                <textarea id="atividadeDescricaoConfig" rows="2" placeholder="Descrição opcional" style="width: 100%; resize: vertical;"></textarea>
+                            </div>
+
+                            <!-- Grid: Tipo + Grupo -->
+                            <div class="atv-config-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="atividadeTipoConfig" style="font-weight: 600; margin-bottom: 6px; display: block;">Tipo de Campo *</label>
+                                    <select id="atividadeTipoConfig" required style="width: 100%;">
+                                        <option value="checkbox">Checkbox</option>
+                                        <option value="boolean">Sim/Não</option>
+                                        <option value="number">Número</option>
+                                        <option value="text">Texto</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="atividadeGrupoConfig" style="font-weight: 600; margin-bottom: 6px; display: block;">Grupo</label>
+                                    <select id="atividadeGrupoConfig" style="width: 100%;">
+                                        <option value="checklist">Checklist</option>
+                                        <option value="campos">Campos</option>
+                                        <option value="extras">Extras</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Grid: Ordem + Checkboxes -->
+                            <div class="atv-config-grid" style="display: grid; grid-template-columns: 120px 1fr; gap: 16px; margin-bottom: 16px; align-items: end;">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="atividadeOrdemConfig" style="font-weight: 600; margin-bottom: 6px; display: block;">Ordem</label>
+                                    <input type="number" id="atividadeOrdemConfig" value="0" min="0" max="999" style="width: 100%;">
+                                </div>
+
+                                <div style="display: flex; gap: 20px; flex-wrap: wrap; padding-bottom: 8px;">
+                                    <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap;">
+                                        <input type="checkbox" id="atividadeObrigatorioConfig" style="margin: 0; width: 16px; height: 16px;">
+                                        <span>Obrigatório</span>
+                                    </label>
+                                    <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap;">
+                                        <input type="checkbox" id="atividadeAtivoConfig" checked style="margin: 0; width: 16px; height: 16px;">
+                                        <span>Ativo</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Valor Adicional -->
+                            <div style="padding: 16px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+                                <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: 600;">
+                                    <input type="checkbox" id="atividadeRequerValorConfig" style="margin: 0; width: 16px; height: 16px;">
+                                    <span>Requer valor adicional</span>
+                                </label>
+                                <p class="text-muted" style="margin: 6px 0 0; font-size: 12px;">
+                                    Ex: "Pontos Extras" abre campo para informar quantidade
+                                </p>
+
+                                <div id="grupoValorAdicional" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e2e8f0;">
+                                    <div class="atv-config-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                        <div class="form-group" style="margin-bottom: 0;">
+                                            <label for="atividadeValorLabelConfig" style="font-size: 13px; margin-bottom: 4px; display: block;">Rótulo</label>
+                                            <input type="text" id="atividadeValorLabelConfig" placeholder="Ex: Quantidade" style="width: 100%;">
+                                        </div>
+                                        <div class="form-group" style="margin-bottom: 0;">
+                                            <label for="atividadeValorTipoConfig" style="font-size: 13px; margin-bottom: 4px; display: block;">Tipo</label>
+                                            <select id="atividadeValorTipoConfig" style="width: 100%;">
+                                                <option value="number">Número</option>
+                                                <option value="text">Texto</option>
+                                                <option value="currency">Valor (R$)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer" style="padding: 16px 20px; gap: 12px;">
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalAtividadeConfig').classList.remove('active')">Cancelar</button>
+                        <button type="button" class="btn btn-primary" id="btnSalvarAtividadeConfig">Salvar</button>
+                    </div>
+                </div>
+            </div>
+
+            <style>
+                .modal-atividade-config {
+                    width: 90%;
+                    max-width: 500px;
+                    max-height: 85vh;
+                    overflow-y: auto;
+                }
+
+                @media (max-width: 600px) {
+                    .modal-atividade-config {
+                        width: 95%;
+                        max-width: none;
+                        margin: 10px;
+                        max-height: 90vh;
+                    }
+
+                    .modal-atividade-config .atv-config-grid {
+                        grid-template-columns: 1fr !important;
+                    }
+
+                    .modal-atividade-config .modal-body {
+                        padding: 16px !important;
+                    }
+
+                    .modal-atividade-config input[type="text"],
+                    .modal-atividade-config input[type="number"],
+                    .modal-atividade-config select,
+                    .modal-atividade-config textarea {
+                        font-size: 16px !important;
+                    }
+                }
+            </style>
 
             <!-- Modal para Tipo de Espaço -->
             <div class="modal" id="modalTipoEspacoConfig">
@@ -3191,6 +3555,7 @@ export const pages = {
             </div>
 
             <style>
+                /* === TABS DESKTOP === */
                 .config-tabs {
                     display: flex;
                     gap: 4px;
@@ -3234,6 +3599,157 @@ export const pages = {
                 @keyframes fadeIn {
                     from { opacity: 0; }
                     to { opacity: 1; }
+                }
+
+                /* === TABS MOBILE (DROPDOWN) === */
+                .config-tabs-mobile {
+                    display: none;
+                }
+
+                .config-tab-select {
+                    width: 100%;
+                    padding: 12px 16px;
+                    font-size: 15px;
+                    font-weight: 600;
+                    border: 2px solid #e5e7eb;
+                    border-radius: 8px;
+                    background: white;
+                    color: #374151;
+                    cursor: pointer;
+                }
+
+                .config-tab-select:focus {
+                    outline: none;
+                    border-color: #dc2626;
+                }
+
+                /* === HEADER USUARIOS === */
+                .usuarios-header-config {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 16px;
+                }
+
+                /* === CARDS MOBILE (ocultos por padrao) === */
+                .usuarios-cards-mobile {
+                    display: none;
+                }
+
+                .usuario-card {
+                    background: white;
+                    border: 1px solid #e5e7eb;
+                    border-radius: 12px;
+                    padding: 16px;
+                    margin-bottom: 12px;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                }
+
+                .usuario-card-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: flex-start;
+                    margin-bottom: 12px;
+                    padding-bottom: 12px;
+                    border-bottom: 1px solid #f3f4f6;
+                }
+
+                .usuario-card-info h5 {
+                    margin: 0 0 4px 0;
+                    font-size: 16px;
+                    color: #111827;
+                    font-weight: 600;
+                }
+
+                .usuario-card-info .username {
+                    color: #6b7280;
+                    font-size: 13px;
+                }
+
+                .usuario-card-badges {
+                    display: flex;
+                    gap: 6px;
+                }
+
+                .usuario-card-body {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 8px 16px;
+                    font-size: 13px;
+                }
+
+                .usuario-card-body .campo {
+                    display: flex;
+                    flex-direction: column;
+                }
+
+                .usuario-card-body .campo label {
+                    color: #9ca3af;
+                    font-size: 11px;
+                    text-transform: uppercase;
+                    margin-bottom: 2px;
+                }
+
+                .usuario-card-body .campo span {
+                    color: #374151;
+                }
+
+                .usuario-card-footer {
+                    display: flex;
+                    gap: 8px;
+                    margin-top: 12px;
+                    padding-top: 12px;
+                    border-top: 1px solid #f3f4f6;
+                }
+
+                .usuario-card-footer .btn {
+                    flex: 1;
+                    padding: 10px;
+                    font-size: 14px;
+                }
+
+                /* === RESPONSIVO MOBILE === */
+                @media (max-width: 768px) {
+                    /* Esconder tabs desktop, mostrar dropdown */
+                    .config-tabs-desktop {
+                        display: none !important;
+                    }
+
+                    .config-tabs-mobile {
+                        display: block !important;
+                    }
+
+                    /* Header usuarios em coluna */
+                    .usuarios-header-config {
+                        flex-direction: column;
+                        align-items: stretch;
+                        gap: 12px;
+                    }
+
+                    .btn-novo-usuario-config {
+                        width: 100%;
+                        padding: 12px;
+                        font-size: 15px;
+                    }
+
+                    /* Filtros em coluna */
+                    .filtros-usuarios-config {
+                        flex-direction: column !important;
+                    }
+
+                    .filtros-usuarios-config .filter-group {
+                        width: 100% !important;
+                        min-width: unset !important;
+                    }
+
+                    /* Esconder tabela, mostrar cards */
+                    .usuarios-table-desktop {
+                        display: none !important;
+                    }
+
+                    .usuarios-cards-mobile {
+                        display: block !important;
+                    }
                 }
             </style>
         `;

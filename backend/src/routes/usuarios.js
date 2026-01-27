@@ -1,21 +1,26 @@
 import express from 'express';
 import { tursoService } from '../services/turso.js';
 import { authService } from '../services/auth.js';
-import { requireAuth, requireAdmin } from '../middleware/auth.js';
+import { requireAuth, requireAdmin, optionalAuth } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// TEMPORÁRIO: Acesso livre para gestão de usuários do PWA
-// TODO: Implementar autenticação web completa com seleção de usuário
-// router.use(requireAuth);
-// router.use(requireAdmin);
-
-// GET /api/usuarios - Listar todos os usuários
-router.get('/', async (req, res) => {
+// GET /api/usuarios - Listar usuários
+// - Admin: vê todos os usuários
+// - Repositor: vê apenas seu próprio usuário
+// - Sem autenticação (web): vê todos (mantém compatibilidade)
+router.get('/', optionalAuth, async (req, res) => {
   try {
-    const usuarios = await tursoService.listarUsuarios();
+    let usuarios = await tursoService.listarUsuarios();
 
-    console.log(`[Listar usuários] Total: ${usuarios.length}, IDs: ${usuarios.map(u => u.usuario_id).join(', ')}`);
+    // Se há usuário autenticado e é repositor, filtrar apenas seu usuário
+    if (req.user && req.user.perfil === 'repositor' && req.user.rep_id) {
+      const repIdLogado = Number(req.user.rep_id);
+      usuarios = usuarios.filter(u => Number(u.rep_id) === repIdLogado);
+      console.log(`[Listar usuários] Repositor ${req.user.username} (rep_id: ${repIdLogado}) - Filtrado para ${usuarios.length} usuário(s)`);
+    } else {
+      console.log(`[Listar usuários] Total: ${usuarios.length}, IDs: ${usuarios.map(u => u.usuario_id).join(', ')}`);
+    }
 
     // Remover password_hash da resposta
     const usuariosSafe = usuarios.map(u => {
@@ -40,7 +45,10 @@ router.get('/', async (req, res) => {
 // POST /api/usuarios - Criar novo usuário
 router.post('/', async (req, res) => {
   try {
-    const { username, password, nome_completo, email, rep_id, perfil } = req.body;
+    const { username: rawUsername, password, nome_completo, email, rep_id, perfil } = req.body;
+
+    // Normalizar username: remover espaços e converter para string
+    const username = rawUsername ? String(rawUsername).trim() : '';
 
     // Validações
     if (!username || !password || !nome_completo) {
@@ -58,6 +66,8 @@ router.post('/', async (req, res) => {
         message: 'Senha deve ter no mínimo 6 caracteres'
       });
     }
+
+    console.log(`[Criar usuário] Iniciando criação - username: "${username}", rep_id: ${rep_id}, tipo username: ${typeof username}`);
 
     // Verificar se username já existe (incluindo inativos)
     const usuarioExistente = await tursoService.buscarUsuarioPorUsernameIncluindoInativos(username);
@@ -83,12 +93,13 @@ router.post('/', async (req, res) => {
 
       // Se o usuário está inativo, reativar com os novos dados
       const passwordHash = await authService.hashPassword(password);
+      const repIdNumeroReativar = rep_id ? Number(rep_id) : null;
       const usuarioReativado = await tursoService.reativarUsuario(
         usuarioExistente.usuario_id,
         passwordHash,
         nome_completo,
         email,
-        rep_id || null
+        repIdNumeroReativar
       );
 
       return res.status(200).json({
@@ -101,13 +112,16 @@ router.post('/', async (req, res) => {
     // Hash da senha
     const passwordHash = await authService.hashPassword(password);
 
-    // Criar usuário
+    // Criar usuário - garantir que rep_id seja número ou null
+    const repIdNumero = rep_id ? Number(rep_id) : null;
+    console.log(`[Criar usuário] rep_id convertido: ${rep_id} (${typeof rep_id}) -> ${repIdNumero} (${typeof repIdNumero})`);
+
     const novoUsuario = await tursoService.criarUsuario({
       username,
       passwordHash,
       nomeCompleto: nome_completo,
       email,
-      repId: rep_id || null,
+      repId: repIdNumero,
       perfil: perfil || 'repositor'
     });
 
@@ -128,12 +142,66 @@ router.post('/', async (req, res) => {
       });
     }
 
+    // Verificar se é erro de FOREIGN KEY (rep_id inválido)
+    if (error.message && error.message.includes('FOREIGN KEY')) {
+      console.error(`[Criar usuário] FOREIGN KEY ERROR - rep_id não existe na tabela cad_repositor`);
+      return res.status(400).json({
+        ok: false,
+        code: 'INVALID_REP_ID',
+        message: `O repositor informado (rep_id: ${req.body?.rep_id}) não existe no cadastro`
+      });
+    }
+
     // Verificar se é erro de constraint (username duplicado, etc)
     if (error.message && (error.message.includes('UNIQUE') || error.message.includes('constraint'))) {
+      // Tentar buscar o usuário que está causando o conflito para dar mais informações
+      const usernameParaBusca = req.body?.username || '';
+      console.error(`[Criar usuário] CONSTRAINT ERROR - buscando usuário conflitante para username: "${usernameParaBusca}"`);
+
+      try {
+        // Buscar todos os usuários para diagnóstico
+        const todosUsuarios = await tursoService.listarUsuarios();
+        const usernameNormalizado = usernameParaBusca ? String(usernameParaBusca).trim() : '';
+
+        // Buscar por diferentes variações do username
+        const conflitante = todosUsuarios.find(u => {
+          const uUsername = u.username ? String(u.username).trim() : '';
+          return uUsername === usernameNormalizado ||
+                 uUsername.toLowerCase() === usernameNormalizado.toLowerCase();
+        });
+
+        console.log(`[Criar usuário] Usuários no banco: ${todosUsuarios.length}`,
+          todosUsuarios.map(u => ({ id: u.usuario_id, username: u.username, rep_id: u.rep_id })));
+        console.log(`[Criar usuário] Usuário conflitante encontrado:`, conflitante || 'nenhum');
+
+        if (conflitante) {
+          return res.status(409).json({
+            ok: false,
+            code: 'USERNAME_EXISTS',
+            message: `Nome de usuário já está em uso (ID: ${conflitante.usuario_id}, username: "${conflitante.username}", rep_id: ${conflitante.rep_id || 'nenhum'})`,
+            usuarioExistente: {
+              usuario_id: conflitante.usuario_id,
+              username: conflitante.username,
+              rep_id: conflitante.rep_id,
+              ativo: conflitante.ativo
+            },
+            debug: {
+              usernameRecebido: usernameParaBusca,
+              usernameNormalizado: usernameNormalizado,
+              usernameConflitante: conflitante.username,
+              tipoRecebido: typeof usernameParaBusca,
+              tipoConflitante: typeof conflitante.username
+            }
+          });
+        }
+      } catch (buscarError) {
+        console.error('[Criar usuário] Erro ao buscar usuário conflitante:', buscarError);
+      }
+
       return res.status(409).json({
         ok: false,
         code: 'USERNAME_EXISTS',
-        message: 'Nome de usuário já está em uso'
+        message: `Nome de usuário "${usernameParaBusca}" já está em uso (erro de constraint, usuário não encontrado na busca prévia)`
       });
     }
 
@@ -149,7 +217,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { nome_completo, email, perfil, ativo, nova_senha } = req.body;
+    const { nome_completo, email, perfil, ativo, nova_senha, rep_id } = req.body;
 
     const usuario = await tursoService.buscarUsuarioPorId(id);
     if (!usuario) {
@@ -166,6 +234,7 @@ router.put('/:id', async (req, res) => {
     if (email !== undefined) dadosAtualizacao.email = email;
     if (perfil !== undefined) dadosAtualizacao.perfil = perfil;
     if (ativo !== undefined) dadosAtualizacao.ativo = ativo ? 1 : 0;
+    if (rep_id !== undefined) dadosAtualizacao.repId = rep_id;
 
     // Atualizar senha se fornecida
     if (nova_senha) {

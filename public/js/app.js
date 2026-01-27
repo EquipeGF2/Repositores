@@ -508,8 +508,19 @@ class App {
         this.configurarVisibilidadeConfiguracoes();
         // await this.atualizarAlertaRateioGlobal(); // DESABILITADO - tabela cliente não existe no banco principal
 
-        if (!this.usuarioTemPermissao('mod_repositores')) {
-            this.renderAcessoNegado('mod_repositores');
+        // Verificar se usuário tem acesso a alguma tela
+        const telasPermitidas = authManager?.telas || [];
+        if (telasPermitidas.length === 0 && authManager?.isAuthenticated()) {
+            // Usuário logado mas sem permissões
+            this.elements.pageTitle.textContent = 'Sem permissões';
+            this.elements.contentBody.innerHTML = `
+                <div class="acesso-negado">
+                    <div class="acesso-negado__icon">🔒</div>
+                    <h3>Sem permissões configuradas</h3>
+                    <p>Você não tem permissão para acessar nenhuma tela do sistema.</p>
+                    <p style="color: #6b7280; font-size: 14px; margin-top: 8px;">Solicite liberação ao administrador.</p>
+                </div>
+            `;
             return;
         }
 
@@ -727,6 +738,33 @@ class App {
         const modal = document.createElement('div');
         modal.className = 'modal-overlay geo-overlay';
         const textoErro = typeof erro === 'string' ? erro : (erro?.message || 'Não foi possível capturar a latitude/longitude.');
+
+        // Detectar se é problema do Windows (permissão do navegador está OK mas falhou)
+        const isWindowsIssue = erro?.estadoPermissao === 'granted' && erro?.code === 1;
+
+        // Customizar dicas baseado no tipo de problema
+        const dicasHTML = isWindowsIssue ? `
+            <div class="geo-tips">
+                <strong>⚠️ Problema detectado: Serviço de Localização do Windows desativado</strong>
+                <ul>
+                    <li><span>Passo 1:</span> Abra as Configurações do Windows (Win + I)</li>
+                    <li><span>Passo 2:</span> Vá em Privacidade e segurança ➜ Localização</li>
+                    <li><span>Passo 3:</span> Ative "Serviços de localização"</li>
+                    <li><span>Passo 4:</span> Ative também "Permitir que apps acessem sua localização"</li>
+                    <li><span>Passo 5:</span> Clique em "Tentar novamente" abaixo</li>
+                </ul>
+            </div>
+        ` : `
+            <div class="geo-tips">
+                <strong>Dicas rápidas:</strong>
+                <ul>
+                    <li><span>Chrome:</span> Clique no cadeado ➜ Permissões ➜ Localização ➜ Permitir.</li>
+                    <li><span>Android:</span> Verifique se o GPS está ativo e permita o acesso quando solicitado.</li>
+                    <li><span>Windows:</span> Configurações ➜ Privacidade ➜ Localização ➜ Ativar para o navegador.</li>
+                </ul>
+            </div>
+        `;
+
         modal.innerHTML = `
             <div class="modal-content geo-modal" role="dialog" aria-labelledby="geoTitulo">
                 <div class="modal-header">
@@ -740,14 +778,7 @@ class App {
                     <div class="alert warning" style="margin:0;">
                         <strong>Obrigatório:</strong> habilite o GPS/Localização do navegador ou dispositivo.
                     </div>
-                    <div class="geo-tips">
-                        <strong>Dicas rápidas:</strong>
-                        <ul>
-                            <li><span>Chrome:</span> Clique no cadeado ➜ Permissões ➜ Localização ➜ Permitir.</li>
-                            <li><span>Android:</span> Verifique se o GPS está ativo e permita o acesso quando solicitado.</li>
-                            <li><span>Windows:</span> Configurações ➜ Privacidade ➜ Localização ➜ Ativar para o navegador.</li>
-                        </ul>
-                    </div>
+                    ${dicasHTML}
                     <div style="display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap;">
                         <button class="btn btn-secondary" type="button" data-geo-close>Fechar</button>
                         <button class="btn btn-primary" type="button" data-geo-retry>Tentar novamente</button>
@@ -789,7 +820,9 @@ class App {
             console.error('Localização não liberada:', error);
             if (obrigatoria) {
                 this.ocultarOverlayGeoCarregando();
-                this.showNotification('Ative a localização do Windows e clique em “Tentar novamente”.', 'warning');
+                // Usar mensagem de erro específica do geoService
+                const notifMsg = error?.message || 'Ative a localização e clique em "Tentar novamente".';
+                this.showNotification(notifMsg, 'warning');
                 this.mostrarModalGeoObrigatoria(error, () => this.exigirLocalizacaoInicial(true));
             }
             return false;
@@ -802,11 +835,16 @@ class App {
             this.geoState.ultimaCaptura = posicao;
             return posicao;
         } catch (error) {
-            const mensagem = contextoDescricao
-                ? `${contextoDescricao}: ${error?.message || 'Habilite o GPS para continuar.'}`
-                : error;
-            this.showNotification('Ative a localização do Windows e clique em “Tentar novamente”.', 'warning');
-            this.mostrarModalGeoObrigatoria(mensagem, onRetry);
+            // Preservar erro original com estadoPermissao para o modal detectar tipo de problema
+            const erroEnriquecido = {
+                ...error,
+                message: contextoDescricao
+                    ? `${contextoDescricao}: ${error?.message || 'Habilite o GPS para continuar.'}`
+                    : error?.message
+            };
+            const notifMsg = error?.message || 'Ative a localização e clique em "Tentar novamente".';
+            this.showNotification(notifMsg, 'warning');
+            this.mostrarModalGeoObrigatoria(erroEnriquecido, onRetry);
             return null;
         }
     }
@@ -897,7 +935,25 @@ class App {
     }
 
     definirPaginaInicial() {
-        return this.obterPaginaDoHash() || this.currentPage;
+        const paginaHash = this.obterPaginaDoHash();
+
+        // Se tem hash e o usuário tem permissão, usar
+        if (paginaHash && authManager?.hasPermission(paginaHash)) {
+            return paginaHash;
+        }
+
+        // Se a página atual está nas permissões, usar
+        if (this.currentPage && authManager?.hasPermission(this.currentPage)) {
+            return this.currentPage;
+        }
+
+        // Se não, usar a primeira tela permitida
+        const primeiraTela = authManager?.telas?.[0]?.id;
+        if (primeiraTela) {
+            return primeiraTela;
+        }
+
+        return this.currentPage;
     }
 
     obterPaginaDoHash() {
@@ -1063,7 +1119,11 @@ class App {
         const userStatus = document.getElementById('userStatus');
         if (!userStatus) return;
 
-        if (this.usuarioLogado?.username) {
+        // Verificar se há usuário autenticado via authManager
+        if (typeof authManager !== 'undefined' && authManager.isAuthenticated() && authManager.usuario) {
+            const nome = authManager.usuario.nome_completo || authManager.usuario.username;
+            userStatus.textContent = `Usuário: ${nome}`;
+        } else if (this.usuarioLogado?.username && this.usuarioLogado.username !== 'Visitante') {
             userStatus.textContent = `Usuário: ${this.usuarioLogado.username}`;
         } else {
             userStatus.textContent = 'Usuário não autenticado';
@@ -1086,15 +1146,45 @@ class App {
         this.permissoes = mapa;
     }
 
-    usuarioTemPermissao() {
-        return true;
+    usuarioTemPermissao(tela) {
+        // Verificar usando o sistema de telas do authManager
+        if (typeof authManager !== 'undefined' && authManager.isAuthenticated()) {
+            return authManager.hasPermission(tela);
+        }
+        // Se não está logado, não tem permissão
+        return false;
     }
 
     configurarVisibilidadeConfiguracoes() {
+        // Configurar visibilidade de todas as telas do menu baseado nas permissões
+        document.querySelectorAll('[data-page]').forEach(link => {
+            const pageName = link.getAttribute('data-page');
+            const temPermissao = this.usuarioTemPermissao(pageName);
+
+            if (temPermissao) {
+                link.classList.remove('hidden');
+                link.parentElement?.classList.remove('hidden');
+            } else {
+                link.classList.add('hidden');
+                link.parentElement?.classList.add('hidden');
+            }
+        });
+
+        // Esconder categorias vazias (onde todos os itens estão ocultos)
+        document.querySelectorAll('.nav-links__group').forEach(group => {
+            const visibleLinks = group.querySelectorAll('[data-page]:not(.hidden)');
+            if (visibleLinks.length === 0) {
+                group.classList.add('hidden');
+            } else {
+                group.classList.remove('hidden');
+            }
+        });
+
+        // Manter compatibilidade com links de controle/gestão
         const linkControle = document.querySelector('[data-page="controle-acessos"]');
         const linkGestaoUsuarios = document.querySelector('[data-page="gestao-usuarios"]');
 
-        if (this.usuarioTemPermissao('mod_configuracoes')) {
+        if (this.usuarioTemPermissao('configuracoes-sistema')) {
             linkControle?.classList.remove('hidden');
             linkControle?.parentElement?.classList.remove('hidden');
             linkGestaoUsuarios?.classList.remove('hidden');
@@ -1107,14 +1197,17 @@ class App {
         }
     }
 
-    renderAcessoNegado(recurso) {
-        const recursoLabel = ACL_RECURSOS.find(r => r.codigo === recurso)?.titulo || 'módulo';
+    renderAcessoNegado(tela) {
+        // Buscar título da tela nas telas do authManager ou usar nome da tela
+        const telaInfo = authManager?.telas?.find(t => t.id === tela);
+        const telaLabel = telaInfo?.titulo || tela || 'esta página';
         this.elements.pageTitle.textContent = 'Acesso negado';
         this.elements.contentBody.innerHTML = `
             <div class="acesso-negado">
                 <div class="acesso-negado__icon">🔒</div>
                 <h3>Acesso negado</h3>
-                <p>Você não tem permissão para acessar ${recursoLabel}. Solicite liberação ao administrador.</p>
+                <p>Você não tem permissão para acessar "${telaLabel}".</p>
+                <p style="color: #6b7280; font-size: 14px; margin-top: 8px;">Solicite liberação ao administrador do sistema.</p>
             </div>
         `;
     }
@@ -1122,34 +1215,59 @@ class App {
     async inicializarConfiguracoesSistema() {
         // ==================== LÓGICA DE TABS ====================
         const configTabs = document.querySelectorAll('.config-tab');
+        const configTabSelect = document.getElementById('configTabSelect');
+
+        // Função para ativar uma aba específica
+        const ativarAba = (tabName) => {
+            // Remover active de todos
+            configTabs.forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.config-tab-content').forEach(c => c.classList.remove('active'));
+
+            // Ativar a aba correta nos botões desktop
+            const tabBtn = document.querySelector(`.config-tab[data-config-tab="${tabName}"]`);
+            if (tabBtn) tabBtn.classList.add('active');
+
+            // Ativar o conteúdo
+            const content = document.getElementById(`config-tab-${tabName}`);
+            if (content) content.classList.add('active');
+
+            // Sincronizar o dropdown mobile
+            if (configTabSelect) configTabSelect.value = tabName;
+
+            // Carregar dados específicos da aba
+            if (tabName === 'documentos') {
+                this.carregarTiposDocumentos();
+            } else if (tabName === 'rubricas') {
+                this.carregarTiposGasto();
+            } else if (tabName === 'coordenadas') {
+                this.inicializarAbaCoordenadasConfig();
+            } else if (tabName === 'usuarios') {
+                this.inicializarAbaUsuariosConfig();
+            } else if (tabName === 'acessos') {
+                this.inicializarAbaAcessosConfig();
+            } else if (tabName === 'espacos') {
+                this.carregarTiposEspacoConfig();
+            } else if (tabName === 'sincronizacao') {
+                this.inicializarAbaSincronizacaoConfig();
+            } else if (tabName === 'atividades') {
+                this.inicializarAbaAtividadesConfig();
+            }
+        };
+
+        // Event listener para tabs desktop
         configTabs.forEach(tab => {
             tab.addEventListener('click', () => {
-                // Remover active de todos
-                configTabs.forEach(t => t.classList.remove('active'));
-                document.querySelectorAll('.config-tab-content').forEach(c => c.classList.remove('active'));
-
-                // Ativar a aba clicada
-                tab.classList.add('active');
                 const tabName = tab.dataset.configTab;
-                const content = document.getElementById(`config-tab-${tabName}`);
-                if (content) content.classList.add('active');
-
-                // Carregar dados específicos da aba
-                if (tabName === 'documentos') {
-                    this.carregarTiposDocumentos();
-                } else if (tabName === 'rubricas') {
-                    this.carregarTiposGasto();
-                } else if (tabName === 'coordenadas') {
-                    this.inicializarAbaCoordenadasConfig();
-                } else if (tabName === 'usuarios') {
-                    this.inicializarAbaUsuariosConfig();
-                } else if (tabName === 'acessos') {
-                    this.inicializarAbaAcessosConfig();
-                } else if (tabName === 'espacos') {
-                    this.carregarTiposEspacoConfig();
-                }
+                ativarAba(tabName);
             });
         });
+
+        // Event listener para dropdown mobile
+        if (configTabSelect) {
+            configTabSelect.addEventListener('change', (e) => {
+                ativarAba(e.target.value);
+            });
+        }
 
         const btnSalvar = document.getElementById('btnSalvarConfigSistema');
         const inputDistancia = document.getElementById('configDistanciaMaxima');
@@ -1517,7 +1635,25 @@ class App {
             }
 
             const data = await fetchJson(url, { headers });
-            this.usuariosFiltradosConfig = data.usuarios || [];
+            let usuarios = data.usuarios || [];
+
+            // Verificar se é PWA e repositor - filtrar para mostrar apenas seu próprio usuário
+            const deveAplicarFiltro = window.authManager?.deveAplicarFiltroRepositor?.();
+            const repIdLogado = window.authManager?.getRepId?.();
+
+            if (deveAplicarFiltro && repIdLogado) {
+                // Filtrar apenas o usuário do repositor logado
+                usuarios = usuarios.filter(u => u.rep_id === repIdLogado || u.rep_id === String(repIdLogado));
+
+                // Ocultar filtros e botão novo usuário no PWA para repositor
+                const filtrosContainer = document.querySelector('.filtros-usuarios-config');
+                const btnNovoUsuario = document.getElementById('btnNovoUsuarioConfig');
+
+                if (filtrosContainer) filtrosContainer.style.display = 'none';
+                if (btnNovoUsuario) btnNovoUsuario.style.display = 'none';
+            }
+
+            this.usuariosFiltradosConfig = usuarios;
             this.renderizarTabelaUsuariosConfig();
         } catch (error) {
             console.error('Erro ao carregar usuários:', error);
@@ -1535,7 +1671,7 @@ class App {
 
     renderizarTabelaUsuariosConfig(filtroNome = '', filtroPerfil = '', filtroStatus = '') {
         const tbody = document.getElementById('usuariosTableBodyConfig');
-        if (!tbody) return;
+        const cardsContainer = document.getElementById('usuariosCardsConfig');
 
         let usuarios = [...(this.usuariosFiltradosConfig || [])];
 
@@ -1552,53 +1688,122 @@ class App {
             usuarios = usuarios.filter(u => u.ativo === Number(filtroStatus));
         }
 
-        if (usuarios.length === 0) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="9" style="text-align: center; padding: 20px; color: #6b7280;">
-                        Nenhum usuário encontrado
-                    </td>
-                </tr>
-            `;
-            return;
+        // Renderizar tabela desktop
+        if (tbody) {
+            if (usuarios.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="9" style="text-align: center; padding: 20px; color: #6b7280;">
+                            Nenhum usuário encontrado
+                        </td>
+                    </tr>
+                `;
+            } else {
+                tbody.innerHTML = usuarios.map(usuario => {
+                    const statusBadge = usuario.ativo
+                        ? '<span class="badge badge-success">Ativo</span>'
+                        : '<span class="badge badge-danger">Inativo</span>';
+
+                    const perfilBadge = usuario.perfil === 'admin'
+                        ? '<span class="badge badge-primary">Admin</span>'
+                        : '<span class="badge badge-secondary">Repositor</span>';
+
+                    const ultimoLogin = usuario.ultimo_login
+                        ? new Date(usuario.ultimo_login).toLocaleString('pt-BR')
+                        : '-';
+
+                    return `
+                        <tr>
+                            <td>${usuario.usuario_id}</td>
+                            <td><strong>${usuario.username}</strong></td>
+                            <td>${usuario.nome_completo || '-'}</td>
+                            <td>${usuario.email || '-'}</td>
+                            <td>${usuario.rep_id ? `${usuario.rep_id} - ${usuario.repo_nome || ''}` : '-'}</td>
+                            <td>${perfilBadge}</td>
+                            <td>${statusBadge}</td>
+                            <td style="font-size: 13px;">${ultimoLogin}</td>
+                            <td style="white-space: nowrap;">
+                                <button class="btn btn-sm btn-primary" onclick="app.editarUsuarioConfig(${usuario.usuario_id})" title="Editar" style="margin-right: 4px;">
+                                    ✏️
+                                </button>
+                                <button class="btn btn-sm ${usuario.ativo ? 'btn-danger' : 'btn-success'}"
+                                        onclick="app.toggleStatusUsuarioConfig(${usuario.usuario_id}, ${usuario.ativo})"
+                                        title="${usuario.ativo ? 'Desativar' : 'Ativar'}">
+                                    ${usuario.ativo ? '🚫' : '✅'}
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
         }
 
-        tbody.innerHTML = usuarios.map(usuario => {
-            const statusBadge = usuario.ativo
-                ? '<span class="badge badge-success">Ativo</span>'
-                : '<span class="badge badge-danger">Inativo</span>';
+        // Renderizar cards mobile
+        if (cardsContainer) {
+            if (usuarios.length === 0) {
+                cardsContainer.innerHTML = `
+                    <div style="text-align: center; padding: 20px; color: #6b7280;">
+                        Nenhum usuário encontrado
+                    </div>
+                `;
+            } else {
+                cardsContainer.innerHTML = usuarios.map(usuario => {
+                    const statusBadge = usuario.ativo
+                        ? '<span class="badge badge-success">Ativo</span>'
+                        : '<span class="badge badge-danger">Inativo</span>';
 
-            const perfilBadge = usuario.perfil === 'admin'
-                ? '<span class="badge badge-primary">Admin</span>'
-                : '<span class="badge badge-secondary">Repositor</span>';
+                    const perfilBadge = usuario.perfil === 'admin'
+                        ? '<span class="badge badge-primary">Admin</span>'
+                        : '<span class="badge badge-secondary">Repositor</span>';
 
-            const ultimoLogin = usuario.ultimo_login
-                ? new Date(usuario.ultimo_login).toLocaleString('pt-BR')
-                : '-';
+                    const ultimoLogin = usuario.ultimo_login
+                        ? new Date(usuario.ultimo_login).toLocaleString('pt-BR')
+                        : '-';
 
-            return `
-                <tr>
-                    <td>${usuario.usuario_id}</td>
-                    <td><strong>${usuario.username}</strong></td>
-                    <td>${usuario.nome_completo || '-'}</td>
-                    <td>${usuario.email || '-'}</td>
-                    <td>${usuario.rep_id ? `${usuario.rep_id} - ${usuario.repo_nome || ''}` : '-'}</td>
-                    <td>${perfilBadge}</td>
-                    <td>${statusBadge}</td>
-                    <td style="font-size: 13px;">${ultimoLogin}</td>
-                    <td style="white-space: nowrap;">
-                        <button class="btn btn-sm btn-primary" onclick="app.editarUsuarioConfig(${usuario.usuario_id})" title="Editar" style="margin-right: 4px;">
-                            ✏️
-                        </button>
-                        <button class="btn btn-sm ${usuario.ativo ? 'btn-danger' : 'btn-success'}"
-                                onclick="app.toggleStatusUsuarioConfig(${usuario.usuario_id}, ${usuario.ativo})"
-                                title="${usuario.ativo ? 'Desativar' : 'Ativar'}">
-                            ${usuario.ativo ? '🚫' : '✅'}
-                        </button>
-                    </td>
-                </tr>
-            `;
-        }).join('');
+                    return `
+                        <div class="usuario-card">
+                            <div class="usuario-card-header">
+                                <div class="usuario-card-info">
+                                    <h5>${usuario.nome_completo || '-'}</h5>
+                                    <span class="username">@${usuario.username}</span>
+                                </div>
+                                <div class="usuario-card-badges">
+                                    ${perfilBadge}
+                                    ${statusBadge}
+                                </div>
+                            </div>
+                            <div class="usuario-card-body">
+                                <div class="campo">
+                                    <label>ID</label>
+                                    <span>${usuario.usuario_id}</span>
+                                </div>
+                                <div class="campo">
+                                    <label>Email</label>
+                                    <span>${usuario.email || '-'}</span>
+                                </div>
+                                <div class="campo">
+                                    <label>Repositor</label>
+                                    <span>${usuario.rep_id ? `${usuario.rep_id} - ${usuario.repo_nome || ''}` : '-'}</span>
+                                </div>
+                                <div class="campo">
+                                    <label>Último Login</label>
+                                    <span>${ultimoLogin}</span>
+                                </div>
+                            </div>
+                            <div class="usuario-card-footer">
+                                <button class="btn btn-primary" onclick="app.editarUsuarioConfig(${usuario.usuario_id})">
+                                    ✏️ Editar
+                                </button>
+                                <button class="btn ${usuario.ativo ? 'btn-danger' : 'btn-success'}"
+                                        onclick="app.toggleStatusUsuarioConfig(${usuario.usuario_id}, ${usuario.ativo})">
+                                    ${usuario.ativo ? '🚫 Desativar' : '✅ Ativar'}
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
     }
 
     abrirModalUsuarioConfig(usuario = null) {
@@ -1716,7 +1921,7 @@ class App {
                 body: JSON.stringify({ ativo: ativoAtual ? 0 : 1 })
             });
 
-            if (data.success || data.usuario) {
+            if (data.ok || data.success || data.usuario) {
                 this.showNotification(`Usuário ${ativoAtual ? 'desativado' : 'ativado'} com sucesso!`, 'success');
                 await this.carregarUsuariosConfig();
             } else {
@@ -1739,9 +1944,21 @@ class App {
 
         matrizPermissoes.innerHTML = '<p class="text-muted">Selecione um usuário para exibir as permissões.</p>';
 
-        const usuarios = await db.listarUsuariosComercial();
-        seletorUsuario.innerHTML = '<option value="">Selecione um usuário</option>' +
-            usuarios.map(user => `<option value="${user.id}" data-username="${user.username}">${user.username}</option>`).join('');
+        // Carregar usuários da tabela users_web via API
+        try {
+            const backendUrl = this.registroRotaState?.backendUrl || 'https://repositor-backend.onrender.com';
+            const token = authManager.token;
+            const response = await fetch(`${backendUrl}/api/auth/users-web`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await response.json();
+            const usuarios = data.usuarios || [];
+            seletorUsuario.innerHTML = '<option value="">Selecione um usuário</option>' +
+                usuarios.map(user => `<option value="${user.id}" data-username="${user.username}">${user.full_name || user.username}</option>`).join('');
+        } catch (error) {
+            console.error('Erro ao carregar usuários para controle de acesso:', error);
+            seletorUsuario.innerHTML = '<option value="">Erro ao carregar usuários</option>';
+        }
 
         seletorUsuario.addEventListener('change', async () => {
             const selectedOption = seletorUsuario.selectedOptions[0];
@@ -1772,8 +1989,18 @@ class App {
         matrizPermissoes.innerHTML = '<p class="text-muted">Carregando permissões...</p>';
 
         try {
-            const permissoes = await db.getPermissoesUsuario(this.usuarioSelecionadoAclConfig.id);
-            this.permissoesAtuaisConfig = permissoes || {};
+            const backendUrl = this.registroRotaState?.backendUrl || 'https://repositor-backend.onrender.com';
+            const token = authManager.token;
+
+            // Buscar permissões do usuário via API
+            const response = await fetch(`${backendUrl}/api/auth/usuario/${this.usuarioSelecionadoAclConfig.id}/permissoes`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) throw new Error('Erro ao carregar permissões');
+
+            const data = await response.json();
+            this.telasAcessosConfig = data.permissoes || [];
             this.renderMatrizPermissoesConfig();
         } catch (error) {
             console.error('Erro ao carregar permissões:', error);
@@ -1783,31 +2010,59 @@ class App {
 
     renderMatrizPermissoesConfig() {
         const matrizPermissoes = document.getElementById('configControleAcessoMatriz');
-        if (!matrizPermissoes) return;
+        if (!matrizPermissoes || !this.telasAcessosConfig) return;
 
-        const modulos = [
-            { id: 'dashboard', nome: 'Dashboard', icon: '📊' },
-            { id: 'registro-rota', nome: 'Registro de Rota', icon: '📍' },
-            { id: 'consultar-alteracoes', nome: 'Consultar Alterações', icon: '🔍' },
-            { id: 'consulta-roteiro', nome: 'Consulta Roteiro', icon: '🗺️' },
-            { id: 'cadastro-repositor', nome: 'Cadastro Repositor', icon: '👤' },
-            { id: 'custos-repositor', nome: 'Custos Repositor', icon: '💰' },
-            { id: 'configuracoes', nome: 'Configurações', icon: '⚙️' }
-        ];
+        // Agrupar telas por categoria
+        const categorias = {};
+        this.telasAcessosConfig.forEach(tela => {
+            const cat = tela.tela_categoria || 'geral';
+            if (!categorias[cat]) categorias[cat] = [];
+            categorias[cat].push(tela);
+        });
+
+        const nomesCategorias = {
+            'geral': 'Geral',
+            'repositores': 'Repositores',
+            'cadastros': 'Cadastros',
+            'registros': 'Registros',
+            'consultas': 'Consultas',
+            'relatorios': 'Relatórios',
+            'analises': 'Análises',
+            'custos': 'Custos',
+            'configuracoes': 'Configurações'
+        };
 
         matrizPermissoes.innerHTML = `
-            <div style="display: grid; gap: 8px; margin-top: 16px;">
-                ${modulos.map(modulo => {
-                    const ativo = this.permissoesAtuaisConfig?.[modulo.id] ?? true;
-                    return `
-                        <label style="display: flex; align-items: center; gap: 8px; padding: 8px; background: #f9fafb; border-radius: 6px; cursor: pointer;">
-                            <input type="checkbox" data-modulo="${modulo.id}" ${ativo ? 'checked' : ''}>
-                            <span>${modulo.icon} ${modulo.nome}</span>
-                        </label>
-                    `;
-                }).join('')}
+            <div style="margin-top: 16px;">
+                <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                    <button type="button" class="btn btn-sm btn-outline" onclick="app.marcarTodosAcessos(true)">Marcar Todos</button>
+                    <button type="button" class="btn btn-sm btn-outline" onclick="app.marcarTodosAcessos(false)">Desmarcar Todos</button>
+                </div>
+                ${Object.entries(categorias).map(([cat, telas]) => `
+                    <div style="margin-bottom: 16px;">
+                        <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 8px; color: #374151;">
+                            ${nomesCategorias[cat] || cat}
+                        </h4>
+                        <div style="display: grid; gap: 6px;">
+                            ${telas.map(tela => `
+                                <label style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: #f9fafb; border-radius: 6px; cursor: pointer; border: 1px solid #e5e7eb;">
+                                    <input type="checkbox" data-tela="${tela.tela_id}" ${tela.pode_visualizar ? 'checked' : ''}>
+                                    <span style="flex: 1;">${tela.tela_icone || '📄'} ${tela.tela_titulo}</span>
+                                </label>
+                            `).join('')}
+                        </div>
+                    </div>
+                `).join('')}
             </div>
         `;
+    }
+
+    marcarTodosAcessos(marcar) {
+        const matrizPermissoes = document.getElementById('configControleAcessoMatriz');
+        if (!matrizPermissoes) return;
+
+        const checkboxes = matrizPermissoes.querySelectorAll('input[type="checkbox"]');
+        checkboxes.forEach(cb => cb.checked = marcar);
     }
 
     async salvarPermissoesConfig() {
@@ -1819,13 +2074,31 @@ class App {
         const matrizPermissoes = document.getElementById('configControleAcessoMatriz');
         const checkboxes = matrizPermissoes.querySelectorAll('input[type="checkbox"]');
 
-        const permissoes = {};
+        // Montar array de telas com permissões
+        const telas = [];
         checkboxes.forEach(cb => {
-            permissoes[cb.dataset.modulo] = cb.checked;
+            telas.push({
+                tela_id: cb.dataset.tela,
+                pode_visualizar: cb.checked,
+                pode_editar: cb.checked
+            });
         });
 
         try {
-            await db.salvarPermissoesUsuario(this.usuarioSelecionadoAclConfig.id, permissoes);
+            const backendUrl = this.registroRotaState?.backendUrl || 'https://repositor-backend.onrender.com';
+            const token = authManager.token;
+
+            const response = await fetch(`${backendUrl}/api/auth/usuario/${this.usuarioSelecionadoAclConfig.id}/permissoes`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ telas })
+            });
+
+            if (!response.ok) throw new Error('Erro ao salvar permissões');
+
             this.showNotification('Permissões salvas com sucesso!', 'success');
         } catch (error) {
             console.error('Erro ao salvar permissões:', error);
@@ -2939,6 +3212,8 @@ class App {
 
     // Criar usuário automaticamente para um repositor
     async criarUsuarioParaRepositor(repoCod, nomeRepositor, emailRepositor) {
+        console.log('[criarUsuarioParaRepositor] Iniciando com:', { repoCod, nomeRepositor, emailRepositor });
+
         try {
             const senhaAleatoria = this.gerarSenhaAleatoria();
             const token = localStorage.getItem('auth_token');
@@ -2952,6 +3227,9 @@ class App {
                 perfil: 'repositor'
             };
 
+            console.log('[criarUsuarioParaRepositor] Enviando dados:', dados);
+            console.log('[criarUsuarioParaRepositor] URL:', `${API_BASE_URL}/api/usuarios`);
+
             const headers = {
                 'Content-Type': 'application/json'
             };
@@ -2961,11 +3239,35 @@ class App {
                 headers['Authorization'] = `Bearer ${token}`;
             }
 
-            const result = await fetchJson(`${API_BASE_URL}/api/usuarios`, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify(dados)
-            });
+            let result;
+            try {
+                console.log('[criarUsuarioParaRepositor] Fazendo fetch...');
+                const startTime = Date.now();
+
+                // Criar uma promise com timeout de 60 segundos (Render pode demorar no cold start)
+                const fetchPromise = fetchJson(`${API_BASE_URL}/api/usuarios`, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify(dados)
+                });
+
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('Timeout: servidor demorou mais de 60 segundos. Tente novamente.')), 60000);
+                });
+
+                result = await Promise.race([fetchPromise, timeoutPromise]);
+
+                const elapsed = Date.now() - startTime;
+                console.log(`[criarUsuarioParaRepositor] Fetch completado em ${elapsed}ms, result:`, result);
+            } catch (fetchError) {
+                console.error('[criarUsuarioParaRepositor] Erro no fetchJson:', fetchError);
+                console.error('[criarUsuarioParaRepositor] fetchError.status:', fetchError.status);
+                console.error('[criarUsuarioParaRepositor] fetchError.body:', fetchError.body);
+                console.error('[criarUsuarioParaRepositor] fetchError.message:', fetchError.message);
+                throw fetchError;
+            }
+
+            console.log('[criarUsuarioParaRepositor] Resposta da API:', result);
 
             // Verificar se foi reativação de usuário existente
             if (result?.message?.includes('reativado')) {
@@ -2979,10 +3281,21 @@ class App {
             // Se o usuário já existe e está ativo
             if (error.body?.code === 'USERNAME_EXISTS' || error.status === 409) {
                 const usuarioExistente = error.body?.usuarioExistente;
-                console.log('Usuário já existe para este repositor:', error.body?.message, usuarioExistente);
-                const msgDetalhada = usuarioExistente
-                    ? `Usuário PWA já existe: ID ${usuarioExistente.usuario_id}, username "${usuarioExistente.username}", rep_id: ${usuarioExistente.rep_id || 'nenhum'}`
-                    : `Usuário PWA já existe com username "${repoCod}"`;
+                const debugInfo = error.body?.debug;
+                console.log('Usuário já existe para este repositor:', {
+                    message: error.body?.message,
+                    usuarioExistente,
+                    debug: debugInfo,
+                    repoCodEnviado: repoCod,
+                    tipoRepoCod: typeof repoCod
+                });
+
+                let msgDetalhada;
+                if (usuarioExistente) {
+                    msgDetalhada = `Usuário PWA já existe: ID ${usuarioExistente.usuario_id}, username "${usuarioExistente.username}", rep_id: ${usuarioExistente.rep_id || 'nenhum'}`;
+                } else {
+                    msgDetalhada = `Conflito de username "${repoCod}" - ${error.body?.message || 'verifique os usuários cadastrados'}`;
+                }
                 this.showNotification(`${msgDetalhada}. Verifique na tela de Gestão de Usuários.`, 'info', 8000);
                 return;
             }
@@ -3033,9 +3346,9 @@ class App {
             if (!temSessao) return;
         }
 
-        const recursoNecessario = this.recursosPorPagina[pageName] || 'mod_repositores';
-        if (!this.usuarioTemPermissao(recursoNecessario)) {
-            this.renderAcessoNegado(recursoNecessario);
+        // Verificar permissão de acesso à tela
+        if (!this.usuarioTemPermissao(pageName)) {
+            this.renderAcessoNegado(pageName);
             return;
         }
 
@@ -3256,14 +3569,28 @@ class App {
             // Criar usuário automaticamente se checkbox estiver marcado e não desabilitado
             const checkboxCriarUsuario = document.getElementById('repo_criar_usuario');
             const criarUsuario = checkboxCriarUsuario?.checked && !checkboxCriarUsuario?.disabled;
+
+            console.log('[SaveRepositor] Verificando criação de usuário PWA:', {
+                checkboxExiste: !!checkboxCriarUsuario,
+                checked: checkboxCriarUsuario?.checked,
+                disabled: checkboxCriarUsuario?.disabled,
+                criarUsuario,
+                repoCodCriado,
+                tipoRepoCod: typeof repoCodCriado
+            });
+
             if (criarUsuario && repoCodCriado) {
+                console.log('[SaveRepositor] Iniciando criação de usuário PWA para repoCod:', repoCodCriado);
                 try {
                     await this.criarUsuarioParaRepositor(repoCodCriado, nome, email);
+                    console.log('[SaveRepositor] Criação de usuário PWA concluída');
                 } catch (userError) {
                     console.warn('Erro ao criar usuário para repositor:', userError);
                     const msgErro = userError?.body?.message || userError?.message || 'Erro desconhecido';
                     this.showNotification(`Repositor salvo, mas houve erro ao criar o usuário: ${msgErro}`, 'warning');
                 }
+            } else {
+                console.log('[SaveRepositor] Criação de usuário PWA NÃO foi solicitada ou repoCod inválido');
             }
 
             this.closeModalRepositor();
@@ -7021,8 +7348,15 @@ class App {
             // Verificar se repositor já tem usuário PWA
             const checkboxCriarUsuario = document.getElementById('repo_criar_usuario');
             if (checkboxCriarUsuario) {
+                // Adicionar listener para rastrear mudanças na checkbox
+                checkboxCriarUsuario.addEventListener('change', (e) => {
+                    console.log('[Checkbox PWA] Mudou para:', e.target.checked, 'disabled:', e.target.disabled);
+                });
+
                 try {
+                    console.log('[EditRepositor] Verificando usuário PWA para repo_cod:', repositor.repo_cod);
                     const response = await fetchJson(`${API_BASE_URL}/api/usuarios/por-repositor/${repositor.repo_cod}`);
+                    console.log('[EditRepositor] Resposta da verificação:', response);
                     const labelUsuario = checkboxCriarUsuario.closest('.criar-usuario-group')?.querySelector('small');
 
                     if (response?.temUsuario) {
@@ -7049,6 +7383,7 @@ class App {
                         }
                     } else {
                         // Não existe usuário
+                        console.log('[EditRepositor] Não existe usuário PWA - checkbox será desmarcada e habilitada');
                         checkboxCriarUsuario.checked = false;
                         checkboxCriarUsuario.disabled = false;
                         if (labelUsuario) {
@@ -7056,6 +7391,7 @@ class App {
                             labelUsuario.style.color = '';
                         }
                     }
+                    console.log('[EditRepositor] Estado final da checkbox:', { checked: checkboxCriarUsuario.checked, disabled: checkboxCriarUsuario.disabled });
                 } catch (e) {
                     console.warn('Erro ao verificar usuário PWA:', e);
                     checkboxCriarUsuario.checked = false;
@@ -12672,6 +13008,17 @@ class App {
         const normalizeClienteId = (v) => String(v ?? '').trim().replace(/\.0$/, '');
         const clienteIdNorm = normalizeClienteId(clienteId);
 
+        // Mostrar modal com loading
+        document.getElementById('modalAtividadesTitulo').textContent = clienteNome || 'Atividades';
+        document.getElementById('atividadesClienteInfo').textContent = `${clienteIdNorm} • ${clienteNome}`;
+        document.getElementById('modalAtividadesBody').innerHTML = `
+            <div style="text-align: center; padding: 40px;">
+                <div class="spinner"></div>
+                <p style="margin-top: 12px; color: #6b7280;">Carregando atividades...</p>
+            </div>
+        `;
+        document.getElementById('modalAtividades').classList.add('active');
+
         // Buscar sessão ativa - forçar refresh para evitar problemas de cache
         let sessaoAberta = await this.buscarSessaoAberta(repId, dataPlanejada, true);
 
@@ -12692,7 +13039,8 @@ class App {
                     serv_espaco_loja: atendimentoAberto.serv_espaco_loja,
                     serv_ruptura_loja: atendimentoAberto.serv_ruptura_loja,
                     serv_pontos_extras: atendimentoAberto.serv_pontos_extras,
-                    qtd_pontos_extras: atendimentoAberto.qtd_pontos_extras
+                    qtd_pontos_extras: atendimentoAberto.qtd_pontos_extras,
+                    atividades_json: atendimentoAberto.atividades_json
                 };
             }
         }
@@ -12705,6 +13053,7 @@ class App {
                 rep_id: Number(repId)
             });
             this.showNotification('Sessão não encontrada. Realize o check-in primeiro.', 'warning');
+            this.fecharModalAtividades();
             return;
         }
 
@@ -12715,60 +13064,225 @@ class App {
             repId: Number(repId),
             clienteId: clienteIdNorm,
             clienteNome,
-            dataPlanejada
+            dataPlanejada,
+            dadosSessao: sessaoAberta
         };
 
-        // Preencher modal com dados existentes (se houver)
-        document.getElementById('atv_qtd_frentes').value = sessaoAberta.qtd_frentes || '';
+        // Carregar atividades dinâmicas da API
+        await this.renderizarFormularioAtividades(sessaoAberta);
+    }
 
-        // Merchandising - radio buttons
-        const usouMerchandising = Boolean(sessaoAberta.usou_merchandising);
-        const mercSim = document.getElementById('atv_merchandising_sim');
-        const mercNao = document.getElementById('atv_merchandising_nao');
-        if (sessaoAberta.usou_merchandising === 1 || sessaoAberta.usou_merchandising === true) {
-            if (mercSim) mercSim.checked = true;
-        } else if (sessaoAberta.usou_merchandising === 0 || sessaoAberta.usou_merchandising === false) {
-            if (mercNao) mercNao.checked = true;
-        }
-        // Se não tem valor ainda, deixa ambos desmarcados para forçar seleção
+    async renderizarFormularioAtividades(sessaoAberta) {
+        const container = document.getElementById('modalAtividadesBody');
 
-        document.getElementById('atv_abastecimento').checked = Boolean(sessaoAberta.serv_abastecimento);
-        document.getElementById('atv_espaco_loja').checked = Boolean(sessaoAberta.serv_espaco_loja);
-        document.getElementById('atv_ruptura_loja').checked = Boolean(sessaoAberta.serv_ruptura_loja);
-        document.getElementById('atv_pontos_extras').checked = Boolean(sessaoAberta.serv_pontos_extras);
-        document.getElementById('atv_qtd_pontos_extras').value = sessaoAberta.qtd_pontos_extras || '';
+        try {
+            // Buscar atividades configuradas
+            const token = localStorage.getItem('auth_token');
+            let atividades = [];
 
-        document.getElementById('modalAtividadesTitulo').textContent = clienteNome || 'Atividades';
-        document.getElementById('atividadesClienteInfo').textContent = `${clienteIdNorm} • ${clienteNome}`;
-
-        // Configurar evento para mostrar/esconder campo de quantidade de pontos extras
-        const checkboxPontosExtras = document.getElementById('atv_pontos_extras');
-        const grupoPontosExtras = document.getElementById('grupo_qtd_pontos_extras');
-
-        const togglePontosExtras = () => {
-            if (checkboxPontosExtras.checked) {
-                grupoPontosExtras.style.display = 'block';
-            } else {
-                grupoPontosExtras.style.display = 'none';
-                document.getElementById('atv_qtd_pontos_extras').value = '';
+            if (token) {
+                try {
+                    const response = await fetch(`${this.registroRotaState.backendUrl}/api/atividades?ativas=true`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (response.ok) {
+                        const data = await response.json();
+                        atividades = data.data || [];
+                    }
+                } catch (e) {
+                    console.warn('Não foi possível carregar atividades da API, usando padrão');
+                }
             }
+
+            // Se não tem atividades configuradas, usar padrão
+            if (atividades.length === 0) {
+                atividades = this.getAtividadesPadrao();
+            }
+
+            // Armazenar atividades no state para usar no save
+            this.registroRotaState.atividadesConfiguradas = atividades;
+
+            // Separar atividades por grupo
+            const campos = atividades.filter(a => a.atv_grupo === 'campos');
+            const checklist = atividades.filter(a => a.atv_grupo === 'checklist');
+
+            // Mapear valores existentes da sessão para campos legado
+            const valoresExistentes = this.mapearValoresLegado(sessaoAberta);
+
+            // Gerar HTML do formulário
+            let html = `<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">`;
+
+            // Coluna 1 - Campos
+            html += `<div style="display: flex; flex-direction: column; gap: 20px;">`;
+            for (const atv of campos) {
+                html += this.renderizarCampoAtividade(atv, valoresExistentes);
+            }
+
+            // Campos condicionais para atividades que requerem valor adicional (exibido abaixo dos campos)
+            for (const atv of checklist.filter(a => a.atv_requer_valor)) {
+                const fieldId = this.gerarIdCampo(atv);
+                const valorAtual = valoresExistentes[`${fieldId}_valor`] || '';
+                html += `
+                    <div class="form-group atv-valor-adicional" id="grupo_${fieldId}_valor" style="display: none;">
+                        <label for="${fieldId}_valor">${atv.atv_valor_label || 'Quantidade'} *</label>
+                        <input type="${atv.atv_valor_tipo || 'number'}" id="${fieldId}_valor" min="1" placeholder="Ex: 5" value="${valorAtual}">
+                    </div>
+                `;
+            }
+            html += `</div>`;
+
+            // Coluna 2 - Checklist
+            html += `<div style="display: flex; flex-direction: column; gap: 20px;">`;
+            if (checklist.length > 0) {
+                html += `
+                    <div class="form-group">
+                        <label style="margin-bottom: 12px; display: block; font-weight: 600;">Atividades Realizadas * (marque ao menos uma)</label>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                `;
+                for (const atv of checklist) {
+                    html += this.renderizarCampoAtividade(atv, valoresExistentes);
+                }
+                html += `</div></div>`;
+            }
+            html += `</div>`;
+
+            html += `</div>`;
+
+            // Adicionar estilos para responsividade
+            html += `
+                <style>
+                    @media (max-width: 768px) {
+                        #modalAtividadesBody > div {
+                            grid-template-columns: 1fr !important;
+                        }
+                    }
+                </style>
+            `;
+
+            container.innerHTML = html;
+
+            // Configurar event listeners para campos condicionais
+            this.configurarEventListenersAtividades(checklist);
+
+        } catch (error) {
+            console.error('Erro ao renderizar formulário de atividades:', error);
+            container.innerHTML = `
+                <div style="text-align: center; padding: 40px; color: #dc2626;">
+                    <p>Erro ao carregar atividades</p>
+                    <button class="btn btn-secondary" onclick="window.app.fecharModalAtividades()">Fechar</button>
+                </div>
+            `;
+        }
+    }
+
+    getAtividadesPadrao() {
+        return [
+            { atv_id: 1, atv_nome: 'Quantidade de Frentes', atv_tipo: 'number', atv_obrigatorio: 1, atv_grupo: 'campos', atv_ordem: 1, atv_valor_label: 'Qtd. Frentes' },
+            { atv_id: 2, atv_nome: 'Usou Merchandising', atv_tipo: 'boolean', atv_obrigatorio: 1, atv_grupo: 'campos', atv_ordem: 2 },
+            { atv_id: 3, atv_nome: 'Abastecimento', atv_tipo: 'checkbox', atv_obrigatorio: 0, atv_grupo: 'checklist', atv_ordem: 1 },
+            { atv_id: 4, atv_nome: 'Espaço Loja', atv_tipo: 'checkbox', atv_obrigatorio: 0, atv_grupo: 'checklist', atv_ordem: 2 },
+            { atv_id: 5, atv_nome: 'Ruptura Loja', atv_tipo: 'checkbox', atv_obrigatorio: 0, atv_grupo: 'checklist', atv_ordem: 3 },
+            { atv_id: 6, atv_nome: 'Pontos Extras', atv_tipo: 'checkbox', atv_obrigatorio: 0, atv_grupo: 'checklist', atv_ordem: 4, atv_requer_valor: 1, atv_valor_label: 'Quantidade de Pontos Extras', atv_valor_tipo: 'number' }
+        ];
+    }
+
+    mapearValoresLegado(sessao) {
+        // Mapear campos legado para o novo formato
+        return {
+            'atv_quantidade_de_frentes': sessao.qtd_frentes || '',
+            'atv_usou_merchandising': sessao.usou_merchandising,
+            'atv_abastecimento': Boolean(sessao.serv_abastecimento),
+            'atv_espaco_loja': Boolean(sessao.serv_espaco_loja),
+            'atv_ruptura_loja': Boolean(sessao.serv_ruptura_loja),
+            'atv_pontos_extras': Boolean(sessao.serv_pontos_extras),
+            'atv_pontos_extras_valor': sessao.qtd_pontos_extras || ''
         };
+    }
 
-        // Remover listener anterior se existir
-        checkboxPontosExtras.removeEventListener('change', checkboxPontosExtras._toggleHandler);
-        // Adicionar novo listener
-        checkboxPontosExtras._toggleHandler = togglePontosExtras;
-        checkboxPontosExtras.addEventListener('change', togglePontosExtras);
+    gerarIdCampo(atv) {
+        // Gerar ID único para o campo baseado no nome
+        return 'atv_' + atv.atv_nome.toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9]+/g, '_')
+            .replace(/^_|_$/g, '');
+    }
 
-        // Inicializar estado correto do campo
-        togglePontosExtras();
+    renderizarCampoAtividade(atv, valoresExistentes) {
+        const fieldId = this.gerarIdCampo(atv);
+        const obrigatorio = atv.atv_obrigatorio ? '*' : '';
+        const valorAtual = valoresExistentes[fieldId];
 
-        document.getElementById('modalAtividades').classList.add('active');
+        switch (atv.atv_tipo) {
+            case 'number':
+                return `
+                    <div class="form-group">
+                        <label for="${fieldId}">${atv.atv_nome} ${obrigatorio}</label>
+                        <input type="number" id="${fieldId}" data-atv-id="${atv.atv_id}" data-atv-tipo="${atv.atv_tipo}"
+                               min="1" placeholder="Ex: 3" value="${valorAtual || ''}" ${atv.atv_obrigatorio ? 'required' : ''}>
+                    </div>
+                `;
+
+            case 'boolean':
+                const isSim = valorAtual === 1 || valorAtual === true;
+                const isNao = valorAtual === 0 || valorAtual === false;
+                return `
+                    <div class="form-group">
+                        <label style="margin-bottom: 12px; display: block; font-weight: 600;">${atv.atv_nome}? ${obrigatorio}</label>
+                        <div style="display: flex; gap: 16px;">
+                            <label class="checkbox-label" style="flex: 0;">
+                                <input type="radio" name="${fieldId}" id="${fieldId}_sim" value="1"
+                                       data-atv-id="${atv.atv_id}" data-atv-tipo="${atv.atv_tipo}" ${isSim ? 'checked' : ''} ${atv.atv_obrigatorio ? 'required' : ''}>
+                                <span>Sim</span>
+                            </label>
+                            <label class="checkbox-label" style="flex: 0;">
+                                <input type="radio" name="${fieldId}" id="${fieldId}_nao" value="0"
+                                       data-atv-id="${atv.atv_id}" data-atv-tipo="${atv.atv_tipo}" ${isNao ? 'checked' : ''}>
+                                <span>Não</span>
+                            </label>
+                        </div>
+                    </div>
+                `;
+
+            case 'checkbox':
+            default:
+                const isChecked = valorAtual === true;
+                return `
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="${fieldId}" data-atv-id="${atv.atv_id}" data-atv-tipo="${atv.atv_tipo}"
+                               data-requer-valor="${atv.atv_requer_valor || 0}" ${isChecked ? 'checked' : ''}>
+                        <span>${atv.atv_nome}</span>
+                    </label>
+                `;
+        }
+    }
+
+    configurarEventListenersAtividades(checklist) {
+        // Configurar toggle para campos que requerem valor adicional
+        for (const atv of checklist.filter(a => a.atv_requer_valor)) {
+            const fieldId = this.gerarIdCampo(atv);
+            const checkbox = document.getElementById(fieldId);
+            const grupoValor = document.getElementById(`grupo_${fieldId}_valor`);
+
+            if (checkbox && grupoValor) {
+                const toggleValor = () => {
+                    grupoValor.style.display = checkbox.checked ? 'block' : 'none';
+                    if (!checkbox.checked) {
+                        const inputValor = document.getElementById(`${fieldId}_valor`);
+                        if (inputValor) inputValor.value = '';
+                    }
+                };
+
+                checkbox.addEventListener('change', toggleValor);
+                // Inicializar estado correto
+                toggleValor();
+            }
+        }
     }
 
     fecharModalAtividades() {
         document.getElementById('modalAtividades').classList.remove('active');
         this.registroRotaState.sessaoAtividades = null;
+        this.registroRotaState.atividadesConfiguradas = null;
     }
 
     async salvarAtividades() {
@@ -12779,48 +13293,94 @@ class App {
                 return;
             }
 
-            const qtdFrentes = parseInt(document.getElementById('atv_qtd_frentes').value);
+            const atividades = this.registroRotaState.atividadesConfiguradas || this.getAtividadesPadrao();
+            const payload = {};
 
-            // Ler valor do merchandising (radio button)
-            const merchandisingRadio = document.querySelector('input[name="atv_merchandising"]:checked');
-            if (!merchandisingRadio) {
-                this.showNotification('Selecione se usou merchandising (Sim ou Não)', 'warning');
-                return;
+            // Coletar valores de todos os campos dinâmicos
+            for (const atv of atividades) {
+                const fieldId = this.gerarIdCampo(atv);
+                const element = document.getElementById(fieldId);
+
+                if (!element) continue;
+
+                let valor;
+                switch (atv.atv_tipo) {
+                    case 'number':
+                        valor = parseInt(element.value) || null;
+                        break;
+                    case 'boolean':
+                        const radioChecked = document.querySelector(`input[name="${fieldId}"]:checked`);
+                        valor = radioChecked ? parseInt(radioChecked.value) === 1 : null;
+                        break;
+                    case 'checkbox':
+                    default:
+                        valor = element.checked;
+                        break;
+                }
+
+                // Mapear para campos legado do banco
+                const nomeLimpo = atv.atv_nome.toLowerCase()
+                    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                    .replace(/[^a-z0-9]+/g, '_')
+                    .replace(/^_|_$/g, '');
+
+                // Mapeamento de nomes para campos do banco
+                if (nomeLimpo === 'quantidade_de_frentes') {
+                    payload.qtd_frentes = valor;
+                } else if (nomeLimpo === 'usou_merchandising') {
+                    payload.usou_merchandising = valor;
+                } else if (nomeLimpo === 'abastecimento') {
+                    payload.serv_abastecimento = valor;
+                } else if (nomeLimpo === 'espaco_loja') {
+                    payload.serv_espaco_loja = valor;
+                } else if (nomeLimpo === 'ruptura_loja') {
+                    payload.serv_ruptura_loja = valor;
+                } else if (nomeLimpo === 'pontos_extras') {
+                    payload.serv_pontos_extras = valor;
+                    // Se tem valor adicional, pegar
+                    if (atv.atv_requer_valor && valor) {
+                        const valorAdicional = document.getElementById(`${fieldId}_valor`);
+                        payload.qtd_pontos_extras = valorAdicional ? parseInt(valorAdicional.value) || null : null;
+                    } else {
+                        payload.qtd_pontos_extras = null;
+                    }
+                }
+
+                // Validação de campo obrigatório
+                if (atv.atv_obrigatorio) {
+                    if (atv.atv_tipo === 'number' && (!valor || valor < 1)) {
+                        this.showNotification(`Informe ${atv.atv_nome} (mínimo 1)`, 'warning');
+                        return;
+                    }
+                    if (atv.atv_tipo === 'boolean' && valor === null) {
+                        this.showNotification(`Selecione ${atv.atv_nome} (Sim ou Não)`, 'warning');
+                        return;
+                    }
+                }
+
+                // Validar valor adicional se requerido
+                if (atv.atv_requer_valor && valor === true) {
+                    const valorAdicional = document.getElementById(`${fieldId}_valor`);
+                    const qtdValor = valorAdicional ? parseInt(valorAdicional.value) : null;
+                    if (!qtdValor || qtdValor < 1) {
+                        this.showNotification(`Informe ${atv.atv_valor_label || 'a quantidade'}`, 'warning');
+                        return;
+                    }
+                }
             }
-            const usouMerchandising = parseInt(merchandisingRadio.value) === 1;
 
-            const servAbastecimento = document.getElementById('atv_abastecimento').checked;
-            const servEspacoLoja = document.getElementById('atv_espaco_loja').checked;
-            const servRupturaLoja = document.getElementById('atv_ruptura_loja').checked;
-            const servPontosExtras = document.getElementById('atv_pontos_extras').checked;
-            const qtdPontosExtras = parseInt(document.getElementById('atv_qtd_pontos_extras').value) || null;
+            // Validar que pelo menos uma atividade do checklist foi marcada
+            const checklist = atividades.filter(a => a.atv_grupo === 'checklist');
+            const temServico = checklist.some(atv => {
+                const fieldId = this.gerarIdCampo(atv);
+                const element = document.getElementById(fieldId);
+                return element && element.checked;
+            });
 
-            // Validações
-            if (!qtdFrentes || qtdFrentes < 1) {
-                this.showNotification('Informe a quantidade de frentes (mínimo 1)', 'warning');
-                return;
-            }
-
-            const temServico = servAbastecimento || servEspacoLoja || servRupturaLoja || servPontosExtras;
-            if (!temServico) {
+            if (checklist.length > 0 && !temServico) {
                 this.showNotification('Marque pelo menos uma atividade do checklist', 'warning');
                 return;
             }
-
-            if (servPontosExtras && (!qtdPontosExtras || qtdPontosExtras < 1)) {
-                this.showNotification('Informe a quantidade de pontos extras', 'warning');
-                return;
-            }
-
-            const payload = {
-                qtd_frentes: qtdFrentes,
-                usou_merchandising: usouMerchandising,
-                serv_abastecimento: servAbastecimento,
-                serv_espaco_loja: servEspacoLoja,
-                serv_ruptura_loja: servRupturaLoja,
-                serv_pontos_extras: servPontosExtras,
-                qtd_pontos_extras: servPontosExtras ? qtdPontosExtras : null
-            };
 
             const response = await fetch(`${this.registroRotaState.backendUrl}/api/registro-rota/sessoes/${sessao.sessaoId}/servicos`, {
                 method: 'PATCH',
@@ -19690,6 +20250,588 @@ class App {
         } catch (error) {
             console.error('Erro ao excluir tipo de espaço:', error);
             this.showNotification(error.message || 'Erro ao excluir tipo de espaço', 'error');
+        }
+    }
+
+    // === Sincronização PWA ===
+
+    async inicializarAbaSincronizacaoConfig() {
+        // Carregar configurações atuais
+        await this.carregarConfigSync();
+
+        // Event listeners básicos
+        document.getElementById('btnSalvarConfigSync')?.addEventListener('click', () => this.salvarConfigSync());
+        document.getElementById('btnAtualizarStatusSync')?.addEventListener('click', () => this.carregarStatusSync());
+
+        // Event listeners para forçar sync
+        document.getElementById('btnForcarDownloadTodos')?.addEventListener('click', () => this.forcarSyncTodos('download'));
+        document.getElementById('btnForcarUploadTodos')?.addEventListener('click', () => this.forcarSyncTodos('upload'));
+        document.getElementById('btnForcarSyncIndividual')?.addEventListener('click', () => this.forcarSyncIndividual());
+
+        // Habilitar/desabilitar botão individual baseado na seleção
+        const selectRepositor = document.getElementById('selectForcarSyncRepositor');
+        const btnForcarIndividual = document.getElementById('btnForcarSyncIndividual');
+        if (selectRepositor && btnForcarIndividual) {
+            selectRepositor.addEventListener('change', () => {
+                btnForcarIndividual.disabled = !selectRepositor.value;
+            });
+        }
+
+        // Carregar status e lista de repositores automaticamente
+        await this.carregarStatusSync();
+        await this.carregarRepositoresParaForcarSync();
+    }
+
+    async carregarConfigSync() {
+        try {
+            const token = localStorage.getItem('auth_token');
+            if (!token) {
+                console.log('Sem token para carregar config sync');
+                return;
+            }
+
+            const response = await fetch(`${API_BASE_URL}/api/sync/config`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) return;
+
+            const data = await response.json();
+
+            if (data?.ok && data.config) {
+                const config = data.config;
+
+                // Preencher horários
+                const horarios = config.horariosDownload || ['06:00', '12:00'];
+                document.getElementById('syncHorario1').value = horarios[0] || '06:00';
+                document.getElementById('syncHorario2').value = horarios[1] || '12:00';
+
+                // Checkbox de envio no checkout
+                document.getElementById('syncEnviarCheckout').checked = config.enviarNoCheckout !== false;
+
+                // Campos de validação de tempo
+                const tempoMaxEl = document.getElementById('syncTempoMaxCheckout');
+                const tempoMinEl = document.getElementById('syncTempoMinimoVisitas');
+                if (tempoMaxEl) tempoMaxEl.value = config.tempoMaximoCheckout || 30;
+                if (tempoMinEl) tempoMinEl.value = config.tempoMinimoEntreVisitas || 5;
+            }
+        } catch (error) {
+            console.warn('Erro ao carregar config sync:', error.message);
+        }
+    }
+
+    async salvarConfigSync() {
+        try {
+            const horario1 = document.getElementById('syncHorario1').value;
+            const horario2 = document.getElementById('syncHorario2').value;
+            const enviarNoCheckout = document.getElementById('syncEnviarCheckout').checked;
+            const tempoMaximoCheckout = parseInt(document.getElementById('syncTempoMaxCheckout')?.value, 10) || 30;
+            const tempoMinimoEntreVisitas = parseInt(document.getElementById('syncTempoMinimoVisitas')?.value, 10) || 5;
+
+            const config = {
+                horariosDownload: [horario1, horario2],
+                enviarNoCheckout,
+                tempoMaximoCheckout,
+                tempoMinimoEntreVisitas
+            };
+
+            const token = localStorage.getItem('auth_token');
+            const response = await fetchJson(`${API_BASE_URL}/api/sync/config`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': token ? `Bearer ${token}` : ''
+                },
+                body: JSON.stringify(config)
+            });
+
+            if (response?.ok) {
+                this.showNotification('Configurações de sincronização salvas!', 'success');
+            } else {
+                throw new Error(response?.message || 'Erro ao salvar');
+            }
+        } catch (error) {
+            console.error('Erro ao salvar config sync:', error);
+            this.showNotification(error.message || 'Erro ao salvar configurações', 'error');
+        }
+    }
+
+    async carregarStatusSync() {
+        const container = document.getElementById('listaStatusSync');
+        if (!container) return;
+
+        const token = localStorage.getItem('auth_token');
+        if (!token) {
+            container.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px;">Faça login para visualizar</p>';
+            return;
+        }
+
+        container.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px;">Carregando...</p>';
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/sync/status`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) {
+                container.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px;">Nenhum dado disponível</p>';
+                return;
+            }
+
+            const data = await response.json();
+
+            if (!data?.ok || !data.repositores) {
+                container.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px;">Nenhum dado disponível</p>';
+                return;
+            }
+
+            const repositores = data.repositores;
+
+            if (repositores.length === 0) {
+                container.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px;">Nenhum repositor encontrado</p>';
+                return;
+            }
+
+            const agora = new Date();
+
+            container.innerHTML = repositores.map(repo => {
+                const ultimoDownload = repo.ultimo_download ? new Date(repo.ultimo_download) : null;
+                const ultimoUpload = repo.ultimo_upload ? new Date(repo.ultimo_upload) : null;
+
+                // Determinar status baseado no último download
+                let statusClass = 'sync-status-error';
+                let statusTexto = 'Nunca sincronizou';
+
+                if (ultimoDownload) {
+                    const horasAtras = (agora - ultimoDownload) / (1000 * 60 * 60);
+
+                    if (horasAtras < 12) {
+                        statusClass = 'sync-status-ok';
+                        statusTexto = 'OK';
+                    } else if (horasAtras < 24) {
+                        statusClass = 'sync-status-warning';
+                        statusTexto = 'Desatualizado';
+                    } else {
+                        statusClass = 'sync-status-error';
+                        statusTexto = `${Math.floor(horasAtras / 24)}d atrás`;
+                    }
+                }
+
+                const formatarData = (data) => {
+                    if (!data) return '-';
+                    return data.toLocaleString('pt-BR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                };
+
+                return `
+                    <div class="sync-repositor-item">
+                        <div class="sync-repositor-info">
+                            <strong>${repo.repo_nome || `Repositor ${repo.rep_id}`}</strong>
+                            <small>
+                                Download: ${formatarData(ultimoDownload)} |
+                                Upload: ${formatarData(ultimoUpload)}
+                            </small>
+                        </div>
+                        <span class="sync-status-badge ${statusClass}">${statusTexto}</span>
+                    </div>
+                `;
+            }).join('');
+
+        } catch (error) {
+            console.error('Erro ao carregar status sync:', error);
+            container.innerHTML = `<p style="color: #991b1b; text-align: center; padding: 20px;">Erro: ${error.message}</p>`;
+        }
+    }
+
+    async carregarRepositoresParaForcarSync() {
+        const select = document.getElementById('selectForcarSyncRepositor');
+        if (!select) return;
+
+        try {
+            const token = localStorage.getItem('auth_token');
+            if (!token) {
+                console.log('Sem token de autenticação para carregar repositores');
+                return;
+            }
+
+            // Carregar usuários do PWA (repositores)
+            const response = await fetch(`${API_BASE_URL}/api/usuarios`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) {
+                console.warn('Erro ao carregar usuários:', response.status);
+                return;
+            }
+
+            const data = await response.json();
+
+            if (data?.ok && data.usuarios) {
+                // Filtrar apenas repositores (usuários PWA)
+                const repositores = data.usuarios.filter(u => u.perfil === 'repositor' && u.rep_id);
+
+                if (repositores.length === 0) {
+                    select.innerHTML = '<option value="">Nenhum repositor encontrado</option>';
+                    return;
+                }
+
+                select.innerHTML = '<option value="">Selecione um repositor...</option>' +
+                    repositores.map(repo =>
+                        `<option value="${repo.rep_id}">${repo.nome || repo.username || `Repositor ${repo.rep_id}`}</option>`
+                    ).join('');
+            }
+        } catch (error) {
+            console.warn('Erro ao carregar repositores para força sync:', error.message);
+        }
+    }
+
+    async forcarSyncTodos(tipo) {
+        const tipoTexto = tipo === 'download' ? 'Download' : 'Upload';
+
+        if (!confirm(`Tem certeza que deseja forçar ${tipoTexto} para TODOS os repositores?\n\nIsso fará com que todos os repositores sincronizem na próxima conexão.`)) {
+            return;
+        }
+
+        try {
+            const token = localStorage.getItem('auth_token');
+            const response = await fetchJson(`${API_BASE_URL}/api/sync/forcar`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': token ? `Bearer ${token}` : ''
+                },
+                body: JSON.stringify({
+                    todos: true,
+                    tipo,
+                    mensagem: `Forçado pelo admin via web em ${new Date().toLocaleString('pt-BR')}`
+                })
+            });
+
+            if (response?.ok) {
+                this.showNotification(response.message || `${tipoTexto} forçado para todos os repositores!`, 'success');
+            } else {
+                throw new Error(response?.message || 'Erro ao forçar sincronização');
+            }
+        } catch (error) {
+            console.error('Erro ao forçar sync todos:', error);
+            this.showNotification(error.message || 'Erro ao forçar sincronização', 'error');
+        }
+    }
+
+    async forcarSyncIndividual() {
+        const select = document.getElementById('selectForcarSyncRepositor');
+        const repId = select?.value;
+
+        if (!repId) {
+            this.showNotification('Selecione um repositor', 'warning');
+            return;
+        }
+
+        const repoNome = select.options[select.selectedIndex].text;
+
+        if (!confirm(`Forçar sincronização para ${repoNome}?\n\nIsso fará com que o repositor sincronize na próxima conexão.`)) {
+            return;
+        }
+
+        try {
+            const token = localStorage.getItem('auth_token');
+            const response = await fetchJson(`${API_BASE_URL}/api/sync/forcar`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': token ? `Bearer ${token}` : ''
+                },
+                body: JSON.stringify({
+                    repId: parseInt(repId, 10),
+                    tipo: 'ambos',
+                    mensagem: `Forçado pelo admin via web em ${new Date().toLocaleString('pt-BR')}`
+                })
+            });
+
+            if (response?.ok) {
+                this.showNotification(`Sincronização forçada para ${repoNome}!`, 'success');
+                select.value = '';
+                document.getElementById('btnForcarSyncIndividual').disabled = true;
+            } else {
+                throw new Error(response?.message || 'Erro ao forçar sincronização');
+            }
+        } catch (error) {
+            console.error('Erro ao forçar sync individual:', error);
+            this.showNotification(error.message || 'Erro ao forçar sincronização', 'error');
+        }
+    }
+
+    // === Atividades Config ===
+
+    async inicializarAbaAtividadesConfig() {
+        // Event listeners
+        document.getElementById('btnNovaAtividade')?.addEventListener('click', () => this.abrirModalAtividadeConfig());
+        document.getElementById('btnInicializarAtividades')?.addEventListener('click', () => this.inicializarAtividadesPadrao());
+        document.getElementById('btnSalvarAtividadeConfig')?.addEventListener('click', () => this.salvarAtividadeConfig());
+
+        // Toggle do grupo de valor adicional
+        const checkRequerValor = document.getElementById('atividadeRequerValorConfig');
+        const grupoValor = document.getElementById('grupoValorAdicional');
+        if (checkRequerValor && grupoValor) {
+            checkRequerValor.addEventListener('change', () => {
+                grupoValor.style.display = checkRequerValor.checked ? 'block' : 'none';
+            });
+        }
+
+        // Carregar atividades
+        await this.carregarAtividadesConfig();
+    }
+
+    async carregarAtividadesConfig() {
+        const container = document.getElementById('listaAtividadesConfig');
+        if (!container) return;
+
+        const token = localStorage.getItem('auth_token');
+        if (!token) {
+            container.innerHTML = '<p class="text-muted" style="text-align: center; padding: 40px;">Faça login para gerenciar atividades</p>';
+            return;
+        }
+
+        container.innerHTML = '<p class="text-muted" style="text-align: center; padding: 40px;">Carregando...</p>';
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/atividades`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) throw new Error('Erro ao carregar atividades');
+
+            const data = await response.json();
+
+            if (!data.ok || !data.data || data.data.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 40px; background: #f9fafb; border-radius: 12px;">
+                        <p class="text-muted" style="margin-bottom: 16px;">Nenhuma atividade cadastrada.</p>
+                        <button class="btn btn-primary btn-sm" onclick="window.app.inicializarAtividadesPadrao()">
+                            Inicializar com Atividades Padrão
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+
+            const tipoLabels = {
+                'checkbox': 'Checkbox',
+                'boolean': 'Sim/Não',
+                'number': 'Número',
+                'text': 'Texto'
+            };
+
+            const grupoLabels = {
+                'checklist': 'Checklist',
+                'campos': 'Campo Obrigatório',
+                'extras': 'Extra'
+            };
+
+            container.innerHTML = data.data.map(atv => `
+                <div class="atividade-item ${atv.atv_ativo ? '' : 'inativa'}">
+                    <div class="atividade-info">
+                        <strong>${atv.atv_nome}</strong>
+                        <small>${atv.atv_descricao || 'Sem descrição'}</small>
+                        <div class="atividade-badges" style="margin-top: 8px;">
+                            <span class="atividade-badge badge-tipo">${tipoLabels[atv.atv_tipo] || atv.atv_tipo}</span>
+                            <span class="atividade-badge badge-grupo">${grupoLabels[atv.atv_grupo] || atv.atv_grupo}</span>
+                            ${atv.atv_obrigatorio ? '<span class="atividade-badge badge-obrigatorio">Obrigatório</span>' : ''}
+                            ${atv.atv_requer_valor ? `<span class="atividade-badge badge-valor">+ ${atv.atv_valor_label || 'Valor'}</span>` : ''}
+                            ${!atv.atv_ativo ? '<span class="atividade-badge" style="background:#fee2e2;color:#991b1b;">Inativa</span>' : ''}
+                        </div>
+                    </div>
+                    <div class="atividade-acoes">
+                        <button class="btn btn-secondary btn-sm" onclick="window.app.editarAtividadeConfig(${atv.atv_id})">
+                            Editar
+                        </button>
+                        <button class="btn btn-outline btn-sm" onclick="window.app.excluirAtividadeConfig(${atv.atv_id}, '${atv.atv_nome.replace(/'/g, "\\'")}')">
+                            Excluir
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+
+        } catch (error) {
+            console.error('Erro ao carregar atividades:', error);
+            container.innerHTML = `<p style="color: #991b1b; text-align: center; padding: 40px;">Erro: ${error.message}</p>`;
+        }
+    }
+
+    abrirModalAtividadeConfig(atividade = null) {
+        const modal = document.getElementById('modalAtividadeConfig');
+        const titulo = document.getElementById('modalAtividadeConfigTitulo');
+
+        if (atividade) {
+            titulo.textContent = 'Editar Atividade';
+            document.getElementById('atividadeIdConfig').value = atividade.atv_id;
+            document.getElementById('atividadeNomeConfig').value = atividade.atv_nome || '';
+            document.getElementById('atividadeDescricaoConfig').value = atividade.atv_descricao || '';
+            document.getElementById('atividadeTipoConfig').value = atividade.atv_tipo || 'checkbox';
+            document.getElementById('atividadeGrupoConfig').value = atividade.atv_grupo || 'checklist';
+            document.getElementById('atividadeOrdemConfig').value = atividade.atv_ordem || 0;
+            document.getElementById('atividadeObrigatorioConfig').checked = !!atividade.atv_obrigatorio;
+            document.getElementById('atividadeRequerValorConfig').checked = !!atividade.atv_requer_valor;
+            document.getElementById('atividadeValorLabelConfig').value = atividade.atv_valor_label || '';
+            document.getElementById('atividadeValorTipoConfig').value = atividade.atv_valor_tipo || 'number';
+            document.getElementById('atividadeAtivoConfig').checked = atividade.atv_ativo !== false;
+
+            // Mostrar/esconder grupo de valor
+            document.getElementById('grupoValorAdicional').style.display = atividade.atv_requer_valor ? 'block' : 'none';
+        } else {
+            titulo.textContent = 'Nova Atividade';
+            document.getElementById('formAtividadeConfig').reset();
+            document.getElementById('atividadeIdConfig').value = '';
+            document.getElementById('atividadeAtivoConfig').checked = true;
+            document.getElementById('grupoValorAdicional').style.display = 'none';
+        }
+
+        modal.classList.add('active');
+    }
+
+    async editarAtividadeConfig(atvId) {
+        try {
+            const token = localStorage.getItem('auth_token');
+            const response = await fetch(`${API_BASE_URL}/api/atividades/${atvId}`, {
+                headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+            });
+
+            if (!response.ok) throw new Error('Erro ao buscar atividade');
+
+            const data = await response.json();
+
+            if (data.ok && data.data) {
+                this.abrirModalAtividadeConfig(data.data);
+            } else {
+                throw new Error(data.message || 'Atividade não encontrada');
+            }
+        } catch (error) {
+            console.error('Erro ao editar atividade:', error);
+            this.showNotification(error.message || 'Erro ao carregar atividade', 'error');
+        }
+    }
+
+    async salvarAtividadeConfig() {
+        try {
+            const token = localStorage.getItem('auth_token');
+            if (!token) {
+                this.showNotification('Faça login para salvar atividades', 'warning');
+                return;
+            }
+
+            const atvId = document.getElementById('atividadeIdConfig').value;
+            const isEditing = !!atvId;
+
+            const dados = {
+                atv_nome: document.getElementById('atividadeNomeConfig').value.trim(),
+                atv_descricao: document.getElementById('atividadeDescricaoConfig').value.trim() || null,
+                atv_tipo: document.getElementById('atividadeTipoConfig').value,
+                atv_grupo: document.getElementById('atividadeGrupoConfig').value,
+                atv_ordem: parseInt(document.getElementById('atividadeOrdemConfig').value) || 0,
+                atv_obrigatorio: document.getElementById('atividadeObrigatorioConfig').checked,
+                atv_requer_valor: document.getElementById('atividadeRequerValorConfig').checked,
+                atv_valor_label: document.getElementById('atividadeValorLabelConfig').value.trim() || null,
+                atv_valor_tipo: document.getElementById('atividadeValorTipoConfig').value,
+                atv_ativo: document.getElementById('atividadeAtivoConfig').checked
+            };
+
+            if (!dados.atv_nome) {
+                this.showNotification('Nome da atividade é obrigatório', 'warning');
+                return;
+            }
+
+            const url = isEditing ? `${API_BASE_URL}/api/atividades/${atvId}` : `${API_BASE_URL}/api/atividades`;
+            const method = isEditing ? 'PUT' : 'POST';
+
+            const response = await fetch(url, {
+                method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(dados)
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || !data.ok) {
+                throw new Error(data.message || 'Erro ao salvar');
+            }
+
+            this.showNotification(data.message || 'Atividade salva com sucesso!', 'success');
+            document.getElementById('modalAtividadeConfig').classList.remove('active');
+            await this.carregarAtividadesConfig();
+
+        } catch (error) {
+            console.error('Erro ao salvar atividade:', error);
+            this.showNotification(error.message || 'Erro ao salvar atividade', 'error');
+        }
+    }
+
+    async excluirAtividadeConfig(atvId, nome) {
+        if (!confirm(`Tem certeza que deseja excluir a atividade "${nome}"?\n\nA atividade será marcada como inativa e não aparecerá mais no registro de rotas.`)) {
+            return;
+        }
+
+        try {
+            const token = localStorage.getItem('auth_token');
+            const response = await fetch(`${API_BASE_URL}/api/atividades/${atvId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': token ? `Bearer ${token}` : ''
+                }
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || !data.ok) {
+                throw new Error(data.message || 'Erro ao excluir');
+            }
+
+            this.showNotification('Atividade excluída com sucesso!', 'success');
+            await this.carregarAtividadesConfig();
+
+        } catch (error) {
+            console.error('Erro ao excluir atividade:', error);
+            this.showNotification(error.message || 'Erro ao excluir atividade', 'error');
+        }
+    }
+
+    async inicializarAtividadesPadrao() {
+        if (!confirm('Isso irá criar as atividades padrão do sistema.\n\nDeseja continuar?')) {
+            return;
+        }
+
+        try {
+            const token = localStorage.getItem('auth_token');
+            const response = await fetch(`${API_BASE_URL}/api/atividades/inicializar`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': token ? `Bearer ${token}` : ''
+                }
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || !data.ok) {
+                throw new Error(data.message || 'Erro ao inicializar');
+            }
+
+            if (data.inicializado) {
+                this.showNotification(`${data.total} atividades criadas com sucesso!`, 'success');
+            } else {
+                this.showNotification(data.message || 'Atividades já existem', 'info');
+            }
+
+            await this.carregarAtividadesConfig();
+
+        } catch (error) {
+            console.error('Erro ao inicializar atividades:', error);
+            this.showNotification(error.message || 'Erro ao inicializar atividades', 'error');
         }
     }
 

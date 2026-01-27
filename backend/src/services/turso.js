@@ -1,4 +1,4 @@
-import { getDbClient, DatabaseNotConfiguredError } from '../config/db.js';
+import { getDbClient, getComercialDbClient, DatabaseNotConfiguredError } from '../config/db.js';
 import { config } from '../config/env.js';
 
 function normalizeClienteId(clienteId) {
@@ -29,6 +29,9 @@ class TursoService {
       });
       this.ensureUsuariosSchema().catch((err) => {
         console.warn('⚠️  Falha ao garantir schema de usuários:', err?.message || err);
+      });
+      this.ensureUsersWebSchema().catch((err) => {
+        console.warn('⚠️  Falha ao garantir schema de users_web:', err?.message || err);
       });
     } catch (error) {
       if (error instanceof DatabaseNotConfiguredError) {
@@ -460,6 +463,11 @@ class TursoService {
   }
 
   getComercialClient() {
+    const comercialClient = getComercialDbClient();
+    if (comercialClient) {
+      return comercialClient;
+    }
+    console.warn('⚠️ Banco comercial não configurado, usando banco principal como fallback');
     return this.getClient();
   }
 
@@ -1752,7 +1760,8 @@ class TursoService {
     await this.execute(sqlRepositor, []);
     console.log('✅ Tabela cad_repositor garantida');
 
-    // Agora criar a tabela cc_usuarios com FK para cad_repositor
+    // Agora criar a tabela cc_usuarios (SEM FK pois causa problemas no Turso)
+    // A validação de rep_id é feita em código antes do INSERT
     const sqlUsuarios = `
       CREATE TABLE IF NOT EXISTS cc_usuarios (
         usuario_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1765,13 +1774,46 @@ class TursoService {
         ativo INTEGER DEFAULT 1,
         criado_em TEXT DEFAULT (datetime('now')),
         atualizado_em TEXT DEFAULT (datetime('now')),
-        ultimo_login TEXT,
-        FOREIGN KEY (rep_id) REFERENCES cad_repositor(repo_cod)
+        ultimo_login TEXT
       )
     `;
 
     await this.execute(sqlUsuarios, []);
     console.log('✅ Tabela cc_usuarios garantida');
+
+    // Verificar se a tabela tem FOREIGN KEY problemática e recriar se necessário
+    try {
+      // Tentar um INSERT de teste com rep_id válido para ver se FK está funcionando
+      // Se der erro de FK mesmo com rep_id válido, precisamos recriar a tabela
+      const testResult = await this.execute('SELECT sql FROM sqlite_master WHERE type="table" AND name="cc_usuarios"', []);
+      const tableSql = testResult.rows[0]?.sql || '';
+
+      if (tableSql.includes('FOREIGN KEY')) {
+        console.log('⚠️ Tabela cc_usuarios tem FOREIGN KEY - recriando sem FK...');
+
+        // Backup dos dados existentes
+        const backupData = await this.execute('SELECT * FROM cc_usuarios', []);
+        console.log(`📦 Backup de ${backupData.rows.length} usuários`);
+
+        // Dropar tabela antiga
+        await this.execute('DROP TABLE cc_usuarios', []);
+
+        // Recriar sem FK
+        await this.execute(sqlUsuarios, []);
+
+        // Restaurar dados
+        for (const row of backupData.rows) {
+          await this.execute(`
+            INSERT INTO cc_usuarios (usuario_id, username, password_hash, nome_completo, email, rep_id, perfil, ativo, criado_em, atualizado_em, ultimo_login)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `, [row.usuario_id, row.username, row.password_hash, row.nome_completo, row.email, row.rep_id, row.perfil, row.ativo, row.criado_em, row.atualizado_em, row.ultimo_login]);
+        }
+
+        console.log('✅ Tabela cc_usuarios recriada sem FOREIGN KEY');
+      }
+    } catch (migrationError) {
+      console.error('Erro na migração da tabela cc_usuarios:', migrationError);
+    }
 
     // Criar índices
     await this.execute('CREATE INDEX IF NOT EXISTS idx_usuarios_username ON cc_usuarios(username)', []);
@@ -1842,11 +1884,22 @@ class TursoService {
   async criarUsuario({ username, passwordHash, nomeCompleto, email, repId, perfil = 'repositor' }) {
     // Validar se o repositor existe (se repId fornecido)
     if (repId !== null && repId !== undefined && repId !== '') {
+      // Garantir que repId seja número para a comparação
+      const repIdNumero = Number(repId);
+      console.log(`[criarUsuario] Verificando se repositor existe: repId=${repId} (${typeof repId}), repIdNumero=${repIdNumero}`);
+
       const sqlCheck = 'SELECT repo_cod FROM cad_repositor WHERE repo_cod = ?';
-      const checkResult = await this.execute(sqlCheck, [repId]);
+      const checkResult = await this.execute(sqlCheck, [repIdNumero]);
+
+      console.log(`[criarUsuario] Resultado da verificação:`, checkResult.rows);
 
       if (!checkResult.rows || checkResult.rows.length === 0) {
-        throw new Error(`Repositor com código ${repId} não encontrado`);
+        // Listar alguns repositores para diagnóstico
+        const sqlList = 'SELECT repo_cod, repo_nome FROM cad_repositor LIMIT 10';
+        const listResult = await this.execute(sqlList, []);
+        console.log(`[criarUsuario] Repositores no banco (primeiros 10):`, listResult.rows);
+
+        throw new Error(`Repositor com código ${repId} não encontrado na tabela cad_repositor`);
       }
     }
 
@@ -1855,7 +1908,9 @@ class TursoService {
       VALUES (?, ?, ?, ?, ?, ?)
     `;
 
-    const finalRepId = (repId === null || repId === undefined || repId === '') ? null : repId;
+    const finalRepId = (repId === null || repId === undefined || repId === '') ? null : Number(repId);
+    console.log(`[criarUsuario] Inserindo usuário com rep_id=${finalRepId} (${typeof finalRepId})`);
+
     const result = await this.execute(sql, [username, passwordHash, nomeCompleto, email, finalRepId, perfil]);
     return { usuario_id: Number(result.lastInsertRowid), username, perfil };
   }
@@ -1868,11 +1923,40 @@ class TursoService {
 
   // Busca usuário por username incluindo inativos (para validação de duplicidade)
   async buscarUsuarioPorUsernameIncluindoInativos(username) {
-    const sql = 'SELECT * FROM cc_usuarios WHERE username = ?';
-    console.log(`[buscarUsuarioPorUsername] Buscando username='${username}' na tabela cc_usuarios`);
-    const result = await this.execute(sql, [username]);
-    console.log(`[buscarUsuarioPorUsername] Resultado: ${result.rows.length} registros encontrados`, result.rows[0] ? { id: result.rows[0].usuario_id, username: result.rows[0].username, rep_id: result.rows[0].rep_id } : 'nenhum');
-    return result.rows[0] || null;
+    // Normalizar o username para garantir comparação correta
+    const usernameNormalizado = username ? String(username).trim() : '';
+
+    // Busca exata primeiro
+    const sqlExato = 'SELECT * FROM cc_usuarios WHERE username = ?';
+    console.log(`[buscarUsuarioPorUsername] Buscando username='${usernameNormalizado}' (original: '${username}') na tabela cc_usuarios`);
+
+    const resultExato = await this.execute(sqlExato, [usernameNormalizado]);
+
+    if (resultExato.rows.length > 0) {
+      console.log(`[buscarUsuarioPorUsername] Encontrado por busca exata:`, {
+        id: resultExato.rows[0].usuario_id,
+        username: resultExato.rows[0].username,
+        rep_id: resultExato.rows[0].rep_id
+      });
+      return resultExato.rows[0];
+    }
+
+    // Se não encontrou, fazer busca case-insensitive como fallback
+    const sqlCaseInsensitive = 'SELECT * FROM cc_usuarios WHERE LOWER(TRIM(username)) = LOWER(?)';
+    const resultCI = await this.execute(sqlCaseInsensitive, [usernameNormalizado]);
+
+    if (resultCI.rows.length > 0) {
+      console.log(`[buscarUsuarioPorUsername] Encontrado por busca case-insensitive:`, {
+        id: resultCI.rows[0].usuario_id,
+        username: resultCI.rows[0].username,
+        usernameRecebido: usernameNormalizado,
+        rep_id: resultCI.rows[0].rep_id
+      });
+      return resultCI.rows[0];
+    }
+
+    console.log(`[buscarUsuarioPorUsername] Nenhum usuário encontrado para username='${usernameNormalizado}'`);
+    return null;
   }
 
   // Reativar usuário existente com nova senha
@@ -1932,6 +2016,10 @@ class TursoService {
     if (dados.ativo !== undefined) {
       campos.push('ativo = ?');
       valores.push(dados.ativo);
+    }
+    if (dados.repId !== undefined) {
+      campos.push('rep_id = ?');
+      valores.push(dados.repId);
     }
 
     if (campos.length === 0) return;
@@ -2676,6 +2764,1169 @@ class TursoService {
         quantidade_registrada: r.reg_quantidade_registrada
       }))
     };
+  }
+
+  // ==================== SINCRONIZAÇÃO PWA ====================
+
+  /**
+   * Buscar roteiro do repositor para sincronização
+   */
+  async buscarRoteiroRepositor(repId, dataInicio, dataFim) {
+    try {
+      const sql = `
+        SELECT
+          rc.rot_cli_id,
+          rc.rot_cid_id,
+          rc.cli_codigo as cliente_id,
+          rc.ordem_visita,
+          rc.rateio,
+          rc.venda_centralizada,
+          rcid.dia_semana,
+          rcid.cidade
+        FROM cc_roteiro_cliente rc
+        LEFT JOIN cc_roteiro_cidade rcid ON rc.rot_cid_id = rcid.rot_cid_id
+        LEFT JOIN cc_roteiro r ON rcid.rot_id = r.rot_id
+        WHERE r.repo_cod = ?
+        ORDER BY rcid.dia_semana, rc.ordem_visita
+      `;
+      const result = await this.execute(sql, [repId]);
+      return result?.rows || result || [];
+    } catch (error) {
+      console.error('[TursoService] Erro ao buscar roteiro:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Buscar clientes do repositor para sincronização
+   */
+  async buscarClientesRepositor(repId) {
+    try {
+      // Buscar códigos de clientes do roteiro
+      const roteiro = await this.buscarRoteiroRepositor(repId);
+      const clienteIds = [...new Set(roteiro.map(r => r.cliente_id))];
+
+      if (clienteIds.length === 0) return [];
+
+      // Buscar dados dos clientes no banco comercial
+      const comercialClient = this.getComercialClient();
+      if (!comercialClient) return [];
+
+      const placeholders = clienteIds.map(() => '?').join(',');
+      const result = await comercialClient.execute({
+        sql: `SELECT cliente as cli_codigo, nome as cli_nome, fantasia as cli_fantasia,
+                     endereco as cli_endereco, bairro as cli_bairro, cidade as cli_cidade,
+                     uf as cli_uf, cep as cli_cep, telefone as cli_telefone
+              FROM tab_cliente WHERE cliente IN (${placeholders})`,
+        args: clienteIds
+      });
+
+      return result?.rows || [];
+    } catch (error) {
+      console.error('[TursoService] Erro ao buscar clientes:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Buscar coordenadas dos clientes do repositor
+   */
+  async buscarCoordenadasRepositor(repId) {
+    try {
+      const roteiro = await this.buscarRoteiroRepositor(repId);
+      const clienteIds = [...new Set(roteiro.map(r => r.cliente_id))];
+
+      if (clienteIds.length === 0) return [];
+
+      const placeholders = clienteIds.map(() => '?').join(',');
+      const sql = `
+        SELECT cliente_id, latitude, longitude, precisao, fonte, atualizado_em
+        FROM cc_coordenadas_clientes
+        WHERE cliente_id IN (${placeholders})
+      `;
+      const result = await this.execute(sql, clienteIds);
+      return result?.rows || result || [];
+    } catch (error) {
+      console.error('[TursoService] Erro ao buscar coordenadas:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Registrar evento de sincronização
+   */
+  async registrarSync({ rep_id, usuario_id, tipo, timestamp, dispositivo, ip }) {
+    try {
+      // Criar tabela se não existir
+      await this.execute(`
+        CREATE TABLE IF NOT EXISTS cc_sync_log (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          rep_id INTEGER,
+          usuario_id INTEGER,
+          tipo TEXT NOT NULL,
+          timestamp TEXT NOT NULL,
+          dispositivo TEXT,
+          ip TEXT,
+          criado_em TEXT DEFAULT (datetime('now'))
+        )
+      `, []);
+
+      await this.execute(`
+        INSERT INTO cc_sync_log (rep_id, usuario_id, tipo, timestamp, dispositivo, ip)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `, [rep_id, usuario_id, tipo, timestamp, dispositivo, ip]);
+
+    } catch (error) {
+      console.error('[TursoService] Erro ao registrar sync:', error);
+    }
+  }
+
+  /**
+   * Buscar status de sincronização de um repositor
+   */
+  async buscarStatusSync(repId) {
+    try {
+      const sql = `
+        SELECT
+          rep_id,
+          MAX(CASE WHEN tipo = 'download' THEN timestamp END) as ultimo_download,
+          MAX(CASE WHEN tipo = 'upload' THEN timestamp END) as ultimo_upload,
+          COUNT(CASE WHEN tipo = 'download' THEN 1 END) as total_downloads,
+          COUNT(CASE WHEN tipo = 'upload' THEN 1 END) as total_uploads
+        FROM cc_sync_log
+        WHERE rep_id = ?
+        GROUP BY rep_id
+      `;
+      const result = await this.execute(sql, [repId]);
+      const rows = result?.rows || result || [];
+      return rows[0] || { rep_id: repId, ultimo_download: null, ultimo_upload: null };
+    } catch (error) {
+      console.error('[TursoService] Erro ao buscar status sync:', error);
+      return { rep_id: repId, ultimo_download: null, ultimo_upload: null };
+    }
+  }
+
+  /**
+   * Buscar status de sincronização de todos os repositores (admin)
+   */
+  async buscarStatusSyncTodos() {
+    try {
+      // Buscar todos repositores ativos
+      const comercialClient = this.getComercialClient();
+      if (!comercialClient) return [];
+
+      const reposResult = await comercialClient.execute({
+        sql: `SELECT repo_cod, repo_nome FROM tab_repositor WHERE repo_status = 'ATIVO' ORDER BY repo_nome`,
+        args: []
+      });
+      const repositores = reposResult?.rows || [];
+
+      // Buscar último sync de cada um
+      const sql = `
+        SELECT
+          rep_id,
+          MAX(CASE WHEN tipo = 'download' THEN timestamp END) as ultimo_download,
+          MAX(CASE WHEN tipo = 'upload' THEN timestamp END) as ultimo_upload
+        FROM cc_sync_log
+        GROUP BY rep_id
+      `;
+      const syncResult = await this.execute(sql, []);
+      const syncMap = new Map();
+      (syncResult?.rows || syncResult || []).forEach(s => {
+        syncMap.set(s.rep_id, s);
+      });
+
+      // Combinar dados
+      return repositores.map(repo => ({
+        rep_id: repo.repo_cod,
+        repo_nome: repo.repo_nome,
+        ultimo_download: syncMap.get(repo.repo_cod)?.ultimo_download || null,
+        ultimo_upload: syncMap.get(repo.repo_cod)?.ultimo_upload || null
+      }));
+    } catch (error) {
+      console.error('[TursoService] Erro ao buscar status sync todos:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Obter configurações de sincronização
+   */
+  async getConfigSync() {
+    try {
+      await this.execute(`
+        CREATE TABLE IF NOT EXISTS cc_config_sync (
+          id INTEGER PRIMARY KEY,
+          config TEXT NOT NULL,
+          atualizado_em TEXT DEFAULT (datetime('now'))
+        )
+      `, []);
+
+      const result = await this.execute('SELECT config FROM cc_config_sync WHERE id = 1', []);
+      const rows = result?.rows || result || [];
+
+      if (rows.length > 0 && rows[0].config) {
+        return JSON.parse(rows[0].config);
+      }
+
+      return {
+        horariosDownload: ['06:00', '12:00'],
+        enviarNoCheckout: true,
+        tempoMaximoCheckout: 30, // minutos - tempo máximo para completar checkout após foto
+        tempoMinimoEntreVisitas: 5 // minutos - tempo mínimo entre checkout e próximo checkin
+      };
+    } catch (error) {
+      console.error('[TursoService] Erro ao obter config sync:', error);
+      return {
+        horariosDownload: ['06:00', '12:00'],
+        enviarNoCheckout: true,
+        tempoMaximoCheckout: 30,
+        tempoMinimoEntreVisitas: 5
+      };
+    }
+  }
+
+  /**
+   * Salvar configurações de sincronização
+   */
+  async salvarConfigSync(config) {
+    try {
+      await this.execute(`
+        CREATE TABLE IF NOT EXISTS cc_config_sync (
+          id INTEGER PRIMARY KEY,
+          config TEXT NOT NULL,
+          atualizado_em TEXT DEFAULT (datetime('now'))
+        )
+      `, []);
+
+      await this.execute(`
+        INSERT OR REPLACE INTO cc_config_sync (id, config, atualizado_em)
+        VALUES (1, ?, datetime('now'))
+      `, [JSON.stringify(config)]);
+
+    } catch (error) {
+      console.error('[TursoService] Erro ao salvar config sync:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Criar ou atualizar sessão de visita (para sync offline)
+   */
+  async criarOuAtualizarSessaoVisita(dados) {
+    try {
+      // Verificar se já existe sessão com esse localId
+      if (dados.localId) {
+        const existing = await this.execute(
+          'SELECT sessao_id FROM cc_visita_sessao WHERE local_id = ?',
+          [dados.localId]
+        );
+        if (existing?.rows?.length > 0) {
+          // Atualizar sessão existente
+          await this.execute(`
+            UPDATE cc_visita_sessao SET
+              checkout_at = COALESCE(?, checkout_at),
+              checkout_lat = COALESCE(?, checkout_lat),
+              checkout_lng = COALESCE(?, checkout_lng),
+              observacoes = COALESCE(?, observacoes),
+              atualizado_em = datetime('now')
+            WHERE local_id = ?
+          `, [
+            dados.checkout_at,
+            dados.checkout_lat,
+            dados.checkout_lng,
+            dados.observacoes,
+            dados.localId
+          ]);
+          return { sessao_id: existing.rows[0].sessao_id };
+        }
+      }
+
+      // Adicionar coluna local_id se não existir
+      await this.execute(`
+        ALTER TABLE cc_visita_sessao ADD COLUMN local_id TEXT
+      `, []).catch(() => {}); // Ignora se já existe
+
+      await this.execute(`
+        ALTER TABLE cc_visita_sessao ADD COLUMN origem TEXT DEFAULT 'web'
+      `, []).catch(() => {});
+
+      // Criar nova sessão
+      const result = await this.execute(`
+        INSERT INTO cc_visita_sessao (
+          rep_id, cliente_id, checkin_at, checkin_lat, checkin_lng,
+          checkout_at, checkout_lat, checkout_lng, data_planejada,
+          observacoes, origem, local_id, criado_em
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `, [
+        dados.rep_id,
+        dados.cliente_id,
+        dados.checkin_at,
+        dados.checkin_lat,
+        dados.checkin_lng,
+        dados.checkout_at,
+        dados.checkout_lat,
+        dados.checkout_lng,
+        dados.data_planejada,
+        dados.observacoes,
+        dados.origem || 'pwa_offline',
+        dados.localId
+      ]);
+
+      return { sessao_id: result.lastInsertRowid };
+    } catch (error) {
+      console.error('[TursoService] Erro ao criar sessão:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Buscar última sessão do repositor (para validação de tempo)
+   */
+  async buscarUltimaSessaoRepositor(repId) {
+    try {
+      const result = await this.execute(`
+        SELECT sessao_id, cliente_id, checkin_at, checkout_at
+        FROM cc_visita_sessao
+        WHERE rep_id = ?
+        ORDER BY COALESCE(checkout_at, checkin_at) DESC
+        LIMIT 1
+      `, [repId]);
+
+      const rows = result?.rows || result || [];
+      return rows.length > 0 ? rows[0] : null;
+    } catch (error) {
+      console.error('[TursoService] Erro ao buscar última sessão:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Validar tempo entre operações
+   * Retorna { valido: boolean, erro?: string, alerta?: string }
+   */
+  async validarTempoOperacao(repId, tipoOperacao, timestamp) {
+    try {
+      const config = await this.getConfigSync();
+      const ultimaSessao = await this.buscarUltimaSessaoRepositor(repId);
+
+      if (!ultimaSessao) {
+        return { valido: true }; // Primeira sessão do repositor
+      }
+
+      const agora = new Date(timestamp);
+
+      if (tipoOperacao === 'checkin') {
+        // Validar tempo mínimo entre checkout anterior e novo checkin
+        if (ultimaSessao.checkout_at) {
+          const ultimoCheckout = new Date(ultimaSessao.checkout_at);
+          const diffMinutos = (agora - ultimoCheckout) / (1000 * 60);
+          const minimoMinutos = config.tempoMinimoEntreVisitas || 5;
+
+          if (diffMinutos < minimoMinutos) {
+            return {
+              valido: false,
+              erro: `Tempo mínimo entre visitas não respeitado. Aguarde ${Math.ceil(minimoMinutos - diffMinutos)} minutos.`,
+              tempoDecorrido: Math.round(diffMinutos),
+              tempoNecessario: minimoMinutos
+            };
+          }
+        } else {
+          // Sessão anterior ainda está aberta
+          return {
+            valido: false,
+            erro: 'Existe uma sessão de visita ainda aberta. Faça o checkout antes de iniciar nova visita.',
+            sessaoAberta: ultimaSessao.sessao_id
+          };
+        }
+      }
+
+      return { valido: true };
+    } catch (error) {
+      console.error('[TursoService] Erro ao validar tempo:', error);
+      // Em caso de erro na validação, permitir a operação (fail-safe)
+      return { valido: true, alerta: 'Validação de tempo não disponível' };
+    }
+  }
+
+  /**
+   * Criar ou atualizar tabela de força sync
+   */
+  async criarTabelaForcaSync() {
+    await this.execute(`
+      CREATE TABLE IF NOT EXISTS cc_forca_sync (
+        rep_id INTEGER PRIMARY KEY,
+        forcar_download INTEGER DEFAULT 0,
+        forcar_upload INTEGER DEFAULT 0,
+        mensagem TEXT,
+        criado_em TEXT DEFAULT (datetime('now')),
+        criado_por INTEGER
+      )
+    `, []);
+  }
+
+  /**
+   * Marcar repositor para forçar sincronização
+   */
+  async forcarSyncRepositor(repId, tipo, mensagem = null, adminId = null) {
+    try {
+      await this.criarTabelaForcaSync();
+
+      if (tipo === 'download' || tipo === 'ambos') {
+        await this.execute(`
+          INSERT INTO cc_forca_sync (rep_id, forcar_download, mensagem, criado_por)
+          VALUES (?, 1, ?, ?)
+          ON CONFLICT(rep_id) DO UPDATE SET
+            forcar_download = 1,
+            mensagem = COALESCE(?, mensagem),
+            criado_em = datetime('now'),
+            criado_por = ?
+        `, [repId, mensagem, adminId, mensagem, adminId]);
+      }
+
+      if (tipo === 'upload' || tipo === 'ambos') {
+        await this.execute(`
+          INSERT INTO cc_forca_sync (rep_id, forcar_upload, mensagem, criado_por)
+          VALUES (?, 1, ?, ?)
+          ON CONFLICT(rep_id) DO UPDATE SET
+            forcar_upload = 1,
+            mensagem = COALESCE(?, mensagem),
+            criado_em = datetime('now'),
+            criado_por = ?
+        `, [repId, mensagem, adminId, mensagem, adminId]);
+      }
+
+      console.log(`[TursoService] Forçando sync ${tipo} para rep_id ${repId}`);
+      return { ok: true };
+    } catch (error) {
+      console.error('[TursoService] Erro ao forçar sync:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Forçar sync para TODOS os repositores
+   */
+  async forcarSyncTodos(tipo, mensagem = null, adminId = null) {
+    try {
+      await this.criarTabelaForcaSync();
+
+      // Buscar todos os repositores
+      const result = await this.execute('SELECT repo_cod FROM cadRepositor WHERE repo_ativo = 1', []);
+      const repositores = result?.rows || result || [];
+
+      for (const repo of repositores) {
+        await this.forcarSyncRepositor(repo.repo_cod, tipo, mensagem, adminId);
+      }
+
+      return { ok: true, total: repositores.length };
+    } catch (error) {
+      console.error('[TursoService] Erro ao forçar sync todos:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Verificar se repositor precisa forçar sync
+   */
+  async verificarForcaSync(repId) {
+    try {
+      await this.criarTabelaForcaSync();
+
+      const result = await this.execute(`
+        SELECT forcar_download, forcar_upload, mensagem
+        FROM cc_forca_sync
+        WHERE rep_id = ?
+      `, [repId]);
+
+      const rows = result?.rows || result || [];
+
+      if (rows.length === 0) {
+        return { forcarDownload: false, forcarUpload: false };
+      }
+
+      return {
+        forcarDownload: !!rows[0].forcar_download,
+        forcarUpload: !!rows[0].forcar_upload,
+        mensagem: rows[0].mensagem
+      };
+    } catch (error) {
+      console.error('[TursoService] Erro ao verificar força sync:', error);
+      return { forcarDownload: false, forcarUpload: false };
+    }
+  }
+
+  /**
+   * Limpar flag de força sync após repositor sincronizar
+   */
+  async limparForcaSync(repId, tipo) {
+    try {
+      if (tipo === 'download') {
+        await this.execute(`
+          UPDATE cc_forca_sync SET forcar_download = 0 WHERE rep_id = ?
+        `, [repId]);
+      } else if (tipo === 'upload') {
+        await this.execute(`
+          UPDATE cc_forca_sync SET forcar_upload = 0 WHERE rep_id = ?
+        `, [repId]);
+      }
+    } catch (error) {
+      console.error('[TursoService] Erro ao limpar força sync:', error);
+    }
+  }
+
+  // ==================== ATIVIDADES DINÂMICAS ====================
+
+  /**
+   * Criar tabela de atividades se não existir
+   */
+  async criarTabelaAtividades() {
+    await this.execute(`
+      CREATE TABLE IF NOT EXISTS cc_atividades (
+        atv_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        atv_nome TEXT NOT NULL,
+        atv_descricao TEXT,
+        atv_tipo TEXT NOT NULL DEFAULT 'checkbox',
+        atv_obrigatorio INTEGER DEFAULT 0,
+        atv_requer_valor INTEGER DEFAULT 0,
+        atv_valor_label TEXT,
+        atv_valor_tipo TEXT DEFAULT 'number',
+        atv_ordem INTEGER DEFAULT 0,
+        atv_ativo INTEGER DEFAULT 1,
+        atv_grupo TEXT DEFAULT 'checklist',
+        criado_em TEXT DEFAULT (datetime('now')),
+        atualizado_em TEXT DEFAULT (datetime('now'))
+      )
+    `, []);
+  }
+
+  /**
+   * Listar todas as atividades
+   */
+  async listarAtividades(apenasAtivas = false) {
+    try {
+      await this.criarTabelaAtividades();
+
+      let sql = 'SELECT * FROM cc_atividades';
+      if (apenasAtivas) {
+        sql += ' WHERE atv_ativo = 1';
+      }
+      sql += ' ORDER BY atv_grupo, atv_ordem, atv_nome';
+
+      const result = await this.execute(sql, []);
+      return result?.rows || result || [];
+    } catch (error) {
+      console.error('[TursoService] Erro ao listar atividades:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Buscar atividade por ID
+   */
+  async buscarAtividadePorId(atvId) {
+    try {
+      const result = await this.execute(
+        'SELECT * FROM cc_atividades WHERE atv_id = ?',
+        [atvId]
+      );
+      const rows = result?.rows || result || [];
+      return rows.length > 0 ? rows[0] : null;
+    } catch (error) {
+      console.error('[TursoService] Erro ao buscar atividade:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Criar nova atividade
+   */
+  async criarAtividade(dados) {
+    try {
+      await this.criarTabelaAtividades();
+
+      const result = await this.execute(`
+        INSERT INTO cc_atividades (
+          atv_nome, atv_descricao, atv_tipo, atv_obrigatorio,
+          atv_requer_valor, atv_valor_label, atv_valor_tipo,
+          atv_ordem, atv_ativo, atv_grupo
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        dados.atv_nome,
+        dados.atv_descricao || null,
+        dados.atv_tipo || 'checkbox',
+        dados.atv_obrigatorio ? 1 : 0,
+        dados.atv_requer_valor ? 1 : 0,
+        dados.atv_valor_label || null,
+        dados.atv_valor_tipo || 'number',
+        dados.atv_ordem || 0,
+        dados.atv_ativo !== false ? 1 : 0,
+        dados.atv_grupo || 'checklist'
+      ]);
+
+      return { atv_id: result.lastInsertRowid };
+    } catch (error) {
+      console.error('[TursoService] Erro ao criar atividade:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Atualizar atividade existente
+   */
+  async atualizarAtividade(atvId, dados) {
+    try {
+      await this.execute(`
+        UPDATE cc_atividades SET
+          atv_nome = ?,
+          atv_descricao = ?,
+          atv_tipo = ?,
+          atv_obrigatorio = ?,
+          atv_requer_valor = ?,
+          atv_valor_label = ?,
+          atv_valor_tipo = ?,
+          atv_ordem = ?,
+          atv_ativo = ?,
+          atv_grupo = ?,
+          atualizado_em = datetime('now')
+        WHERE atv_id = ?
+      `, [
+        dados.atv_nome,
+        dados.atv_descricao || null,
+        dados.atv_tipo || 'checkbox',
+        dados.atv_obrigatorio ? 1 : 0,
+        dados.atv_requer_valor ? 1 : 0,
+        dados.atv_valor_label || null,
+        dados.atv_valor_tipo || 'number',
+        dados.atv_ordem || 0,
+        dados.atv_ativo !== false ? 1 : 0,
+        dados.atv_grupo || 'checklist',
+        atvId
+      ]);
+
+      return { ok: true };
+    } catch (error) {
+      console.error('[TursoService] Erro ao atualizar atividade:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Excluir atividade (soft delete - marca como inativa)
+   */
+  async excluirAtividade(atvId) {
+    try {
+      await this.execute(`
+        UPDATE cc_atividades SET atv_ativo = 0, atualizado_em = datetime('now')
+        WHERE atv_id = ?
+      `, [atvId]);
+      return { ok: true };
+    } catch (error) {
+      console.error('[TursoService] Erro ao excluir atividade:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Inicializar atividades padrão (se tabela estiver vazia)
+   */
+  async inicializarAtividadesPadrao() {
+    try {
+      await this.criarTabelaAtividades();
+
+      // Verificar se já existem atividades
+      const result = await this.execute('SELECT COUNT(*) as total FROM cc_atividades', []);
+      const rows = result?.rows || result || [];
+      const total = rows[0]?.total || 0;
+
+      if (total > 0) {
+        return { inicializado: false, message: 'Atividades já existem' };
+      }
+
+      // Atividades padrão baseadas no sistema atual
+      const atividadesPadrao = [
+        // Grupo: campos
+        { atv_nome: 'Quantidade de Frentes', atv_tipo: 'number', atv_obrigatorio: 1, atv_grupo: 'campos', atv_ordem: 1, atv_valor_label: 'Qtd. Frentes' },
+        { atv_nome: 'Usou Merchandising', atv_tipo: 'boolean', atv_obrigatorio: 1, atv_grupo: 'campos', atv_ordem: 2 },
+        // Grupo: checklist
+        { atv_nome: 'Abastecimento', atv_tipo: 'checkbox', atv_obrigatorio: 0, atv_grupo: 'checklist', atv_ordem: 1 },
+        { atv_nome: 'Espaço Loja', atv_tipo: 'checkbox', atv_obrigatorio: 0, atv_grupo: 'checklist', atv_ordem: 2 },
+        { atv_nome: 'Ruptura Loja', atv_tipo: 'checkbox', atv_obrigatorio: 0, atv_grupo: 'checklist', atv_ordem: 3 },
+        { atv_nome: 'Pontos Extras', atv_tipo: 'checkbox', atv_obrigatorio: 0, atv_grupo: 'checklist', atv_ordem: 4, atv_requer_valor: 1, atv_valor_label: 'Quantidade de Pontos Extras', atv_valor_tipo: 'number' }
+      ];
+
+      for (const atv of atividadesPadrao) {
+        await this.criarAtividade(atv);
+      }
+
+      return { inicializado: true, total: atividadesPadrao.length };
+    } catch (error) {
+      console.error('[TursoService] Erro ao inicializar atividades:', error);
+      throw error;
+    }
+  }
+
+  // ==================== LOGIN WEB E CONTROLE DE ACESSOS ====================
+
+  async ensureWebLoginSchema() {
+    // Adicionar campos para login web na tabela cc_usuarios
+    try {
+      // Verificar se coluna deve_trocar_senha existe
+      const checkCol = await this.execute(`PRAGMA table_info(cc_usuarios)`, []);
+      const columns = checkCol.rows.map(r => r.name);
+
+      if (!columns.includes('deve_trocar_senha')) {
+        await this.execute(`ALTER TABLE cc_usuarios ADD COLUMN deve_trocar_senha INTEGER DEFAULT 0`, []);
+        console.log('✅ Coluna deve_trocar_senha adicionada');
+      }
+
+      if (!columns.includes('tipo_acesso')) {
+        await this.execute(`ALTER TABLE cc_usuarios ADD COLUMN tipo_acesso TEXT DEFAULT 'pwa'`, []);
+        console.log('✅ Coluna tipo_acesso adicionada');
+      }
+
+      if (!columns.includes('senha_resetada_em')) {
+        await this.execute(`ALTER TABLE cc_usuarios ADD COLUMN senha_resetada_em TEXT`, []);
+        console.log('✅ Coluna senha_resetada_em adicionada');
+      }
+    } catch (e) {
+      console.log('[ensureWebLoginSchema] Colunas já existem ou erro:', e.message);
+    }
+
+    // Criar tabela de telas web
+    const sqlWebTelas = `
+      CREATE TABLE IF NOT EXISTS cc_web_telas (
+        tela_id TEXT PRIMARY KEY,
+        tela_titulo TEXT NOT NULL,
+        tela_categoria TEXT NOT NULL DEFAULT 'geral',
+        tela_icone TEXT DEFAULT '📄',
+        ordem INTEGER DEFAULT 999,
+        ativo INTEGER DEFAULT 1,
+        criado_em TEXT DEFAULT (datetime('now'))
+      )
+    `;
+    await this.execute(sqlWebTelas, []);
+    console.log('✅ Tabela cc_web_telas garantida');
+
+    // Criar tabela de permissões por usuário
+    const sqlPermissoes = `
+      CREATE TABLE IF NOT EXISTS cc_usuario_telas_web (
+        usuario_id INTEGER NOT NULL,
+        tela_id TEXT NOT NULL,
+        pode_visualizar INTEGER DEFAULT 1,
+        pode_editar INTEGER DEFAULT 0,
+        criado_em TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (usuario_id, tela_id)
+      )
+    `;
+    await this.execute(sqlPermissoes, []);
+    console.log('✅ Tabela cc_usuario_telas_web garantida');
+
+    // Inserir telas web padrão se não existirem
+    const telasWeb = [
+      // Início
+      { id: 'home', titulo: 'Início', categoria: 'geral', icone: '🏠', ordem: 0 },
+      // Cadastros
+      { id: 'cadastro-repositor', titulo: 'Cadastro de Repositores', categoria: 'cadastros', icone: '👥', ordem: 1 },
+      { id: 'roteiro-repositor', titulo: 'Roteiro do Repositor', categoria: 'cadastros', icone: '🗺️', ordem: 2 },
+      { id: 'cadastro-rateio', titulo: 'Manutenção de Rateio', categoria: 'cadastros', icone: '📊', ordem: 3 },
+      { id: 'manutencao-centralizacao', titulo: 'Centralização', categoria: 'cadastros', icone: '🔗', ordem: 4 },
+      { id: 'cadastro-pesquisa', titulo: 'Pesquisas', categoria: 'cadastros', icone: '📝', ordem: 5 },
+      { id: 'cadastro-espacos', titulo: 'Compra de Espaço', categoria: 'cadastros', icone: '📦', ordem: 6 },
+      { id: 'validacao-dados', titulo: 'Validação de Dados', categoria: 'cadastros', icone: '✅', ordem: 7 },
+      // Registros
+      { id: 'registro-rota', titulo: 'Registro de Rota', categoria: 'registros', icone: '📍', ordem: 10 },
+      { id: 'documentos', titulo: 'Registro de Documentos', categoria: 'registros', icone: '📄', ordem: 11 },
+      // Consultas
+      { id: 'consulta-visitas', titulo: 'Consulta de Visitas', categoria: 'consultas', icone: '🔍', ordem: 20 },
+      { id: 'consulta-campanha', titulo: 'Consulta Campanha', categoria: 'consultas', icone: '📸', ordem: 21 },
+      { id: 'consulta-alteracoes', titulo: 'Consulta de Alterações', categoria: 'consultas', icone: '📝', ordem: 22 },
+      { id: 'consulta-roteiro', titulo: 'Consulta de Roteiro', categoria: 'consultas', icone: '📋', ordem: 23 },
+      { id: 'consulta-documentos', titulo: 'Consulta de Documentos', categoria: 'consultas', icone: '📄', ordem: 24 },
+      { id: 'consulta-pesquisa', titulo: 'Consulta de Pesquisas', categoria: 'consultas', icone: '📊', ordem: 25 },
+      { id: 'consulta-espacos', titulo: 'Consulta de Espaços', categoria: 'consultas', icone: '📦', ordem: 26 },
+      { id: 'consulta-despesas', titulo: 'Consulta de Despesas', categoria: 'consultas', icone: '💰', ordem: 27 },
+      // Relatórios
+      { id: 'resumo-periodo', titulo: 'Resumo do Período', categoria: 'relatorios', icone: '📅', ordem: 30 },
+      { id: 'resumo-mensal', titulo: 'Resumo Mensal', categoria: 'relatorios', icone: '📆', ordem: 31 },
+      { id: 'relatorio-detalhado-repo', titulo: 'Relatório Detalhado', categoria: 'relatorios', icone: '📑', ordem: 32 },
+      { id: 'analise-grafica-repo', titulo: 'Análise Gráfica', categoria: 'relatorios', icone: '📈', ordem: 33 },
+      { id: 'alteracoes-rota', titulo: 'Alterações de Rota', categoria: 'relatorios', icone: '🔄', ordem: 34 },
+      // Análises
+      { id: 'analise-performance', titulo: 'Análise de Visitas', categoria: 'analises', icone: '📊', ordem: 40 },
+      // Custos
+      { id: 'custos-grid', titulo: 'Grid de Custos', categoria: 'custos', icone: '💲', ordem: 50 },
+      // Configurações
+      { id: 'configuracoes-sistema', titulo: 'Configurações do Sistema', categoria: 'configuracoes', icone: '⚙️', ordem: 90 },
+      { id: 'permissoes-pwa', titulo: 'Permissões PWA', categoria: 'configuracoes', icone: '📱', ordem: 91 },
+      { id: 'estrutura-banco-comercial', titulo: 'Estrutura Banco Comercial', categoria: 'configuracoes', icone: '🗄️', ordem: 92 }
+    ];
+
+    for (const tela of telasWeb) {
+      try {
+        await this.execute(
+          `INSERT OR IGNORE INTO cc_web_telas (tela_id, tela_titulo, tela_categoria, tela_icone, ordem) VALUES (?, ?, ?, ?, ?)`,
+          [tela.id, tela.titulo, tela.categoria, tela.icone, tela.ordem]
+        );
+      } catch (e) {
+        // Ignora se já existe
+      }
+    }
+    console.log('✅ Telas web configuradas');
+  }
+
+  async criarUsuarioAdmin() {
+    const { authService } = await import('./auth.js');
+
+    // Verificar se admin já existe
+    const existing = await this.execute(
+      `SELECT usuario_id FROM cc_usuarios WHERE username = 'admin'`,
+      []
+    );
+
+    if (existing.rows.length > 0) {
+      console.log('[criarUsuarioAdmin] Usuário admin já existe');
+      return { existe: true, usuario_id: existing.rows[0].usuario_id };
+    }
+
+    // Criar hash da senha
+    const passwordHash = await authService.hashPassword('troca@123456');
+
+    // Inserir usuário admin
+    const result = await this.execute(`
+      INSERT INTO cc_usuarios (username, password_hash, nome_completo, email, perfil, tipo_acesso, deve_trocar_senha, ativo)
+      VALUES ('admin', ?, 'Administrador', 'admin@sistema.local', 'admin', 'web', 0, 1)
+    `, [passwordHash]);
+
+    const adminId = Number(result.lastInsertRowid);
+    console.log(`✅ Usuário admin criado com ID ${adminId}`);
+
+    // Dar acesso a todas as telas
+    const telas = await this.listarTelasWeb();
+    for (const tela of telas) {
+      await this.execute(`
+        INSERT OR REPLACE INTO cc_usuario_telas_web (usuario_id, tela_id, pode_visualizar, pode_editar)
+        VALUES (?, ?, 1, 1)
+      `, [adminId, tela.tela_id]);
+    }
+
+    return { criado: true, usuario_id: adminId };
+  }
+
+  // Listar todas as telas web
+  async listarTelasWeb() {
+    const sql = `SELECT * FROM cc_web_telas WHERE ativo = 1 ORDER BY ordem, tela_titulo`;
+    const result = await this.execute(sql, []);
+    return result.rows || [];
+  }
+
+  // Listar telas que um usuário pode acessar
+  async listarTelasUsuario(usuarioId) {
+    const sql = `
+      SELECT t.*, p.pode_visualizar, p.pode_editar
+      FROM cc_web_telas t
+      INNER JOIN cc_usuario_telas_web p ON t.tela_id = p.tela_id
+      WHERE p.usuario_id = ? AND p.pode_visualizar = 1 AND t.ativo = 1
+      ORDER BY t.ordem, t.tela_titulo
+    `;
+    const result = await this.execute(sql, [usuarioId]);
+    return result.rows || [];
+  }
+
+  // Verificar se usuário tem acesso a uma tela
+  async usuarioTemAcessoTela(usuarioId, telaId) {
+    // Admin tem acesso a tudo
+    const usuario = await this.buscarUsuarioPorId(usuarioId);
+    if (usuario?.perfil === 'admin') return true;
+
+    const sql = `
+      SELECT pode_visualizar FROM cc_usuario_telas_web
+      WHERE usuario_id = ? AND tela_id = ? AND pode_visualizar = 1
+    `;
+    const result = await this.execute(sql, [usuarioId, telaId]);
+    return result.rows.length > 0;
+  }
+
+  // Atualizar permissões de um usuário
+  async atualizarPermissoesUsuario(usuarioId, telas) {
+    // Remover permissões antigas
+    await this.execute(`DELETE FROM cc_usuario_telas_web WHERE usuario_id = ?`, [usuarioId]);
+
+    // Inserir novas permissões
+    for (const tela of telas) {
+      if (tela.pode_visualizar) {
+        await this.execute(`
+          INSERT INTO cc_usuario_telas_web (usuario_id, tela_id, pode_visualizar, pode_editar)
+          VALUES (?, ?, ?, ?)
+        `, [usuarioId, tela.tela_id, tela.pode_visualizar ? 1 : 0, tela.pode_editar ? 1 : 0]);
+      }
+    }
+  }
+
+  // Listar permissões de um usuário
+  async listarPermissoesUsuario(usuarioId) {
+    const sql = `
+      SELECT t.tela_id, t.tela_titulo, t.tela_categoria, t.tela_icone,
+             COALESCE(p.pode_visualizar, 0) as pode_visualizar,
+             COALESCE(p.pode_editar, 0) as pode_editar
+      FROM cc_web_telas t
+      LEFT JOIN cc_usuario_telas_web p ON t.tela_id = p.tela_id AND p.usuario_id = ?
+      WHERE t.ativo = 1
+      ORDER BY t.ordem, t.tela_titulo
+    `;
+    const result = await this.execute(sql, [usuarioId]);
+    return result.rows || [];
+  }
+
+  // Resetar senha do usuário (admin)
+  async resetarSenhaUsuario(usuarioId, novaSenha) {
+    const { authService } = await import('./auth.js');
+    const passwordHash = await authService.hashPassword(novaSenha);
+
+    await this.execute(`
+      UPDATE cc_usuarios
+      SET password_hash = ?, deve_trocar_senha = 1, senha_resetada_em = datetime('now'), atualizado_em = datetime('now')
+      WHERE usuario_id = ?
+    `, [passwordHash, usuarioId]);
+  }
+
+  // Marcar que usuário trocou a senha
+  async marcarSenhaTrocada(usuarioId) {
+    await this.execute(`
+      UPDATE cc_usuarios
+      SET deve_trocar_senha = 0, atualizado_em = datetime('now')
+      WHERE usuario_id = ?
+    `, [usuarioId]);
+  }
+
+  // ==================== USERS_WEB - Usuários do Sistema Web ====================
+
+  // Garantir schema da tabela users_web
+  async ensureUsersWebSchema() {
+    const sql = `
+      CREATE TABLE IF NOT EXISTS users_web (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        full_name TEXT,
+        permissions TEXT,
+        active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `;
+    await this.execute(sql, []);
+    console.log('✅ Tabela users_web garantida');
+  }
+
+  // Buscar usuário na tabela users_web para login web
+  async buscarUsuarioLoginWeb(username) {
+    try {
+      const sql = `SELECT id, username, password, full_name, permissions, active FROM users_web WHERE username = ? AND active = 1 LIMIT 1`;
+      const result = await this.execute(sql, [username]);
+      console.log(`[buscarUsuarioLoginWeb] Buscando: ${username}, encontrado: ${result.rows?.length > 0}`);
+      return result.rows?.[0] || null;
+    } catch (error) {
+      console.error('[buscarUsuarioLoginWeb] Erro:', error.message);
+      return null;
+    }
+  }
+
+  // Listar todos usuários web
+  async listarUsuariosWeb() {
+    const sql = `SELECT id, username, full_name, permissions, active, created_at, updated_at FROM users_web ORDER BY username`;
+    const result = await this.execute(sql, []);
+    return result.rows || [];
+  }
+
+  // Buscar usuário web por ID
+  async buscarUsuarioWebPorId(id) {
+    const sql = `SELECT id, username, full_name, permissions, active, created_at, updated_at FROM users_web WHERE id = ?`;
+    const result = await this.execute(sql, [id]);
+    return result.rows?.[0] || null;
+  }
+
+  // Criar usuário web
+  async criarUsuarioWeb(dados) {
+    const { username, password, full_name, permissions, active } = dados;
+    const agora = new Date().toISOString();
+
+    const sql = `
+      INSERT INTO users_web (username, password, full_name, permissions, active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    await this.execute(sql, [
+      username,
+      password,
+      full_name || null,
+      permissions || null,
+      active !== undefined ? active : 1,
+      agora,
+      agora
+    ]);
+
+    // Retornar o usuário criado
+    return this.buscarUsuarioLoginWeb(username);
+  }
+
+  // Atualizar usuário web
+  async atualizarUsuarioWeb(id, dados) {
+    const { username, password, full_name, permissions, active } = dados;
+    const agora = new Date().toISOString();
+
+    // Montar query dinâmica apenas com campos fornecidos
+    const campos = [];
+    const valores = [];
+
+    if (username !== undefined) {
+      campos.push('username = ?');
+      valores.push(username);
+    }
+    if (password !== undefined) {
+      campos.push('password = ?');
+      valores.push(password);
+    }
+    if (full_name !== undefined) {
+      campos.push('full_name = ?');
+      valores.push(full_name);
+    }
+    if (permissions !== undefined) {
+      campos.push('permissions = ?');
+      valores.push(permissions);
+    }
+    if (active !== undefined) {
+      campos.push('active = ?');
+      valores.push(active);
+    }
+
+    campos.push('updated_at = ?');
+    valores.push(agora);
+    valores.push(id);
+
+    const sql = `UPDATE users_web SET ${campos.join(', ')} WHERE id = ?`;
+    await this.execute(sql, valores);
+
+    return this.buscarUsuarioWebPorId(id);
+  }
+
+  // Deletar usuário web
+  async deletarUsuarioWeb(id) {
+    const sql = `DELETE FROM users_web WHERE id = ?`;
+    await this.execute(sql, [id]);
+    return { success: true };
+  }
+
+  // Buscar usuário web (inclui campos adicionais)
+  async buscarUsuarioWebPorUsername(username) {
+    const sql = `
+      SELECT u.*, r.repo_nome
+      FROM cc_usuarios u
+      LEFT JOIN cad_repositor r ON u.rep_id = r.repo_cod
+      WHERE u.username = ? AND u.ativo = 1
+    `;
+    const result = await this.execute(sql, [username]);
+    return result.rows[0] || null;
+  }
+
+  // Criar nova tela web
+  async criarTelaWeb(dados) {
+    const sql = `
+      INSERT INTO cc_web_telas (tela_id, tela_titulo, tela_categoria, tela_icone, ordem)
+      VALUES (?, ?, ?, ?, ?)
+    `;
+    await this.execute(sql, [
+      dados.tela_id,
+      dados.tela_titulo,
+      dados.tela_categoria || 'geral',
+      dados.tela_icone || '📄',
+      dados.ordem || 999
+    ]);
+  }
+
+  // Atualizar tela web
+  async atualizarTelaWeb(telaId, dados) {
+    const campos = [];
+    const valores = [];
+
+    if (dados.tela_titulo !== undefined) {
+      campos.push('tela_titulo = ?');
+      valores.push(dados.tela_titulo);
+    }
+    if (dados.tela_categoria !== undefined) {
+      campos.push('tela_categoria = ?');
+      valores.push(dados.tela_categoria);
+    }
+    if (dados.tela_icone !== undefined) {
+      campos.push('tela_icone = ?');
+      valores.push(dados.tela_icone);
+    }
+    if (dados.ordem !== undefined) {
+      campos.push('ordem = ?');
+      valores.push(dados.ordem);
+    }
+    if (dados.ativo !== undefined) {
+      campos.push('ativo = ?');
+      valores.push(dados.ativo ? 1 : 0);
+    }
+
+    if (campos.length === 0) return;
+
+    valores.push(telaId);
+    const sql = `UPDATE cc_web_telas SET ${campos.join(', ')} WHERE tela_id = ?`;
+    await this.execute(sql, valores);
+  }
+
+  // Excluir tela web (soft delete)
+  async excluirTelaWeb(telaId) {
+    await this.execute(`UPDATE cc_web_telas SET ativo = 0 WHERE tela_id = ?`, [telaId]);
+  }
+
+  // Dar acesso web completo a um usuário por username
+  async darAcessoWebCompleto(username) {
+    // Buscar usuário
+    const usuario = await this.buscarUsuarioPorUsernameIncluindoInativos(username);
+    if (!usuario) {
+      console.log(`[darAcessoWebCompleto] Usuário ${username} não encontrado`);
+      return { encontrado: false };
+    }
+
+    // Atualizar tipo de acesso para web
+    await this.execute(`
+      UPDATE cc_usuarios
+      SET tipo_acesso = 'web', atualizado_em = datetime('now')
+      WHERE usuario_id = ?
+    `, [usuario.usuario_id]);
+
+    // Dar acesso a todas as telas
+    const telas = await this.listarTelasWeb();
+    for (const tela of telas) {
+      await this.execute(`
+        INSERT OR REPLACE INTO cc_usuario_telas_web (usuario_id, tela_id, pode_visualizar, pode_editar)
+        VALUES (?, ?, 1, 1)
+      `, [usuario.usuario_id, tela.tela_id]);
+    }
+
+    console.log(`✅ Acesso web completo dado ao usuário ${username} (ID: ${usuario.usuario_id})`);
+    return { sucesso: true, usuario_id: usuario.usuario_id };
+  }
+
+  // Habilitar usuário existente para acesso web
+  async habilitarUsuarioWeb(usuarioId, senha = null) {
+    const { authService } = await import('./auth.js');
+
+    const updates = [`tipo_acesso = 'web'`, `atualizado_em = datetime('now')`];
+    const params = [];
+
+    if (senha) {
+      const passwordHash = await authService.hashPassword(senha);
+      updates.push(`password_hash = ?`);
+      updates.push(`deve_trocar_senha = 1`);
+      params.push(passwordHash);
+    }
+
+    params.push(usuarioId);
+    await this.execute(`UPDATE cc_usuarios SET ${updates.join(', ')} WHERE usuario_id = ?`, params);
   }
 }
 

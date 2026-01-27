@@ -20,6 +20,7 @@
     <link rel="apple-touch-icon" href="icon-512.png">
 
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/pwa.css">
 </head>
 <body>
     <!-- Tela de Login (hidden por padrão - AuthManager decide mostrar) -->
@@ -170,8 +171,18 @@
                     ☰
                 </button>
                 <h2 id="pageTitle">Resumo do Período</h2>
-                <div class="user-info">
+                <div class="user-info" style="display: flex; align-items: center; gap: 12px;">
+                    <!-- Indicador de Sync PWA -->
+                    <div id="syncIndicator" class="sync-indicator hidden">
+                        <span id="syncStatusIcon" class="sync-icon">&#8635;</span>
+                        <span id="syncStatusText" class="sync-text">Sincronizado</span>
+                        <button id="btnSyncManual" class="btn-sync-manual" title="Sincronizar agora">
+                            &#8635;
+                        </button>
+                    </div>
                     <span id="userStatus">Sistema Online</span>
+                    <!-- Info do usuário logado -->
+                    <div id="headerUserInfo" style="display: flex; align-items: center; gap: 8px;"></div>
                 </div>
             </div>
 
@@ -188,6 +199,52 @@
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- ==================== PWA MOBILE ==================== -->
+    <div id="pwaScreen" class="pwa-screen hidden">
+        <!-- Header PWA -->
+        <header class="pwa-header">
+            <div class="pwa-header-left">
+                <span class="pwa-user-name" id="pwaUserName">Repositor</span>
+            </div>
+            <div class="pwa-header-right">
+                <div class="pwa-sync-badge" id="pwaSyncBadge" title="Sincronizar">
+                    <span id="pwaSyncIcon">&#10003;</span>
+                    <span id="pwaPendingCount" class="pwa-pending hidden">0</span>
+                </div>
+                <div class="pwa-online-dot" id="pwaOnlineDot"></div>
+            </div>
+        </header>
+
+        <!-- Conteúdo PWA -->
+        <main class="pwa-content" id="pwaContent">
+            <!-- Carregado dinamicamente -->
+        </main>
+
+        <!-- Bottom Tabs -->
+        <nav class="pwa-tabs">
+            <button class="pwa-tab active" data-pwa-tab="pwa-home">
+                <span class="pwa-tab-icon">&#127968;</span>
+                <span class="pwa-tab-label">Início</span>
+            </button>
+            <button class="pwa-tab" data-pwa-tab="registro-rota">
+                <span class="pwa-tab-icon">&#128205;</span>
+                <span class="pwa-tab-label">Rota</span>
+            </button>
+            <button class="pwa-tab" data-pwa-tab="documentos">
+                <span class="pwa-tab-icon">&#128196;</span>
+                <span class="pwa-tab-label">Docs</span>
+            </button>
+            <button class="pwa-tab" data-pwa-tab="pwa-consultas">
+                <span class="pwa-tab-icon">&#128270;</span>
+                <span class="pwa-tab-label">Consultas</span>
+            </button>
+            <button class="pwa-tab" data-pwa-tab="pwa-mais">
+                <span class="pwa-tab-icon">&#9776;</span>
+                <span class="pwa-tab-label">Mais</span>
+            </button>
+        </nav>
     </div>
 
     <!-- Modal Global: Confirmação -->
@@ -263,8 +320,11 @@
 
     <!-- Scripts -->
     <script src="js/auth.js"></script>
+    <script src="js/offline-db.js"></script>
+    <script src="js/sync-service.js"></script>
+    <script src="js/pwa-app.js"></script>
     <script type="module" src="js/db.js"></script>
-    <script type="module" src="js/app.js?v=20260114_01"></script>
+    <script type="module" src="js/app.js?v=20260127_01"></script>
 
     <!-- Handler do formulário de login -->
     <script>
@@ -378,6 +438,101 @@
         } else {
             console.warn('⚠️ Service Worker não suportado neste navegador');
         }
+    </script>
+
+    <!-- Inicialização do SyncService para PWA -->
+    <script>
+        (async function initSyncUI() {
+            // Verificar se está em modo PWA (standalone)
+            const isPWA = window.matchMedia('(display-mode: standalone)').matches ||
+                          window.navigator.standalone === true;
+
+            const syncIndicator = document.getElementById('syncIndicator');
+            const syncStatusIcon = document.getElementById('syncStatusIcon');
+            const syncStatusText = document.getElementById('syncStatusText');
+            const btnSyncManual = document.getElementById('btnSyncManual');
+
+            // Mostrar indicador apenas no PWA
+            if (isPWA && syncIndicator) {
+                syncIndicator.classList.remove('hidden');
+
+                // Inicializar SyncService após login
+                if (typeof syncService !== 'undefined') {
+                    try {
+                        await syncService.init();
+
+                        // Atualizar UI baseado em eventos do sync
+                        syncService.onSync((evento, dados) => {
+                            switch (evento) {
+                                case 'online':
+                                    syncStatusIcon.textContent = '\u2713';
+                                    syncStatusIcon.style.color = '#10b981';
+                                    syncStatusText.textContent = 'Online';
+                                    break;
+                                case 'offline':
+                                    syncStatusIcon.textContent = '\u26A0';
+                                    syncStatusIcon.style.color = '#f59e0b';
+                                    syncStatusText.textContent = 'Offline';
+                                    break;
+                                case 'syncInicio':
+                                    syncStatusIcon.textContent = '\u21BB';
+                                    syncStatusIcon.style.color = '#3b82f6';
+                                    syncStatusText.textContent = 'Sincronizando...';
+                                    btnSyncManual.disabled = true;
+                                    btnSyncManual.classList.add('syncing');
+                                    break;
+                                case 'syncFim':
+                                    syncStatusIcon.textContent = dados.ok ? '\u2713' : '\u2717';
+                                    syncStatusIcon.style.color = dados.ok ? '#10b981' : '#ef4444';
+                                    syncStatusText.textContent = dados.ok ? 'Sincronizado' : 'Erro';
+                                    btnSyncManual.disabled = false;
+                                    btnSyncManual.classList.remove('syncing');
+                                    break;
+                                case 'pendentesAtualizado':
+                                    if (dados.total > 0) {
+                                        syncStatusText.textContent = `${dados.total} pendentes`;
+                                        syncStatusIcon.style.color = '#f59e0b';
+                                    }
+                                    break;
+                                case 'forcaSync':
+                                    if (dados.mensagem) {
+                                        alert('Admin solicitou sincronização: ' + dados.mensagem);
+                                    }
+                                    break;
+                            }
+                        });
+
+                        // Botão de sincronização manual
+                        if (btnSyncManual) {
+                            btnSyncManual.addEventListener('click', async () => {
+                                btnSyncManual.disabled = true;
+                                btnSyncManual.classList.add('syncing');
+                                try {
+                                    await syncService.sincronizarAgora();
+                                } catch (error) {
+                                    console.error('Erro na sincronização manual:', error);
+                                    alert('Erro ao sincronizar: ' + error.message);
+                                } finally {
+                                    btnSyncManual.disabled = false;
+                                    btnSyncManual.classList.remove('syncing');
+                                }
+                            });
+                        }
+
+                        // Verificar status atual
+                        const status = await syncService.getStatus();
+                        if (status.pendentes.total > 0) {
+                            syncStatusText.textContent = `${status.pendentes.total} pendentes`;
+                            syncStatusIcon.style.color = '#f59e0b';
+                        }
+
+                        console.log('[SyncUI] Indicador de sincronização inicializado');
+                    } catch (error) {
+                        console.error('[SyncUI] Erro ao inicializar:', error);
+                    }
+                }
+            }
+        })();
     </script>
 </body>
 </html>

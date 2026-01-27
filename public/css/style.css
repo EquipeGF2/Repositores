@@ -8046,3 +8046,87 @@ span.mobile-only {
 .pesquisa-filtros-row .filter-group {
     width: 100% !important;
 }
+
+/* ==================== SYNC INDICATOR PWA ==================== */
+.sync-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    background: #f3f4f6;
+    border-radius: 20px;
+    font-size: 0.8rem;
+}
+
+.sync-indicator.hidden {
+    display: none;
+}
+
+.sync-icon {
+    font-size: 1rem;
+    transition: color 0.3s ease;
+}
+
+.sync-text {
+    color: #374151;
+    white-space: nowrap;
+}
+
+.btn-sync-manual {
+    background: transparent;
+    border: 1px solid #d1d5db;
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1rem;
+    color: #6b7280;
+    transition: all 0.2s ease;
+}
+
+.btn-sync-manual:hover {
+    background: #e5e7eb;
+    border-color: #9ca3af;
+}
+
+.btn-sync-manual:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-sync-manual.syncing {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Mobile: indicador mais compacto */
+@media (max-width: 768px) {
+    .sync-indicator {
+        padding: 4px 8px;
+        font-size: 0.75rem;
+    }
+
+    .sync-text {
+        display: none;
+    }
+
+    .btn-sync-manual {
+        width: 24px;
+        height: 24px;
+        font-size: 0.9rem;
+    }
+}
+
+/* PWA mode: always show sync indicator */
+@media (display-mode: standalone) {
+    .sync-indicator {
+        display: flex !important;
+    }
+}

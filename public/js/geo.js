@@ -37,28 +37,79 @@ class GeoService {
         }
     }
 
+    async verificarPermissao() {
+        // Usa a Permissions API para verificar o estado real da permissão
+        if (!navigator.permissions) {
+            console.log('[GeoService] Permissions API não disponível');
+            return 'unknown';
+        }
+
+        try {
+            const result = await navigator.permissions.query({ name: 'geolocation' });
+            console.log('[GeoService] Estado da permissão de geolocalização:', result.state);
+            return result.state; // 'granted', 'denied', ou 'prompt'
+        } catch (error) {
+            console.warn('[GeoService] Erro ao verificar permissão:', error);
+            return 'unknown';
+        }
+    }
+
     async tentarCapturarLocalizacao(options) {
         return new Promise((resolve, reject) => {
             navigator.geolocation.getCurrentPosition(resolve, reject, options);
         });
     }
 
+    obterMensagemErro(erro, estadoPermissao) {
+        // Códigos de erro do Geolocation API
+        switch (erro?.code) {
+            case 1: // PERMISSION_DENIED
+                // Se a permissão do navegador está concedida mas recebemos PERMISSION_DENIED,
+                // provavelmente é o Windows Location Services que está desativado
+                if (estadoPermissao === 'granted') {
+                    return 'Localização bloqueada pelo sistema. Ative o Serviço de Localização do Windows: Configurações → Privacidade → Localização → Ativar.';
+                }
+                return 'Permissão de localização negada. Clique no cadeado 🔒 na barra de endereço → Permissões → Localização → Permitir.';
+            case 2: // POSITION_UNAVAILABLE
+                return 'Localização indisponível. Verifique se o GPS/Wi-Fi está ativado e tente em local com melhor sinal.';
+            case 3: // TIMEOUT
+                return 'Tempo esgotado ao obter localização. Tente novamente em local com melhor sinal GPS.';
+            default:
+                return erro?.message || 'Erro desconhecido ao obter localização.';
+        }
+    }
+
     async obterLocalizacao() {
         const erros = [];
 
+        // Verificar estado da permissão antes de tentar
+        const estadoPermissao = await this.verificarPermissao();
+        console.log('[GeoService] Estado da permissão antes de obter localização:', estadoPermissao);
+
         try {
+            console.log('[GeoService] Tentando obter localização (modo rápido)...');
             return await this.tentarCapturarLocalizacao(REQUEST_OPTIONS_FAST);
         } catch (erroRapido) {
             erros.push(erroRapido);
-            console.warn('Tentativa rápida de geolocalização falhou, tentando fallback...', erroRapido);
+            console.warn('[GeoService] Tentativa rápida falhou - código:', erroRapido?.code, 'mensagem:', erroRapido?.message);
         }
 
         try {
+            console.log('[GeoService] Tentando obter localização (modo fallback com alta precisão)...');
             return await this.tentarCapturarLocalizacao(REQUEST_OPTIONS_FALLBACK);
         } catch (erroFallback) {
             erros.push(erroFallback);
-            const mensagem = erroFallback?.message || 'Ative a localização do Windows e tente novamente.';
-            throw { code: erroFallback?.code || 'GEO_FAILED', message: mensagem, erros };
+            console.error('[GeoService] Todas as tentativas falharam - código:', erroFallback?.code, 'mensagem:', erroFallback?.message);
+
+            // Gera mensagem mais específica baseada no estado da permissão
+            const mensagem = this.obterMensagemErro(erroFallback, estadoPermissao);
+
+            throw {
+                code: erroFallback?.code || 'GEO_FAILED',
+                message: mensagem,
+                estadoPermissao,
+                erros
+            };
         }
     }
 

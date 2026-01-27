@@ -1,6 +1,51 @@
 import { authService } from '../services/auth.js';
 import { tursoService } from '../services/turso.js';
 
+// Middleware OPCIONAL para tentar autenticar (não bloqueia se não tiver token)
+// Usado para filtrar dados sem bloquear acesso web
+export async function optionalAuth(req, res, next) {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+
+    if (!token) {
+      // Sem token - continua sem autenticação (acesso web)
+      return next();
+    }
+
+    const decoded = authService.verifyToken(token);
+
+    if (!decoded) {
+      // Token inválido - continua sem autenticação
+      return next();
+    }
+
+    // Buscar usuário atualizado do banco (verificar tipo de acesso)
+    let usuario = null;
+    if (decoded.tipo_acesso === 'web') {
+      // Usuário web - buscar na tabela users_web
+      usuario = await tursoService.buscarUsuarioWebPorId(decoded.usuario_id);
+      if (usuario) {
+        usuario.perfil = 'web_user';
+        usuario.tipo_acesso = 'web';
+      }
+    } else {
+      // Usuário PWA - buscar na tabela cc_usuarios
+      usuario = await tursoService.buscarUsuarioPorId(decoded.usuario_id);
+    }
+
+    if (usuario) {
+      // Anexar usuário ao request para filtragem
+      req.user = usuario;
+    }
+
+    next();
+  } catch (error) {
+    // Em caso de erro, continua sem autenticação
+    console.warn('Erro no optionalAuth (ignorado):', error.message);
+    next();
+  }
+}
+
 // Middleware para verificar se usuário está autenticado
 export async function requireAuth(req, res, next) {
   try {
@@ -24,8 +69,20 @@ export async function requireAuth(req, res, next) {
       });
     }
 
-    // Buscar usuário atualizado do banco
-    const usuario = await tursoService.buscarUsuarioPorId(decoded.usuario_id);
+    // Buscar usuário atualizado do banco (verificar tipo de acesso)
+    let usuario = null;
+    if (decoded.tipo_acesso === 'web') {
+      // Usuário web - buscar na tabela users_web
+      usuario = await tursoService.buscarUsuarioWebPorId(decoded.usuario_id);
+      if (usuario) {
+        usuario.usuario_id = usuario.id;
+        usuario.perfil = 'admin'; // Usuários web podem gerenciar permissões
+        usuario.tipo_acesso = 'web';
+      }
+    } else {
+      // Usuário PWA - buscar na tabela cc_usuarios
+      usuario = await tursoService.buscarUsuarioPorId(decoded.usuario_id);
+    }
 
     if (!usuario) {
       return res.status(401).json({

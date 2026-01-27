@@ -22,7 +22,8 @@ class AuthService {
       username: usuario.username,
       perfil: usuario.perfil,
       rep_id: usuario.rep_id,
-      nome_completo: usuario.nome_completo
+      nome_completo: usuario.nome_completo,
+      tipo_acesso: usuario.tipo_acesso || 'pwa'
     };
 
     return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });

@@ -1,8 +1,8 @@
 // Service Worker para PWA - Sistema de Repositores Germani
 // Permite operação offline completa da aplicação
 
-const CACHE_NAME = 'germani-repositores-v1';
-const RUNTIME_CACHE = 'germani-runtime-v1';
+const CACHE_NAME = 'germani-repositores-v2';
+const RUNTIME_CACHE = 'germani-runtime-v2';
 
 // Arquivos essenciais para funcionar offline
 // Usar caminhos relativos para funcionar com GitHub Pages (subdiretório)
@@ -10,6 +10,7 @@ const ESSENTIAL_FILES = [
   './',
   './index.html',
   './css/style.css',
+  './css/pwa.css',
   './js/auth.js',
   './js/app.js',
   './js/db.js',
@@ -18,6 +19,9 @@ const ESSENTIAL_FILES = [
   './js/geo.js',
   './js/acl-resources.js',
   './js/turso-config.js',
+  './js/offline-db.js',
+  './js/sync-service.js',
+  './js/pwa-app.js',
   './icon-512.png',
   './manifest.json'
 ];
@@ -129,7 +133,7 @@ async function cacheFirstStrategy(request) {
 
     // Se for navegação (HTML), retornar index.html do cache
     if (request.mode === 'navigate') {
-      const cachedIndex = await caches.match('/index.html');
+      const cachedIndex = await caches.match('./index.html') || await caches.match('/index.html');
       if (cachedIndex) {
         return cachedIndex;
       }

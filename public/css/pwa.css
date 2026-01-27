@@ -1,0 +1,532 @@
+/* ==========================================
+   PWA MOBILE - Layout Exclusivo
+   Prioridade: velocidade e otimização
+   ========================================== */
+
+/* Reset PWA */
+.pwa-screen {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    width: 100vw;
+    overflow: hidden;
+    background: #f5f5f5;
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 9999;
+    -webkit-overflow-scrolling: touch;
+}
+
+.pwa-screen.hidden {
+    display: none !important;
+}
+
+/* Quando PWA está ativo, esconder layout web */
+body.pwa-mode #appScreen {
+    display: none !important;
+}
+
+/* ==========================================
+   HEADER PWA
+   ========================================== */
+.pwa-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 48px;
+    min-height: 48px;
+    padding: 0 12px;
+    background: #dc2626;
+    color: #fff;
+    flex-shrink: 0;
+    /* iOS safe area */
+    padding-top: env(safe-area-inset-top, 0);
+    z-index: 100;
+}
+
+.pwa-header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pwa-user-name {
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
+}
+
+.pwa-header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.pwa-sync-badge {
+    position: relative;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.15);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    font-size: 16px;
+}
+
+.pwa-sync-badge:active {
+    background: rgba(255,255,255,0.3);
+}
+
+.pwa-pending {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    background: #fbbf24;
+    color: #000;
+    font-size: 10px;
+    font-weight: 700;
+    min-width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 3px;
+}
+
+.pwa-pending.hidden {
+    display: none;
+}
+
+.pwa-online-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #4ade80;
+    flex-shrink: 0;
+}
+
+.pwa-online-dot.offline {
+    background: #fbbf24;
+}
+
+/* ==========================================
+   CONTENT PWA - Área principal scrollável
+   ========================================== */
+.pwa-content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+    padding: 0;
+    /* GPU acceleration */
+    will-change: scroll-position;
+    transform: translateZ(0);
+}
+
+/* ==========================================
+   BOTTOM TABS PWA
+   ========================================== */
+.pwa-tabs {
+    display: flex;
+    height: 56px;
+    min-height: 56px;
+    background: #fff;
+    border-top: 1px solid #e5e5e5;
+    flex-shrink: 0;
+    /* iOS safe area */
+    padding-bottom: env(safe-area-inset-bottom, 0);
+    z-index: 100;
+}
+
+.pwa-tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    border: none;
+    background: none;
+    color: #9ca3af;
+    font-size: 10px;
+    padding: 4px 0;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: color 0.15s;
+    /* Prevent text selection */
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.pwa-tab:active {
+    background: #f3f4f6;
+}
+
+.pwa-tab.active {
+    color: #dc2626;
+}
+
+.pwa-tab-icon {
+    font-size: 20px;
+    line-height: 1;
+}
+
+.pwa-tab-label {
+    font-weight: 500;
+    letter-spacing: -0.01em;
+}
+
+/* ==========================================
+   PWA PAGES - Telas internas
+   ========================================== */
+
+/* Home PWA */
+.pwa-page {
+    padding: 12px;
+    min-height: 100%;
+}
+
+.pwa-page-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #1f2937;
+    margin: 0 0 12px 0;
+}
+
+/* Cards */
+.pwa-card {
+    background: #fff;
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 10px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+    /* GPU acceleration */
+    transform: translateZ(0);
+}
+
+.pwa-card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin: 0 0 10px 0;
+}
+
+/* Action buttons */
+.pwa-action-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 14px 16px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    margin-bottom: 8px;
+    font-size: 15px;
+    font-weight: 500;
+    color: #1f2937;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.1s;
+    text-align: left;
+}
+
+.pwa-action-btn:active {
+    background: #f3f4f6;
+}
+
+.pwa-action-btn .pwa-action-icon {
+    font-size: 24px;
+    width: 36px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.pwa-action-btn .pwa-action-text {
+    flex: 1;
+}
+
+.pwa-action-btn .pwa-action-arrow {
+    color: #d1d5db;
+    font-size: 18px;
+}
+
+/* Status badge (check-in ativo, etc) */
+.pwa-status-active {
+    background: #dcfce7;
+    color: #166534;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.pwa-status-idle {
+    background: #f3f4f6;
+    color: #6b7280;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* Roteiro do dia */
+.pwa-roteiro-item {
+    display: flex;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid #f3f4f6;
+    gap: 10px;
+}
+
+.pwa-roteiro-item:last-child {
+    border-bottom: none;
+}
+
+.pwa-roteiro-status {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.pwa-roteiro-status.visitado {
+    background: #22c55e;
+}
+
+.pwa-roteiro-status.pendente {
+    background: #e5e7eb;
+}
+
+.pwa-roteiro-status.atual {
+    background: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
+}
+
+.pwa-roteiro-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.pwa-roteiro-nome {
+    font-size: 14px;
+    font-weight: 500;
+    color: #1f2937;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pwa-roteiro-detalhe {
+    font-size: 12px;
+    color: #9ca3af;
+    margin-top: 2px;
+}
+
+.pwa-roteiro-hora {
+    font-size: 12px;
+    color: #6b7280;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+/* Consultas list */
+.pwa-consulta-item {
+    display: flex;
+    align-items: center;
+    padding: 14px 16px;
+    background: #fff;
+    border-radius: 10px;
+    margin-bottom: 8px;
+    gap: 12px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+}
+
+.pwa-consulta-item:active {
+    background: #f9fafb;
+}
+
+.pwa-consulta-icon {
+    font-size: 24px;
+    width: 36px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.pwa-consulta-label {
+    flex: 1;
+    font-size: 15px;
+    font-weight: 500;
+    color: #1f2937;
+}
+
+.pwa-consulta-arrow {
+    color: #d1d5db;
+    font-size: 18px;
+}
+
+/* Menu Mais */
+.pwa-menu-item {
+    display: flex;
+    align-items: center;
+    padding: 14px 16px;
+    background: #fff;
+    gap: 12px;
+    border-bottom: 1px solid #f3f4f6;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.pwa-menu-item:first-child {
+    border-radius: 10px 10px 0 0;
+}
+
+.pwa-menu-item:last-child {
+    border-radius: 0 0 10px 10px;
+    border-bottom: none;
+}
+
+.pwa-menu-item:active {
+    background: #f9fafb;
+}
+
+.pwa-menu-icon {
+    font-size: 20px;
+    width: 28px;
+    text-align: center;
+}
+
+.pwa-menu-label {
+    flex: 1;
+    font-size: 15px;
+    color: #1f2937;
+}
+
+.pwa-menu-value {
+    font-size: 13px;
+    color: #9ca3af;
+}
+
+.pwa-menu-item.danger .pwa-menu-label {
+    color: #dc2626;
+}
+
+/* Loading skeleton */
+.pwa-skeleton {
+    background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+    background-size: 200% 100%;
+    animation: pwa-shimmer 1.2s ease-in-out infinite;
+    border-radius: 6px;
+    height: 16px;
+    margin-bottom: 8px;
+}
+
+@keyframes pwa-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+@keyframes pwa-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.pwa-sync-badge span {
+    display: inline-block;
+}
+
+/* Empty state */
+.pwa-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: #9ca3af;
+}
+
+.pwa-empty-icon {
+    font-size: 40px;
+    margin-bottom: 12px;
+}
+
+.pwa-empty-text {
+    font-size: 14px;
+}
+
+/* ==========================================
+   PERFORMANCE - Otimizações
+   ========================================== */
+
+/* Desabilitar hover em touch */
+@media (hover: none) {
+    .pwa-tab:hover,
+    .pwa-action-btn:hover,
+    .pwa-consulta-item:hover,
+    .pwa-menu-item:hover {
+        background: inherit;
+    }
+}
+
+/* Prevent pull-to-refresh on content */
+.pwa-content {
+    overscroll-behavior-y: contain;
+}
+
+/* Smooth scroll */
+.pwa-content {
+    scroll-behavior: smooth;
+}
+
+/* Safe area for notch phones */
+@supports (padding-top: env(safe-area-inset-top)) {
+    .pwa-header {
+        height: calc(48px + env(safe-area-inset-top));
+        padding-top: env(safe-area-inset-top);
+    }
+
+    .pwa-tabs {
+        height: calc(56px + env(safe-area-inset-bottom));
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+}
+
+/* Login PWA override */
+body.pwa-mode .login-screen {
+    z-index: 10000;
+}
+
+body.pwa-mode .login-container {
+    min-height: 100dvh;
+}
+
+body.pwa-mode .login-card {
+    max-width: 100%;
+    margin: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 24px 20px;
+}
+
+body.pwa-mode .login-logo {
+    width: 80px;
+    height: 80px;
+}
+
+body.pwa-mode .login-card h1 {
+    font-size: 20px;
+}
+
+body.pwa-mode .login-card h2 {
+    font-size: 14px;
+}
