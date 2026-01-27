@@ -1938,10 +1938,21 @@ class App {
 
         matrizPermissoes.innerHTML = '<p class="text-muted">Selecione um usuário para exibir as permissões.</p>';
 
-        // Carregar usuários do banco comercial
-        const usuarios = await db.listarUsuariosComercial();
-        seletorUsuario.innerHTML = '<option value="">Selecione um usuário</option>' +
-            usuarios.map(user => `<option value="${user.id}" data-username="${user.username}">${user.username}</option>`).join('');
+        // Carregar usuários da tabela users_web via API
+        try {
+            const backendUrl = this.registroRotaState?.backendUrl || 'https://repositor-backend.onrender.com';
+            const token = authManager.token;
+            const response = await fetch(`${backendUrl}/api/auth/users-web`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await response.json();
+            const usuarios = data.usuarios || [];
+            seletorUsuario.innerHTML = '<option value="">Selecione um usuário</option>' +
+                usuarios.map(user => `<option value="${user.id}" data-username="${user.username}">${user.full_name || user.username}</option>`).join('');
+        } catch (error) {
+            console.error('Erro ao carregar usuários para controle de acesso:', error);
+            seletorUsuario.innerHTML = '<option value="">Erro ao carregar usuários</option>';
+        }
 
         seletorUsuario.addEventListener('change', async () => {
             const selectedOption = seletorUsuario.selectedOptions[0];
@@ -2007,7 +2018,11 @@ class App {
             'geral': 'Geral',
             'repositores': 'Repositores',
             'cadastros': 'Cadastros',
+            'registros': 'Registros',
             'consultas': 'Consultas',
+            'relatorios': 'Relatórios',
+            'analises': 'Análises',
+            'custos': 'Custos',
             'configuracoes': 'Configurações'
         };
 
