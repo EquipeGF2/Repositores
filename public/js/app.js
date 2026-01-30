@@ -804,6 +804,11 @@ class App {
     }
 
     async exigirLocalizacaoInicial(obrigatoria = true) {
+        // No modo web, GPS não é obrigatório
+        if (typeof authManager !== 'undefined' && !authManager.isPWA) {
+            return true;
+        }
+
         try {
             if (obrigatoria) this.exibirOverlayGeoCarregando();
             const posicao = await geoService.getRequiredLocation();
@@ -830,6 +835,12 @@ class App {
     }
 
     async capturarLocalizacaoObrigatoria(contextoDescricao, onRetry) {
+        // No modo web, GPS não é obrigatório - retornar sem bloquear
+        if (typeof authManager !== 'undefined' && !authManager.isPWA) {
+            console.log('[GEO] Modo web - GPS não obrigatório, continuando sem localização');
+            return null;
+        }
+
         try {
             const posicao = await geoService.getRequiredLocation();
             this.geoState.ultimaCaptura = posicao;
@@ -919,6 +930,12 @@ class App {
     }
 
     configurarCapturaGeoInicial() {
+        // No modo web, GPS não é necessário
+        if (typeof authManager !== 'undefined' && !authManager.isPWA) {
+            console.log('[GEO] Modo web - GPS não obrigatório, pulando captura inicial');
+            return;
+        }
+
         const dispararCaptura = () => {
             if (!this.geoInicialPromise) {
                 this.geoInicialPromise = this.exigirLocalizacaoInicial(false);
