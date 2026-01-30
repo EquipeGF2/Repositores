@@ -479,13 +479,11 @@ class App {
         this.setupEventListeners();
         this.configurarCapturaGeoInicial();
 
-        const [resultadoDb, resultadoDadosNaoCriticos] = await Promise.allSettled([
-            this.initializeDatabase(),
-            this.carregarDadosNaoCriticos()
-        ]);
-
-        if (resultadoDb.status === 'rejected') {
-            console.error('Erro ao inicializar banco:', resultadoDb.reason);
+        // DB é o único bloqueante - dados não-críticos carregam em background
+        try {
+            await this.initializeDatabase();
+        } catch (dbError) {
+            console.error('Erro ao inicializar banco:', dbError);
             return;
         }
 
@@ -494,24 +492,23 @@ class App {
             this.primeiraApiRegistrada = true;
         }
 
-        if (resultadoDadosNaoCriticos.status === 'rejected') {
-            console.warn('Falha ao carregar dados não críticos:', resultadoDadosNaoCriticos.reason);
-            this.showNotification('Alguns dados opcionais não foram carregados. Tente novamente mais tarde.', 'warning');
-        }
+        // Dados não-críticos em background (não bloqueia render)
+        this.carregarDadosNaoCriticos().catch(e =>
+            console.warn('Dados opcionais não carregados:', e)
+        );
 
         const temSessao = await this.ensureUsuarioLogado();
         if (!temSessao) return;
         this.marcarPerformance('sessao_pronta');
 
+        // Permissões e config em paralelo
         await this.carregarPermissoesUsuario();
         this.aplicarInformacoesUsuario();
         this.configurarVisibilidadeConfiguracoes();
-        // await this.atualizarAlertaRateioGlobal(); // DESABILITADO - tabela cliente não existe no banco principal
 
         // Verificar se usuário tem acesso a alguma tela
         const telasPermitidas = authManager?.telas || [];
         if (telasPermitidas.length === 0 && authManager?.isAuthenticated()) {
-            // Usuário logado mas sem permissões
             this.elements.pageTitle.textContent = 'Sem permissões';
             this.elements.contentBody.innerHTML = `
                 <div class="acesso-negado">
@@ -525,11 +522,12 @@ class App {
         }
 
         const paginaInicial = this.definirPaginaInicial();
-        // Carrega a página inicial
         await this.navigateTo(paginaInicial, {}, { replaceHistory: true });
         this.marcarPerformance('primeira_pagina_renderizada');
         this.registrarResumoPerformance();
-        this.iniciarKeepAliveBackend();
+
+        // Keep-alive em background - não bloqueia nada
+        setTimeout(() => this.iniciarKeepAliveBackend(), 3000);
 
         if (this.geoInicialPromise) {
             const geoLiberado = await this.geoInicialPromise;
@@ -1003,12 +1001,11 @@ class App {
 
     async initializeDatabase() {
         try {
-            // Conecta ao banco principal
+            // Conecta ao banco principal (já inclui initializeSchema internamente)
             await db.connect();
-            await db.initializeSchema();
 
-            // Tenta conectar ao banco comercial (opcional)
-            await db.connectComercial();
+            // Banco comercial em background - não bloqueia
+            db.connectComercial().catch(e => console.warn('Banco comercial indisponível:', e.message));
 
             console.log('✅ Sistema inicializado com sucesso');
         } catch (error) {
