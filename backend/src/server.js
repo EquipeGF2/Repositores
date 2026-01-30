@@ -19,6 +19,7 @@ import espacosRoutes from './routes/espacos.js';
 import pwaRoutes from './routes/pwa-telas.js';
 import syncRoutes from './routes/sync.js';
 import atividadesRoutes from './routes/atividades.js';
+import performanceRoutes from './routes/performance.js';
 import { authService } from './services/auth.js';
 
 const app = express();
@@ -133,6 +134,7 @@ app.use('/api/espacos', espacosRoutes);
 app.use('/api/pwa', pwaRoutes);
 app.use('/api/sync', syncRoutes);
 app.use('/api/atividades', atividadesRoutes);
+app.use('/api/performance', performanceRoutes);
 
 // Rota 404
 app.use((req, res) => {

@@ -7227,6 +7227,134 @@ export const pages = {
                 }
             </style>
         `;
+    },
+
+    // ==================== PERFORMANCE FATURAMENTO ====================
+    'performance-faturamento': async () => {
+        return `
+            <div class="card">
+                <div class="card-body" style="padding-top: 20px;">
+                    <div class="fat-filters" style="margin-bottom: 18px; background:#f9fafb; padding:14px 16px; border:1px solid #e5e7eb; border-radius:12px; display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:10px; align-items:end;">
+                        <div class="filter-group">
+                            <label for="fatRepositor">Repositor</label>
+                            <select id="fatRepositor">
+                                <option value="">Carregando...</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="fatMeses">Meses</label>
+                            <select id="fatMeses">
+                                <option value="3">3 meses</option>
+                                <option value="6" selected>6 meses</option>
+                                <option value="9">9 meses</option>
+                                <option value="12">12 meses</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="fatMetrica">Exibir</label>
+                            <select id="fatMetrica">
+                                <option value="valor" selected>Valor Financeiro (R$)</option>
+                                <option value="peso">Peso Liq. (kg)</option>
+                            </select>
+                        </div>
+                        <div class="filter-group" style="display:flex; gap:8px;">
+                            <button id="btnBuscarFaturamento" class="btn btn-primary" style="flex:1;">Buscar</button>
+                            <button id="btnExportarFaturamento" class="btn btn-secondary" style="flex:1;" disabled>Exportar</button>
+                        </div>
+                    </div>
+
+                    <div id="fatResumo" style="display:none; margin-bottom:16px; display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px;">
+                    </div>
+
+                    <div id="fatLoading" style="display:none; text-align:center; padding:3rem;">
+                        <div style="font-size:2rem;">Carregando...</div>
+                        <p style="color:var(--gray-500);">Buscando dados de faturamento...</p>
+                    </div>
+
+                    <div id="fatEmpty" style="display:none; text-align:center; padding:3rem; color:var(--gray-500);">
+                        <div style="font-size:2rem;">Sem dados</div>
+                        <p>Selecione um repositor e clique em Buscar para ver o faturamento.</p>
+                    </div>
+
+                    <div id="fatTableContainer" style="display:none; overflow-x:auto;">
+                        <table id="fatTable" class="data-table" style="width:100%; border-collapse:collapse; font-size:0.82rem;">
+                            <thead id="fatTableHead"></thead>
+                            <tbody id="fatTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <style>
+                #fatTable th, #fatTable td {
+                    padding: 6px 10px;
+                    text-align: right;
+                    border-bottom: 1px solid #e5e7eb;
+                    white-space: nowrap;
+                }
+                #fatTable th {
+                    background: #f9fafb;
+                    font-weight: 600;
+                    position: sticky;
+                    top: 0;
+                    z-index: 2;
+                }
+                #fatTable td:first-child,
+                #fatTable th:first-child {
+                    text-align: left;
+                    position: sticky;
+                    left: 0;
+                    background: white;
+                    z-index: 1;
+                    min-width: 200px;
+                }
+                #fatTable th:first-child {
+                    background: #f9fafb;
+                    z-index: 3;
+                }
+                .fat-row-cidade td {
+                    background: #eef2ff !important;
+                    font-weight: 700;
+                    color: #3730a3;
+                    border-top: 2px solid #c7d2fe;
+                }
+                .fat-row-cidade td:first-child {
+                    background: #eef2ff !important;
+                }
+                .fat-row-total td {
+                    background: #f0fdf4 !important;
+                    font-weight: 700;
+                    color: #166534;
+                    border-top: 2px solid #86efac;
+                }
+                .fat-row-total td:first-child {
+                    background: #f0fdf4 !important;
+                }
+                .fat-row-cliente td:first-child {
+                    padding-left: 24px;
+                }
+                .fat-valor-zero {
+                    color: #d1d5db;
+                }
+                .fat-resumo-card {
+                    background: white;
+                    border: 1px solid #e5e7eb;
+                    border-radius: 10px;
+                    padding: 14px 16px;
+                    text-align: center;
+                }
+                .fat-resumo-card .fat-resumo-label {
+                    font-size: 0.75rem;
+                    color: var(--gray-500);
+                    margin-bottom: 4px;
+                }
+                .fat-resumo-card .fat-resumo-valor {
+                    font-size: 1.3rem;
+                    font-weight: 700;
+                    color: var(--gray-800);
+                }
+            </style>
+        `;
     }
 };
 
@@ -7261,6 +7389,7 @@ export const pageTitles = {
     'consulta-documentos': 'Consulta de Documentos',
     'consulta-despesas': 'Consulta de Despesas',
     'analise-performance': 'Visitas',
+    'performance-faturamento': 'Faturamento',
     'cadastro-espacos': 'Compra de Espaço',
     'consulta-espacos': 'Consulta de Espaços'
 };

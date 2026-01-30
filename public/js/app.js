@@ -3420,6 +3420,8 @@ class App {
                 await this.inicializarConsultaDespesas();
             } else if (pageName === 'analise-performance') {
                 await this.inicializarAnalisePerformance();
+            } else if (pageName === 'performance-faturamento') {
+                await this.inicializarFaturamento();
             } else if (pageName === 'consulta-campanha') {
                 await this.inicializarConsultaCampanha();
             } else if (pageName === 'cadastro-pesquisa') {
@@ -21724,6 +21726,339 @@ class App {
             modal.classList.remove('active');
         }
         this.espacosRegistroState = null;
+    }
+
+    // ==================== FATURAMENTO ====================
+
+    async inicializarFaturamento() {
+        try {
+            this.faturamentoState = { dados: null, metrica: 'valor' };
+
+            // Carregar repositores no select
+            const select = document.getElementById('fatRepositor');
+            if (select) {
+                select.innerHTML = '<option value="">Carregando...</option>';
+                try {
+                    const resp = await authManager.fetch(`${this.apiBaseUrl}/api/performance/repositores`);
+                    const data = await resp.json();
+                    if (data.ok && data.repositores) {
+                        select.innerHTML = '<option value="">Selecione um repositor</option>';
+                        data.repositores.forEach(r => {
+                            const opt = document.createElement('option');
+                            opt.value = r.rep_id;
+                            opt.textContent = `${r.rep_name} (${r.rep_id})`;
+                            select.appendChild(opt);
+                        });
+                    } else {
+                        select.innerHTML = '<option value="">Erro ao carregar</option>';
+                    }
+                } catch (e) {
+                    console.error('Erro ao carregar repositores:', e);
+                    select.innerHTML = '<option value="">Erro ao carregar</option>';
+                }
+            }
+
+            // Botão buscar
+            const btnBuscar = document.getElementById('btnBuscarFaturamento');
+            if (btnBuscar) {
+                btnBuscar.onclick = () => this.buscarFaturamento();
+            }
+
+            // Botão exportar
+            const btnExportar = document.getElementById('btnExportarFaturamento');
+            if (btnExportar) {
+                btnExportar.onclick = () => this.exportarFaturamento();
+            }
+
+            // Mudança de métrica
+            const selectMetrica = document.getElementById('fatMetrica');
+            if (selectMetrica) {
+                selectMetrica.onchange = () => {
+                    this.faturamentoState.metrica = selectMetrica.value;
+                    if (this.faturamentoState.dados) {
+                        this.renderizarTabelaFaturamento();
+                    }
+                };
+            }
+
+            // Mostrar estado vazio
+            this.mostrarEstadoFaturamento('empty');
+        } catch (error) {
+            console.error('Erro ao inicializar faturamento:', error);
+        }
+    }
+
+    mostrarEstadoFaturamento(estado) {
+        const loading = document.getElementById('fatLoading');
+        const empty = document.getElementById('fatEmpty');
+        const table = document.getElementById('fatTableContainer');
+        const resumo = document.getElementById('fatResumo');
+
+        if (loading) loading.style.display = estado === 'loading' ? '' : 'none';
+        if (empty) empty.style.display = estado === 'empty' ? '' : 'none';
+        if (table) table.style.display = estado === 'table' ? '' : 'none';
+        if (resumo) resumo.style.display = estado === 'table' ? 'grid' : 'none';
+    }
+
+    async buscarFaturamento() {
+        const repId = document.getElementById('fatRepositor')?.value;
+        const meses = document.getElementById('fatMeses')?.value || 6;
+
+        if (!repId) {
+            this.showNotification('Selecione um repositor', 'error');
+            return;
+        }
+
+        this.mostrarEstadoFaturamento('loading');
+
+        try {
+            const resp = await authManager.fetch(
+                `${this.apiBaseUrl}/api/performance/faturamento?rep_id=${repId}&meses=${meses}`
+            );
+            const data = await resp.json();
+
+            if (!data.ok) {
+                throw new Error(data.message || 'Erro ao buscar faturamento');
+            }
+
+            this.faturamentoState.dados = data;
+            this.faturamentoState.metrica = document.getElementById('fatMetrica')?.value || 'valor';
+
+            // Habilitar exportação
+            const btnExportar = document.getElementById('btnExportarFaturamento');
+            if (btnExportar) btnExportar.disabled = false;
+
+            this.renderizarResumoFaturamento();
+            this.renderizarTabelaFaturamento();
+            this.mostrarEstadoFaturamento('table');
+        } catch (error) {
+            console.error('Erro ao buscar faturamento:', error);
+            this.showNotification(error.message || 'Erro ao buscar faturamento', 'error');
+            this.mostrarEstadoFaturamento('empty');
+        }
+    }
+
+    renderizarResumoFaturamento() {
+        const resumoEl = document.getElementById('fatResumo');
+        if (!resumoEl || !this.faturamentoState.dados) return;
+
+        const { totais, cidades, meses } = this.faturamentoState.dados;
+        const totalClientes = cidades.reduce((sum, c) => sum + c.clientes.length, 0);
+
+        resumoEl.innerHTML = `
+            <div class="fat-resumo-card">
+                <div class="fat-resumo-label">Total Faturamento</div>
+                <div class="fat-resumo-valor">${this.formatarMoeda(totais.valor_financeiro)}</div>
+            </div>
+            <div class="fat-resumo-card">
+                <div class="fat-resumo-label">Peso Liq. Total</div>
+                <div class="fat-resumo-valor">${this.formatarPeso(totais.peso_liq)}</div>
+            </div>
+            <div class="fat-resumo-card">
+                <div class="fat-resumo-label">Media Mensal</div>
+                <div class="fat-resumo-valor">${this.formatarMoeda(totais.media_mensal)}</div>
+            </div>
+            <div class="fat-resumo-card">
+                <div class="fat-resumo-label">Cidades / Clientes</div>
+                <div class="fat-resumo-valor">${cidades.length} / ${totalClientes}</div>
+            </div>
+        `;
+    }
+
+    renderizarTabelaFaturamento() {
+        const dados = this.faturamentoState.dados;
+        if (!dados) return;
+
+        const { periodos, cidades, totais } = dados;
+        const metrica = this.faturamentoState.metrica;
+        const isValor = metrica === 'valor';
+
+        const thead = document.getElementById('fatTableHead');
+        const tbody = document.getElementById('fatTableBody');
+        if (!thead || !tbody) return;
+
+        // Header
+        let headerHTML = '<tr><th>Cliente</th>';
+        periodos.forEach(p => {
+            headerHTML += `<th>${p.label}</th>`;
+        });
+        headerHTML += '<th>Total</th><th>Media</th></tr>';
+        thead.innerHTML = headerHTML;
+
+        // Body
+        let bodyHTML = '';
+        const numMeses = periodos.length;
+
+        cidades.forEach(cidade => {
+            // Linha da cidade
+            const cidadeTotal = isValor ? cidade.total_valor : cidade.total_peso;
+            const cidadeMedia = cidadeTotal / numMeses;
+
+            bodyHTML += '<tr class="fat-row-cidade">';
+            bodyHTML += `<td>${this.escaparHTMLFat(cidade.cidade)}</td>`;
+            periodos.forEach(p => {
+                let somaPerMes = 0;
+                cidade.clientes.forEach(cl => {
+                    const m = cl.meses[p.key];
+                    somaPerMes += m ? (isValor ? m.valor : m.peso) : 0;
+                });
+                bodyHTML += `<td>${this.formatarValorFat(somaPerMes, isValor)}</td>`;
+            });
+            bodyHTML += `<td>${this.formatarValorFat(cidadeTotal, isValor)}</td>`;
+            bodyHTML += `<td>${this.formatarValorFat(cidadeMedia, isValor)}</td>`;
+            bodyHTML += '</tr>';
+
+            // Linhas dos clientes
+            cidade.clientes.forEach(cl => {
+                const clTotal = isValor ? cl.total_valor : cl.total_peso;
+                const clMedia = clTotal / numMeses;
+
+                bodyHTML += '<tr class="fat-row-cliente">';
+                bodyHTML += `<td>${this.escaparHTMLFat(cl.codigo)} - ${this.escaparHTMLFat(cl.nome)}</td>`;
+                periodos.forEach(p => {
+                    const m = cl.meses[p.key];
+                    const val = m ? (isValor ? m.valor : m.peso) : 0;
+                    const cls = val === 0 ? ' class="fat-valor-zero"' : '';
+                    bodyHTML += `<td${cls}>${this.formatarValorFat(val, isValor)}</td>`;
+                });
+                bodyHTML += `<td>${this.formatarValorFat(clTotal, isValor)}</td>`;
+                bodyHTML += `<td>${this.formatarValorFat(clMedia, isValor)}</td>`;
+                bodyHTML += '</tr>';
+            });
+        });
+
+        // Linha total geral
+        const totalGeral = isValor ? totais.valor_financeiro : totais.peso_liq;
+        const mediaGeral = totalGeral / numMeses;
+
+        bodyHTML += '<tr class="fat-row-total">';
+        bodyHTML += '<td>TOTAL GERAL</td>';
+        periodos.forEach(p => {
+            let somaPerMes = 0;
+            cidades.forEach(cidade => {
+                cidade.clientes.forEach(cl => {
+                    const m = cl.meses[p.key];
+                    somaPerMes += m ? (isValor ? m.valor : m.peso) : 0;
+                });
+            });
+            bodyHTML += `<td>${this.formatarValorFat(somaPerMes, isValor)}</td>`;
+        });
+        bodyHTML += `<td>${this.formatarValorFat(totalGeral, isValor)}</td>`;
+        bodyHTML += `<td>${this.formatarValorFat(mediaGeral, isValor)}</td>`;
+        bodyHTML += '</tr>';
+
+        tbody.innerHTML = bodyHTML;
+    }
+
+    formatarValorFat(val, isValor) {
+        if (val === 0) return '-';
+        if (isValor) {
+            return val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+        return val.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    }
+
+    formatarMoeda(val) {
+        return 'R$ ' + (val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    formatarPeso(val) {
+        return (val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' kg';
+    }
+
+    escaparHTMLFat(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    exportarFaturamento() {
+        const dados = this.faturamentoState?.dados;
+        if (!dados) return;
+
+        try {
+            const { periodos, cidades, totais } = dados;
+            const metrica = this.faturamentoState.metrica;
+            const isValor = metrica === 'valor';
+            const numMeses = periodos.length;
+
+            // Construir dados para XLSX
+            const rows = [];
+
+            // Header
+            const header = ['Cliente'];
+            periodos.forEach(p => header.push(p.label));
+            header.push('Total', 'Media');
+            rows.push(header);
+
+            cidades.forEach(cidade => {
+                // Linha cidade
+                const cidadeRow = [cidade.cidade];
+                periodos.forEach(p => {
+                    let soma = 0;
+                    cidade.clientes.forEach(cl => {
+                        const m = cl.meses[p.key];
+                        soma += m ? (isValor ? m.valor : m.peso) : 0;
+                    });
+                    cidadeRow.push(soma);
+                });
+                const cidadeTotal = isValor ? cidade.total_valor : cidade.total_peso;
+                cidadeRow.push(cidadeTotal, cidadeTotal / numMeses);
+                rows.push(cidadeRow);
+
+                // Linhas clientes
+                cidade.clientes.forEach(cl => {
+                    const row = [`  ${cl.codigo} - ${cl.nome}`];
+                    periodos.forEach(p => {
+                        const m = cl.meses[p.key];
+                        row.push(m ? (isValor ? m.valor : m.peso) : 0);
+                    });
+                    const clTotal = isValor ? cl.total_valor : cl.total_peso;
+                    row.push(clTotal, clTotal / numMeses);
+                    rows.push(row);
+                });
+            });
+
+            // Total geral
+            const totalRow = ['TOTAL GERAL'];
+            periodos.forEach(p => {
+                let soma = 0;
+                cidades.forEach(cidade => {
+                    cidade.clientes.forEach(cl => {
+                        const m = cl.meses[p.key];
+                        soma += m ? (isValor ? m.valor : m.peso) : 0;
+                    });
+                });
+                totalRow.push(soma);
+            });
+            const totalGeral = isValor ? totais.valor_financeiro : totais.peso_liq;
+            totalRow.push(totalGeral, totalGeral / numMeses);
+            rows.push(totalRow);
+
+            // Gerar XLSX se disponível
+            if (typeof XLSX !== 'undefined') {
+                const ws = XLSX.utils.aoa_to_sheet(rows);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Faturamento');
+                XLSX.writeFile(wb, `faturamento_rep${dados.rep_id}_${numMeses}meses.xlsx`);
+                this.showNotification('Exportado com sucesso!', 'success');
+            } else {
+                // Fallback CSV
+                const csv = rows.map(r => r.map(c => typeof c === 'string' ? `"${c}"` : c).join(';')).join('\n');
+                const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `faturamento_rep${dados.rep_id}_${numMeses}meses.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+                this.showNotification('Exportado como CSV!', 'success');
+            }
+        } catch (error) {
+            console.error('Erro ao exportar:', error);
+            this.showNotification('Erro ao exportar dados', 'error');
+        }
     }
 
     // ==================== NOTIFICAÇÕES ====================
