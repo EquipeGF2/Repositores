@@ -3954,55 +3954,13 @@ class TursoService {
   }
 
   /**
-   * Descobrir o nome da tabela de vendas no banco comercial.
-   * Procura por tabela que tenha as colunas: emissao, Cliente, valor_financeiro, peso_liq
-   */
-  async descobrirTabelaVendas() {
-    if (this._tabelaVendas) return this._tabelaVendas;
-
-    const comercialClient = this.getComercialClient();
-
-    // Listar todas as tabelas
-    const tabelas = await comercialClient.execute({
-      sql: `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name`,
-      args: []
-    });
-
-    const colunasNecessarias = ['emissao', 'cliente', 'valor_financeiro', 'peso_liq'];
-
-    for (const row of (tabelas.rows || [])) {
-      const nomeTabela = row.name;
-      try {
-        const info = await comercialClient.execute({
-          sql: `PRAGMA table_info(${nomeTabela})`,
-          args: []
-        });
-        const colunas = (info.rows || []).map(c => c.name.toLowerCase());
-        const temTodas = colunasNecessarias.every(col => colunas.includes(col));
-        if (temTodas) {
-          this._tabelaVendas = nomeTabela;
-          console.log(`✅ Tabela de vendas encontrada: ${nomeTabela}`);
-          return nomeTabela;
-        }
-      } catch (e) {
-        // Ignorar tabelas problemáticas
-      }
-    }
-
-    throw new Error(
-      'Tabela de vendas não encontrada no banco comercial. ' +
-      'Necessária tabela com colunas: emissao, Cliente, valor_financeiro, peso_liq'
-    );
-  }
-
-  /**
-   * Buscar vendas por lista de clientes e período no banco comercial
+   * Buscar vendas por lista de clientes e período no banco comercial.
+   * Tabela: vendas | Colunas: cliente, emissao, valor_financeiro, peso_liq
    */
   async buscarVendasPorClientes(codigosClientes, dataInicio, dataFim) {
     if (!codigosClientes || codigosClientes.length === 0) return [];
 
     const comercialClient = this.getComercialClient();
-    const tabelaVendas = await this.descobrirTabelaVendas();
 
     // Processar em lotes para evitar limite de parâmetros SQLite
     const LOTE = 500;
@@ -4012,14 +3970,14 @@ class TursoService {
       const lote = codigosClientes.slice(i, i + LOTE);
       const placeholders = lote.map(() => '?').join(',');
       const sql = `
-        SELECT Cliente, emissao,
+        SELECT cliente, emissao,
                SUM(valor_financeiro) as valor_financeiro,
                SUM(peso_liq) as peso_liq
-        FROM ${tabelaVendas}
-        WHERE Cliente IN (${placeholders})
+        FROM vendas
+        WHERE cliente IN (${placeholders})
           AND emissao >= ? AND emissao <= ?
-        GROUP BY Cliente, substr(emissao, 1, 7)
-        ORDER BY Cliente, emissao
+        GROUP BY cliente, substr(emissao, 1, 7)
+        ORDER BY cliente, emissao
       `;
       const args = [...lote, dataInicio, dataFim];
       const result = await comercialClient.execute({ sql, args });
