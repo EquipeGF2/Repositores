@@ -21745,14 +21745,14 @@ class App {
             if (select) {
                 select.innerHTML = '<option value="">Carregando...</option>';
                 try {
-                    const resp = await authManager.fetch(`${this.apiBaseUrl}/api/performance/repositores`);
+                    const resp = await authManager.fetch(`${API_BASE_URL}/api/performance/repositores`);
                     const data = await resp.json();
                     if (data.ok && data.repositores) {
                         select.innerHTML = '<option value="">Selecione um repositor</option>';
                         data.repositores.forEach(r => {
                             const opt = document.createElement('option');
                             opt.value = r.rep_id;
-                            opt.textContent = `${r.rep_name} (${r.rep_id})`;
+                            opt.textContent = `${r.rep_nome} (${r.rep_id})`;
                             select.appendChild(opt);
                         });
                     } else {
@@ -21819,7 +21819,7 @@ class App {
 
         try {
             const resp = await authManager.fetch(
-                `${this.apiBaseUrl}/api/performance/faturamento?rep_id=${repId}&meses=${meses}`
+                `${API_BASE_URL}/api/performance/faturamento?rep_id=${repId}&meses=${meses}`
             );
             const data = await resp.json();
 
