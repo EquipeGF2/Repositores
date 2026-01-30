@@ -21734,29 +21734,7 @@ class App {
         try {
             this.faturamentoState = { dados: null, metrica: 'valor' };
 
-            // Carregar repositores no select
-            const select = document.getElementById('fatRepositor');
-            if (select) {
-                select.innerHTML = '<option value="">Carregando...</option>';
-                try {
-                    const resp = await authManager.fetch(`${API_BASE_URL}/api/performance/repositores`);
-                    const data = await resp.json();
-                    if (data.ok && data.repositores) {
-                        select.innerHTML = '<option value="">Selecione um repositor</option>';
-                        data.repositores.forEach(r => {
-                            const opt = document.createElement('option');
-                            opt.value = r.rep_id;
-                            opt.textContent = `${r.rep_nome} (${r.rep_id})`;
-                            select.appendChild(opt);
-                        });
-                    } else {
-                        select.innerHTML = '<option value="">Erro ao carregar</option>';
-                    }
-                } catch (e) {
-                    console.error('Erro ao carregar repositores:', e);
-                    select.innerHTML = '<option value="">Erro ao carregar</option>';
-                }
-            }
+            // Repositores já são carregados no pages.js via db.getAllRepositors()
 
             // Botão buscar
             const btnBuscar = document.getElementById('btnBuscarFaturamento');

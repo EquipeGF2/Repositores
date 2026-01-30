@@ -7231,6 +7231,11 @@ export const pages = {
 
     // ==================== PERFORMANCE FATURAMENTO ====================
     'performance-faturamento': async () => {
+        const repositores = await db.getAllRepositors();
+        const repositorOptions = repositores
+            .map(repo => `<option value="${repo.repo_cod}">${repo.repo_cod} - ${repo.repo_nome}</option>`)
+            .join('');
+
         return `
             <div class="card">
                 <div class="card-body" style="padding-top: 20px;">
@@ -7238,7 +7243,8 @@ export const pages = {
                         <div class="filter-group">
                             <label for="fatRepositor">Repositor</label>
                             <select id="fatRepositor">
-                                <option value="">Carregando...</option>
+                                <option value="">Selecione um repositor</option>
+                                ${repositorOptions}
                             </select>
                         </div>
                         <div class="filter-group">
