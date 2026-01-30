@@ -436,6 +436,12 @@ class AuthManager {
    * Mostrar página de login Web
    */
   mostrarTelaLoginWeb() {
+    // Garantir que appScreen e pwaScreen fiquem ocultos
+    const appScreen = document.getElementById('appScreen');
+    const pwaScreen = document.getElementById('pwaScreen');
+    if (appScreen) appScreen.classList.add('hidden');
+    if (pwaScreen) pwaScreen.classList.add('hidden');
+
     // Criar página de login se não existir
     let loginPage = document.getElementById('loginPageWeb');
     if (!loginPage) {
