@@ -21780,7 +21780,7 @@ class App {
 
     async buscarFaturamento() {
         const repId = document.getElementById('fatRepositor')?.value;
-        const meses = document.getElementById('fatMeses')?.value || 6;
+        const numMeses = parseInt(document.getElementById('fatMeses')?.value) || 6;
 
         if (!repId) {
             this.showNotification('Selecione um repositor', 'error');
@@ -21790,19 +21790,133 @@ class App {
         this.mostrarEstadoFaturamento('loading');
 
         try {
-            const resp = await authManager.fetch(
-                `${API_BASE_URL}/api/performance/faturamento?rep_id=${repId}&meses=${meses}`
-            );
-            const data = await resp.json();
+            // 1. Info do repositor (nome, datas de competência)
+            const repoInfo = await db.getRepositorInfo(Number(repId));
+            if (!repoInfo) throw new Error('Repositor não encontrado');
 
-            if (!data.ok) {
-                throw new Error(data.message || 'Erro ao buscar faturamento');
+            // 2. Clientes do roteiro
+            const clientesRoteiro = await db.getClientesDoRepositor(Number(repId));
+            if (!clientesRoteiro || clientesRoteiro.length === 0) {
+                this.faturamentoState.dados = {
+                    rep_nome: repoInfo.repo_nome, periodos: [], cidades: [],
+                    totais: { valor_financeiro: 0, peso_liq: 0, media_mensal: 0 }, meses_ativos: 0
+                };
+                this.renderizarResumoFaturamento();
+                this.mostrarEstadoFaturamento('empty');
+                return;
             }
 
-            this.faturamentoState.dados = data;
+            // 3. Calcular período
+            const hoje = new Date();
+            const periodoFim = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
+            const periodoInicio = new Date(hoje.getFullYear(), hoje.getMonth() - numMeses + 1, 1);
+
+            // 4. Ajustar pela competência do repositor
+            const repoInicio = repoInfo.repo_data_inicio ? new Date(repoInfo.repo_data_inicio + 'T00:00:00') : null;
+            const repoFim = repoInfo.repo_data_fim ? new Date(repoInfo.repo_data_fim + 'T00:00:00') : null;
+            const dataEfetInicio = repoInicio && repoInicio > periodoInicio ? repoInicio : periodoInicio;
+            const dataEfetFim = repoFim && repoFim < periodoFim ? repoFim : periodoFim;
+
+            const dataInicioStr = dataEfetInicio.toISOString().split('T')[0];
+            const dataFimStr = dataEfetFim.toISOString().split('T')[0];
+
+            // 5. Gerar lista de períodos
+            const periodos = [];
+            for (let i = 0; i < numMeses; i++) {
+                const d = new Date(hoje.getFullYear(), hoje.getMonth() - numMeses + 1 + i, 1);
+                const ultimoDia = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                const aa = String(d.getFullYear()).slice(-2);
+                const dentroCompetencia = d <= dataEfetFim && ultimoDia >= dataEfetInicio;
+                periodos.push({ key: `${mm}_${aa}`, label: `${mm}/${aa}`, ativo: dentroCompetencia });
+            }
+
+            // 6. Buscar vendas direto do banco comercial
+            const codigosClientes = clientesRoteiro.map(c => c.rot_cliente_codigo);
+            const vendas = await db.getVendasPorClientes(codigosClientes, dataInicioStr, dataFimStr);
+
+            // 7. Buscar info dos clientes (nome, cidade) do banco comercial
+            const clientesInfo = await db.getInfoClientesComercial(codigosClientes);
+            const clientesMap = {};
+            clientesInfo.forEach(c => { clientesMap[String(c.cliente)] = c; });
+
+            // 8. Montar mapa cidade → clientes
+            const cidadeClienteMap = {};
+            clientesRoteiro.forEach(cr => {
+                const cod = String(cr.rot_cliente_codigo);
+                const info = clientesMap[cod];
+                const cidade = info?.cidade || cr.cidade || 'SEM CIDADE';
+                if (!cidadeClienteMap[cidade]) cidadeClienteMap[cidade] = {};
+                if (!cidadeClienteMap[cidade][cod]) {
+                    cidadeClienteMap[cidade][cod] = {
+                        codigo: cod, nome: info?.nome || 'Cliente ' + cod,
+                        meses: {}, total_valor: 0, total_peso: 0
+                    };
+                    periodos.forEach(p => {
+                        cidadeClienteMap[cidade][cod].meses[p.key] = { valor: 0, peso: 0 };
+                    });
+                }
+            });
+
+            // 9. Preencher vendas nos meses
+            vendas.forEach(v => {
+                const cod = String(v.cliente);
+                const emissao = v.emissao;
+                if (!emissao) return;
+                const [ano, mes] = emissao.split('-');
+                const key = `${mes}_${ano.slice(-2)}`;
+                const valor = parseFloat(v.valor_financeiro) || 0;
+                const peso = parseFloat(v.peso_liq) || 0;
+
+                for (const cidade in cidadeClienteMap) {
+                    if (cidadeClienteMap[cidade][cod]) {
+                        if (cidadeClienteMap[cidade][cod].meses[key]) {
+                            cidadeClienteMap[cidade][cod].meses[key].valor += valor;
+                            cidadeClienteMap[cidade][cod].meses[key].peso += peso;
+                        }
+                        cidadeClienteMap[cidade][cod].total_valor += valor;
+                        cidadeClienteMap[cidade][cod].total_peso += peso;
+                        break;
+                    }
+                }
+            });
+
+            // 10. Montar resposta
+            const mesesAtivos = periodos.filter(p => p.ativo).length || 1;
+            const cidades = Object.keys(cidadeClienteMap).sort().map(cidade => {
+                const clientes = Object.values(cidadeClienteMap[cidade])
+                    .sort((a, b) => a.nome.localeCompare(b.nome));
+                const totalCidade = clientes.reduce((acc, c) => ({
+                    valor: acc.valor + c.total_valor, peso: acc.peso + c.total_peso
+                }), { valor: 0, peso: 0 });
+                return {
+                    cidade, clientes,
+                    total_valor: totalCidade.valor, total_peso: totalCidade.peso,
+                    media_mensal: totalCidade.valor / mesesAtivos
+                };
+            });
+            const totaisGeral = cidades.reduce((acc, c) => ({
+                valor: acc.valor + c.total_valor, peso: acc.peso + c.total_peso
+            }), { valor: 0, peso: 0 });
+
+            this.faturamentoState.dados = {
+                rep_id: Number(repId),
+                rep_nome: repoInfo.repo_nome,
+                competencia: {
+                    repo_inicio: repoInfo.repo_data_inicio,
+                    repo_fim: repoInfo.repo_data_fim
+                },
+                meses: numMeses,
+                meses_ativos: mesesAtivos,
+                periodos, cidades,
+                totais: {
+                    valor_financeiro: totaisGeral.valor,
+                    peso_liq: totaisGeral.peso,
+                    media_mensal: totaisGeral.valor / mesesAtivos
+                }
+            };
             this.faturamentoState.metrica = document.getElementById('fatMetrica')?.value || 'valor';
 
-            // Habilitar exportação
             const btnExportar = document.getElementById('btnExportarFaturamento');
             if (btnExportar) btnExportar.disabled = false;
 

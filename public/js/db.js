@@ -3413,6 +3413,100 @@ class TursoDatabase {
         }
     }
 
+    // ==================== FATURAMENTO (BANCO COMERCIAL) ====================
+
+    async getVendasPorClientes(codigosClientes, dataInicio, dataFim) {
+        await this.connectComercial();
+        if (!this.comercialClient || !codigosClientes?.length) return [];
+
+        try {
+            const LOTE = 500;
+            const todosResultados = [];
+
+            for (let i = 0; i < codigosClientes.length; i += LOTE) {
+                const lote = codigosClientes.slice(i, i + LOTE);
+                const placeholders = lote.map(() => '?').join(',');
+                const sql = `
+                    SELECT cliente, emissao,
+                           SUM(valor_financeiro) as valor_financeiro,
+                           SUM(peso_liq) as peso_liq
+                    FROM vendas
+                    WHERE cliente IN (${placeholders})
+                      AND emissao >= ? AND emissao <= ?
+                    GROUP BY cliente, substr(emissao, 1, 7)
+                    ORDER BY cliente, emissao
+                `;
+                const args = [...lote, dataInicio, dataFim];
+                const result = await this.comercialClient.execute({ sql, args });
+                if (result.rows) {
+                    todosResultados.push(...result.rows);
+                }
+            }
+            return todosResultados;
+        } catch (error) {
+            console.error('Erro ao buscar vendas:', error);
+            throw error;
+        }
+    }
+
+    async getInfoClientesComercial(codigosClientes) {
+        await this.connectComercial();
+        if (!this.comercialClient || !codigosClientes?.length) return [];
+
+        try {
+            const LOTE = 500;
+            const todosResultados = [];
+
+            for (let i = 0; i < codigosClientes.length; i += LOTE) {
+                const lote = codigosClientes.slice(i, i + LOTE);
+                const placeholders = lote.map(() => '?').join(',');
+                const result = await this.comercialClient.execute({
+                    sql: `SELECT cliente, nome, cidade, uf FROM tab_cliente WHERE cliente IN (${placeholders})`,
+                    args: lote
+                });
+                if (result.rows) {
+                    todosResultados.push(...result.rows);
+                }
+            }
+            return todosResultados;
+        } catch (error) {
+            console.error('Erro ao buscar info clientes comercial:', error);
+            return [];
+        }
+    }
+
+    async getClientesDoRepositor(repId) {
+        try {
+            const result = await this.mainClient.execute({
+                sql: `
+                    SELECT DISTINCT rc.rot_cliente_codigo, rci.rot_cidade as cidade
+                    FROM rot_roteiro_cliente rc
+                    JOIN rot_roteiro_cidade rci ON rc.rot_cid_id = rci.rot_cid_id
+                    WHERE rci.rot_repositor_id = ?
+                    ORDER BY rci.rot_cidade, rc.rot_cliente_codigo
+                `,
+                args: [repId]
+            });
+            return result.rows || [];
+        } catch (error) {
+            console.error('Erro ao buscar clientes do repositor:', error);
+            return [];
+        }
+    }
+
+    async getRepositorInfo(repId) {
+        try {
+            const result = await this.mainClient.execute({
+                sql: `SELECT repo_cod, repo_nome, repo_data_inicio, repo_data_fim FROM cad_repositor WHERE repo_cod = ? LIMIT 1`,
+                args: [repId]
+            });
+            return result.rows?.[0] || null;
+        } catch (error) {
+            console.error('Erro ao buscar info repositor:', error);
+            return null;
+        }
+    }
+
     // ==================== DADOS DO BANCO COMERCIAL ====================
     async getSupervisoresComercial() {
         try {
