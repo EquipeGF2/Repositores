@@ -3554,6 +3554,7 @@ class TursoService {
       { id: 'alteracoes-rota', titulo: 'Alterações de Rota', categoria: 'relatorios', icone: '🔄', ordem: 34 },
       // Análises
       { id: 'analise-performance', titulo: 'Análise de Visitas', categoria: 'analises', icone: '📊', ordem: 40 },
+      { id: 'performance-faturamento', titulo: 'Faturamento', categoria: 'analises', icone: '💰', ordem: 41 },
       // Custos
       { id: 'custos-grid', titulo: 'Grid de Custos', categoria: 'custos', icone: '💲', ordem: 50 },
       // Configurações
@@ -3964,6 +3965,98 @@ class TursoService {
 
     params.push(usuarioId);
     await this.execute(`UPDATE cc_usuarios SET ${updates.join(', ')} WHERE usuario_id = ?`, params);
+  }
+
+  // ==================== PERFORMANCE / FATURAMENTO ====================
+
+  /**
+   * Buscar todos os clientes vinculados a um repositor via roteiro
+   */
+  async buscarClientesDoRepositor(repId) {
+    const sql = `
+      SELECT DISTINCT rc.rot_cliente_codigo, rci.rot_cidade as cidade
+      FROM rot_roteiro_cliente rc
+      JOIN rot_roteiro_cidade rci ON rc.rot_cid_id = rci.rot_cid_id
+      WHERE rci.rot_repositor_id = ?
+      ORDER BY rci.rot_cidade, rc.rot_cliente_codigo
+    `;
+    const result = await this.execute(sql, [repId]);
+    return result.rows || [];
+  }
+
+  /**
+   * Buscar vendas por lista de clientes e período no banco comercial
+   */
+  async buscarVendasPorClientes(codigosClientes, dataInicio, dataFim) {
+    if (!codigosClientes || codigosClientes.length === 0) return [];
+
+    const comercialClient = this.getComercialClient();
+    // Processar em lotes para evitar limite de parâmetros SQLite
+    const LOTE = 500;
+    const todosResultados = [];
+
+    for (let i = 0; i < codigosClientes.length; i += LOTE) {
+      const lote = codigosClientes.slice(i, i + LOTE);
+      const placeholders = lote.map(() => '?').join(',');
+      const sql = `
+        SELECT Cliente, emissao,
+               SUM(valor_financeiro) as valor_financeiro,
+               SUM(peso_liq) as peso_liq
+        FROM vendas
+        WHERE Cliente IN (${placeholders})
+          AND emissao >= ? AND emissao <= ?
+        GROUP BY Cliente, substr(emissao, 1, 7)
+        ORDER BY Cliente, emissao
+      `;
+      const args = [...lote, dataInicio, dataFim];
+      const result = await comercialClient.execute({ sql, args });
+      if (result.rows) {
+        todosResultados.push(...result.rows);
+      }
+    }
+
+    return todosResultados;
+  }
+
+  /**
+   * Buscar info de clientes (nome, cidade) do banco comercial
+   */
+  async buscarInfoClientesComercial(codigosClientes) {
+    if (!codigosClientes || codigosClientes.length === 0) return [];
+
+    const comercialClient = this.getComercialClient();
+    const LOTE = 500;
+    const todosResultados = [];
+
+    for (let i = 0; i < codigosClientes.length; i += LOTE) {
+      const lote = codigosClientes.slice(i, i + LOTE);
+      const placeholders = lote.map(() => '?').join(',');
+      const sql = `
+        SELECT cliente, nome, cidade, uf
+        FROM tab_cliente
+        WHERE cliente IN (${placeholders})
+      `;
+      const result = await comercialClient.execute({ sql, args: lote });
+      if (result.rows) {
+        todosResultados.push(...result.rows);
+      }
+    }
+
+    return todosResultados;
+  }
+
+  /**
+   * Listar repositores ativos
+   */
+  async listarRepositoresAtivos() {
+    const sql = `
+      SELECT repo_cod, repo_nome
+      FROM cad_repositor
+      WHERE repo_data_fim IS NULL OR repo_data_fim >= date('now')
+      ORDER BY repo_nome
+    `;
+    const result = await this.execute(sql, []);
+    return result.rows || [];
   }
 }
 
