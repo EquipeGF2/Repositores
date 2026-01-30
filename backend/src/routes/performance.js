@@ -150,7 +150,7 @@ router.get('/faturamento', optionalAuth, async (req, res) => {
 
     // 10. Preencher vendas nos meses
     vendas.forEach(v => {
-      const cod = String(v.Cliente);
+      const cod = String(v.cliente);
       const emissao = v.emissao; // AAAA-MM-DD
       if (!emissao) return;
 
