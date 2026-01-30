@@ -1116,18 +1116,8 @@ class App {
     }
 
     aplicarInformacoesUsuario() {
-        const userStatus = document.getElementById('userStatus');
-        if (!userStatus) return;
-
-        // Verificar se há usuário autenticado via authManager
-        if (typeof authManager !== 'undefined' && authManager.isAuthenticated() && authManager.usuario) {
-            const nome = authManager.usuario.nome_completo || authManager.usuario.username;
-            userStatus.textContent = `Usuário: ${nome}`;
-        } else if (this.usuarioLogado?.username && this.usuarioLogado.username !== 'Visitante') {
-            userStatus.textContent = `Usuário: ${this.usuarioLogado.username}`;
-        } else {
-            userStatus.textContent = 'Usuário não autenticado';
-        }
+        // Nome do usuário é exibido apenas no #headerUserInfo (auth.js)
+        // #userStatus exibe apenas o status de conexão
     }
 
     async carregarPermissoesUsuario() {
